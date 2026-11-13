@@ -1,0 +1,13 @@
+[Unit]
+Description=Emberwick — a village of local-LLM villagers
+After=network.target
+
+[Service]
+WorkingDirectory=%h/projects/emberwick
+ExecStart=/usr/bin/python3 %h/projects/emberwick/emberwick.py
+Restart=on-failure
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=default.target

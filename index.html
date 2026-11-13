@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emberwick</title>
+<style>
+  :root { --bg:#14171c; --panel:#1c2027; --line:#2c323c; --ink:#e8e4da; --dim:#8f96a3; --gold:#e3b95a; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, sans-serif; }
+  #app { display:flex; height:100%; }
+  #stage { flex:1; min-width:0; display:flex; align-items:center; justify-content:center; padding:12px; }
+  canvas { max-width:100%; max-height:100%; border-radius:10px; background:#5d8a4a; cursor:pointer; }
+  #side { width:400px; flex:none; display:flex; flex-direction:column; background:var(--panel); border-left:1px solid var(--line); }
+  header { padding:14px 16px 10px; border-bottom:1px solid var(--line); }
+  h1 { margin:0; font:600 24px Georgia, serif; color:var(--gold); letter-spacing:.5px; }
+  #clock { color:var(--ink); margin-top:2px; }
+  #status { color:var(--dim); font-size:12px; margin-top:2px; }
+  #status::before { content:"●"; margin-right:5px; color:#6c6; }
+  #status.off::before { color:#d96; }
+  #news { margin-top:8px; padding:8px 10px; background:#262019; border-left:3px solid var(--gold); border-radius:4px; font:italic 13px Georgia, serif; }
+  nav { display:flex; border-bottom:1px solid var(--line); }
+  nav button { flex:1; padding:9px; background:none; border:0; border-bottom:2px solid transparent; color:var(--dim); font:inherit; cursor:pointer; }
+  nav button.on { color:var(--ink); border-bottom-color:var(--gold); }
+  .tab { flex:1; overflow-y:auto; padding:10px 14px; display:none; }
+  .tab.on { display:block; }
+  .ev { padding:7px 0; border-bottom:1px solid #242932; }
+  .ev .t { color:var(--dim); font-size:11px; }
+  .ev .who { font-weight:600; }
+  .ev .say { margin:2px 0 0 10px; padding-left:8px; border-left:2px solid var(--line); font-family:Georgia, serif; }
+  .ev .th { color:var(--dim); font-style:italic; font-size:12px; margin-left:10px; }
+  .ev.sys { color:var(--gold); font:italic 13px Georgia, serif; }
+  .card { padding:10px 12px; margin-bottom:10px; background:#222730; border-radius:8px; border-left:4px solid; }
+  .card.sel { outline:1px solid var(--gold); }
+  .card h3 { margin:0; font-size:15px; }
+  .card .sub { color:var(--dim); font-size:12px; }
+  .card p { margin:6px 0 0; }
+  .card .th { font-style:italic; color:#c9c4b6; }
+  .card small { color:var(--dim); display:block; margin-top:6px; }
+  .chr { margin-bottom:22px; font:15px/1.6 Georgia, serif; }
+  .chr h3 { margin:0 0 4px; color:var(--gold); font:600 17px Georgia, serif; }
+  .chr .w { color:var(--dim); font:12px system-ui; margin-bottom:6px; }
+  .chr p { margin:0 0 8px; white-space:pre-wrap; }
+  .empty { color:var(--dim); font-style:italic; padding:20px 0; }
+  form { display:flex; gap:6px; padding:10px 12px; border-top:1px solid var(--line); }
+  select, input, form button { background:#12151a; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:7px 8px; font:inherit; min-width:0; }
+  input { flex:1; }
+  form button { background:var(--gold); color:#1a1408; border:0; font-weight:600; cursor:pointer; }
+  @media (max-width: 900px) { #app { flex-direction:column; } #stage { flex:none; padding:6px; } #side { width:auto; flex:1; min-height:0; border-left:0; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage"><canvas id="c" width="1280" height="768"></canvas></div>
+  <div id="side">
+    <header>
+      <h1>Emberwick</h1>
+      <div id="clock">…</div>
+      <div id="status">connecting</div>
+      <div id="news"></div>
+    </header>
+    <nav>
+      <button data-tab="feed" class="on">Live</button>
+      <button data-tab="people">Villagers</button>
+      <button data-tab="chron">Chronicle</button>
+    </nav>
+    <div id="feed" class="tab on"></div>
+    <div id="people" class="tab"></div>
+    <div id="chron" class="tab"></div>
+    <form id="whisper">
+      <select id="to"><option value="">The whole village hears…</option></select>
+      <input id="msg" maxlength="200" placeholder="Whisper a thought or start a rumour" autocomplete="off">
+      <button>Send</button>
+    </form>
+  </div>
+</div>
+<script>
+const T = 32, W = 40, H = 24, SQ = [20, 13.4];
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+let st = null, lastEv = 0, selected = null, skew = 0;
+const pos = {};                 // name -> {x, y, route:[[x,y]...], place}
+const STAND = { Dock: 1.2, Square: 1.4, Garden: 1.7, Shrine: 1.6, Cottages: 1.9 };
+const windows = [];             // lit at night
+
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+const hhmm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+
+// ---------------------------------------------------------------- static scenery
+let scenery = null;
+function door(p) { const [x, y] = st.places[p]; return [x, y + (STAND[p] || 1.9) - 0.5]; }
+function distSeg(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1]; let t = ((px - a[0]) * dx + (py - a[1]) * dy) / (dx * dx + dy * dy); t = Math.max(0, Math.min(1, t)); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
+function inLake(x, y) { return ((x - 20) / 15.5) ** 2 + ((y - 25) / 5.4) ** 2 < 1; }
+
+function house(g, x, y, w, h, wall, roof, o = {}) {
+  const X = x * T, Y = y * T, w2 = w * T / 2, hh = h * T;
+  g.fillStyle = 'rgba(0,0,0,.18)'; g.beginPath(); g.ellipse(X, Y + 4, w2 * 1.1, 9, 0, 0, 7); g.fill();
+  g.fillStyle = wall; g.fillRect(X - w2, Y - hh, w2 * 2, hh);
+  g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(X - w2, Y - hh, w2 * 2, 6);
+  if (o.chimney) { g.fillStyle = '#6b5a50'; g.fillRect(X + w2 * 0.45, Y - hh - T * 1.25, 10, T * 0.9); }
+  g.fillStyle = roof; g.beginPath(); g.moveTo(X - w2 - 8, Y - hh); g.lineTo(X, Y - hh - T * (o.pitch || 1.1)); g.lineTo(X + w2 + 8, Y - hh); g.closePath(); g.fill();
+  g.fillStyle = '#4a3222'; g.fillRect(X - 7, Y - 22, 14, 22);
+  for (const wx of (o.win || [-0.55, 0.55])) { const a = X + wx * w2 - 7, b = Y - hh + 14; g.fillStyle = '#31475c'; g.fillRect(a, b, 14, 13); windows.push([a + 7, b + 6]); }
+  if (o.sign) { g.fillStyle = o.sign; g.fillRect(X + w2 + 2, Y - hh + 8, 12, 12); }
+}
+function tree(g, x, y, s, r) {
+  const X = x * T, Y = y * T;
+  g.fillStyle = 'rgba(0,0,0,.2)'; g.beginPath(); g.ellipse(X, Y + 2, 13 * s, 5 * s, 0, 0, 7); g.fill();
+  g.fillStyle = '#5a4030'; g.fillRect(X - 3 * s, Y - 14 * s, 6 * s, 16 * s);
+  for (const [dx, dy, rr, c] of [[0, -26, 16, '#2f6b3a'], [-8, -20, 11, '#2a6034'], [8, -21, 11, '#377a43'], [2, -32, 10, '#3f8a4c']]) {
+    g.fillStyle = c; g.beginPath(); g.arc(X + dx * s, Y + dy * s, rr * s, 0, 7); g.fill();
+  }
+}
+function buildScenery() {
+  const s = document.createElement('canvas'); s.width = cv.width; s.height = cv.height;
+  const g = s.getContext('2d'), r = rng(7);
+  windows.length = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {       // grass
+    const v = r(); g.fillStyle = `hsl(${98 + v * 14}, ${34 + v * 8}%, ${38 + v * 7}%)`; g.fillRect(x * T, y * T, T, T);
+  }
+  for (let i = 0; i < 500; i++) { g.fillStyle = r() < .5 ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.06)'; g.fillRect(r() * cv.width, r() * cv.height, 3, 3); }
+  g.fillStyle = '#c9b98a'; g.beginPath(); g.ellipse(20 * T, 25 * T, 15.9 * T, 5.8 * T, 0, 0, 7); g.fill();   // shore
+  g.fillStyle = '#3d7fa6'; g.beginPath(); g.ellipse(20 * T, 25 * T, 15.5 * T, 5.4 * T, 0, 0, 7); g.fill();   // lake
+  g.fillStyle = '#356f93'; g.beginPath(); g.ellipse(20 * T, 25.6 * T, 12 * T, 3.6 * T, 0, 0, 7); g.fill();
+  const paths = Object.keys(st.places).filter(p => p !== 'Square').map(p => [SQ, door(p)]);
+  g.lineCap = 'round';
+  for (const [w, c] of [[22, '#a8946a'], [16, '#c7b488']]) { g.strokeStyle = c; g.lineWidth = w; for (const [a, b] of paths) { g.beginPath(); g.moveTo(a[0] * T, a[1] * T); g.lineTo(b[0] * T, b[1] * T); g.stroke(); } }
+  g.fillStyle = '#c7b488'; g.beginPath(); g.ellipse(20 * T, 12.6 * T, 3.2 * T, 2.2 * T, 0, 0, 7); g.fill();  // square
+  const items = [];
+  for (let i = 0; i < 400 && items.length < 85; i++) {                                                    // trees
+    const x = 0.6 + r() * (W - 1.2), y = 1.4 + r() * (H - 2.4);
+    if (inLake(x, y + 0.6) || paths.some(([a, b]) => distSeg(x, y, a, b) < 1.5)) continue;
+    if (Object.values(st.places).some(([px, py]) => Math.abs(x - px) < 3.4 && Math.abs(y - py) < 3.2)) continue;
+    items.push([y, () => tree(g, x, y, 0.8 + r() * 0.5)]);
+  }
+  for (let i = 0; i < 70; i++) { const x = r() * W, y = r() * H; if (!inLake(x, y)) { g.fillStyle = ['#f4e36b', '#f0f0f0', '#e98bb0'][i % 3]; g.fillRect(x * T, y * T, 3, 3); } }
+  const P = st.places;
+  items.push([P.Bakery[1], () => house(g, P.Bakery[0], P.Bakery[1], 3.4, 1.7, '#ead9b4', '#b5432e', { chimney: 1, sign: '#e0a23a' })]);
+  items.push([P.Tavern[1], () => house(g, P.Tavern[0], P.Tavern[1], 4.4, 1.9, '#8a6a4a', '#3f6b46', { win: [-0.7, -0.35, 0.35, 0.7], sign: '#d8b13c', chimney: 1 })]);
+  items.push([P.Library[1], () => house(g, P.Library[0], P.Library[1], 3.2, 2.3, '#9aa3ad', '#4a5670', { pitch: 1.5 })]);
+  items.push([P.Workshop[1], () => { house(g, P.Workshop[0], P.Workshop[1], 3.8, 1.6, '#9c7648', '#6a4a2e'); g.fillStyle = '#b08a5a'; for (let i = 0; i < 4; i++) g.fillRect((P.Workshop[0] + 2.3) * T, (P.Workshop[1] - 0.2 - i * 0.22) * T, 34, 6); }]);
+  for (const [dx, dy, c] of [[-1.2, -1.6, '#b0503a'], [0.9, 0, '#a2603a'], [-1.3, 1.9, '#8f4a3a']])
+    items.push([P.Cottages[1] + dy, () => house(g, P.Cottages[0] + dx, P.Cottages[1] + dy, 2.2, 1.2, '#e2d2b0', c, { win: [0.55], pitch: 0.9 })]);
+  items.push([P.Shrine[1], () => { tree(g, P.Shrine[0], P.Shrine[1], 2.4); g.fillStyle = '#a9aaa6'; g.fillRect((P.Shrine[0] - 1.6) * T, (P.Shrine[1] - 0.2) * T, 16, 24); g.fillStyle = '#e3b95a'; g.fillRect((P.Shrine[0] - 1.6) * T + 5, (P.Shrine[1] - 0.2) * T + 6, 6, 6); }]);
+  items.sort((a, b) => a[0] - b[0]).forEach(i => i[1]());
+  const [gx, gy] = P.Garden;                                                                              // garden
+  g.strokeStyle = '#7a5a3a'; g.lineWidth = 3; g.strokeRect((gx - 2.6) * T, (gy - 1.9) * T, 5.2 * T, 2.9 * T);
+  for (let i = 0; i < 4; i++) { g.fillStyle = '#6b4a30'; g.fillRect((gx - 2.3) * T, (gy - 1.6 + i * 0.65) * T, 4.6 * T, 9); for (let j = 0; j < 12; j++) { g.fillStyle = ['#6fbf5a', '#b06fd0', '#f0d24a', '#e86a6a'][(i + j) % 4]; g.beginPath(); g.arc((gx - 2.1 + j * 0.38) * T, (gy - 1.52 + i * 0.65) * T, 4, 0, 7); g.fill(); } }
+  const [wx, wy] = P.Square;                                                                              // well
+  g.fillStyle = 'rgba(0,0,0,.2)'; g.beginPath(); g.ellipse(wx * T, (wy + 0.35) * T, 26, 9, 0, 0, 7); g.fill();
+  g.fillStyle = '#8d8f8c'; g.beginPath(); g.ellipse(wx * T, wy * T, 20, 12, 0, 0, 7); g.fill();
+  g.fillStyle = '#1e2a33'; g.beginPath(); g.ellipse(wx * T, wy * T, 13, 7, 0, 0, 7); g.fill();
+  g.fillStyle = '#5a4030'; g.fillRect(wx * T - 20, wy * T - 34, 4, 34); g.fillRect(wx * T + 16, wy * T - 34, 4, 34);
+  g.fillStyle = '#8a3f2e'; g.beginPath(); g.moveTo(wx * T - 28, wy * T - 32); g.lineTo(wx * T, wy * T - 50); g.lineTo(wx * T + 28, wy * T - 32); g.fill();
+  const [dx, dy] = P.Dock;                                                                                // dock + boat
+  g.fillStyle = '#8a6a44'; g.fillRect((dx - 1.7) * T, (dy + 0.5) * T, 3.4 * T, 2.6 * T);
+  g.strokeStyle = '#6a4e30'; g.lineWidth = 2; for (let i = 0; i < 9; i++) { g.beginPath(); g.moveTo((dx - 1.7) * T, (dy + 0.5 + i * 0.3) * T); g.lineTo((dx + 1.7) * T, (dy + 0.5 + i * 0.3) * T); g.stroke(); }
+  g.fillStyle = '#6b4a30'; g.beginPath(); g.ellipse((dx + 3.2) * T, (dy + 2.5) * T, 34, 11, -0.15, 0, 7); g.fill();
+  g.fillStyle = '#c9a56a'; g.beginPath(); g.ellipse((dx + 3.2) * T, (dy + 2.45) * T, 26, 7, -0.15, 0, 7); g.fill();
+  scenery = s;
+}
+
+// ---------------------------------------------------------------- drawing
+function label(text, x, y, color = '#fff', size = 13, bold = true) {
+  ctx.font = `${bold ? '600 ' : ''}${size}px system-ui, sans-serif`; ctx.textAlign = 'center';
+  ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(15,18,22,.8)'; ctx.strokeText(text, x, y); ctx.fillStyle = color; ctx.fillText(text, x, y);
+}
+function bubble(text, x, y, color) {
+  ctx.font = '15px Georgia, serif'; const words = text.split(' '), lines = []; let cur = '';
+  for (const w of words) { if (ctx.measureText(cur + ' ' + w).width > 250 && cur) { lines.push(cur); cur = w; } else cur = cur ? cur + ' ' + w : w; }
+  lines.push(cur); if (lines.length > 4) { lines.length = 4; lines[3] = lines[3].replace(/.{0,3}$/, '…'); }
+  const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 20, h = lines.length * 19 + 12;
+  let bx = Math.max(6, Math.min(cv.width - w - 6, x - w / 2)), by = Math.max(6, y - h - 12);
+  ctx.fillStyle = 'rgba(252,249,240,.96)'; ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(bx, by, w, h, 9); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - 6, by + h - 1); ctx.lineTo(x, by + h + 9); ctx.lineTo(x + 6, by + h - 1); ctx.fill();
+  ctx.fillStyle = '#231d14'; ctx.textAlign = 'left'; lines.forEach((l, i) => ctx.fillText(l, bx + 10, by + 22 + i * 19));
+}
+function person(a, p, t, walking) {
+  const x = p.x * T, y = p.y * T - (walking ? Math.abs(Math.sin(t / 110)) * 4 : 0);
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(p.x * T, p.y * T + 1, 10, 4, 0, 0, 7); ctx.fill();
+  if (selected === a.name) { ctx.strokeStyle = '#e3b95a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(p.x * T, p.y * T + 1, 15, 7, 0, 0, 7); ctx.stroke(); }
+  ctx.fillStyle = a.color; ctx.beginPath(); ctx.roundRect(x - 8, y - 20, 16, 20, 5); ctx.fill();
+  ctx.fillStyle = '#f0c9a0'; ctx.beginPath(); ctx.arc(x, y - 26, 7.5, 0, 7); ctx.fill();
+  ctx.fillStyle = a.hair; ctx.beginPath(); ctx.arc(x, y - 28, 7.8, Math.PI, 0); ctx.fill();
+}
+function nightAlpha(m) { const h = m / 60; if (h < 5.5 || h >= 22) return .58; if (h < 7.5) return .58 * (7.5 - h) / 2; if (h > 19) return .58 * (h - 19) / 3; return 0; }
+
+function slotTarget(a) {
+  const mates = st.agents.filter(o => o.place === a.place).map(o => o.name), i = mates.indexOf(a.name);
+  const [x, y] = st.places[a.place];
+  return [x + (i - (mates.length - 1) / 2) * 1.15, y + (STAND[a.place] || 1.9) + (i % 2) * 0.35];
+}
+function syncPositions() {
+  for (const a of st.agents) {
+    const [tx, ty] = slotTarget(a), p = pos[a.name];
+    if (!p) { pos[a.name] = { x: tx, y: ty, route: [], place: a.place }; continue; }
+    const end = p.route.length ? p.route[p.route.length - 1] : [p.x, p.y];
+    if (Math.hypot(end[0] - tx, end[1] - ty) < 0.05) continue;
+    p.route = (p.place !== a.place && p.place !== 'Square' && a.place !== 'Square') ? [SQ, [tx, ty]] : [[tx, ty]];
+    p.place = a.place;
+  }
+}
+let prev = performance.now();
+function frame(t) {
+  const dt = Math.min(0.1, (t - prev) / 1000); prev = t;
+  if (st) {
+    if (!scenery) buildScenery();
+    ctx.drawImage(scenery, 0, 0);
+    ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 2;                       // water shimmer
+    for (let i = 0; i < 7; i++) { const x = (4 + i * 4.6 + Math.sin(t / 2600 + i) * 0.8) * T, y = (21.9 + (i % 3) * 0.7) * T; if (inLake(x / T, y / T - 0.5)) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 26, y); ctx.stroke(); } }
+    const [bx, by] = st.places.Bakery;                                                   // chimney smoke
+    for (let i = 0; i < 4; i++) { const k = ((t / 2400) + i / 4) % 1; ctx.fillStyle = `rgba(235,235,235,${.4 * (1 - k)})`; ctx.beginPath(); ctx.arc((bx + 0.92) * T + Math.sin(k * 5 + i) * 6, (by - 3) * T - k * 46, 5 + k * 8, 0, 7); ctx.fill(); }
+    const asleep = st.phase === 'night', order = st.agents.slice().sort((a, b) => pos[a.name].y - pos[b.name].y);
+    for (const a of order) {
+      const p = pos[a.name]; let walking = false, left = 5 * dt;
+      while (p.route.length && left > 0) {
+        const [tx, ty] = p.route[0], d = Math.hypot(tx - p.x, ty - p.y);
+        if (d <= left) { p.x = tx; p.y = ty; p.route.shift(); left -= d; } else { p.x += (tx - p.x) / d * left; p.y += (ty - p.y) / d * left; left = 0; }
+        walking = true;
+      }
+      if (!asleep) person(a, p, t, walking);
+    }
+    const w = st.weather, na = nightAlpha(st.minute);
+    if (/mist|haze/.test(w)) { ctx.fillStyle = /haze/.test(w) ? 'rgba(255,214,140,.16)' : 'rgba(230,236,240,.24)'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    if (/rain|storm|overcast/.test(w)) { ctx.fillStyle = 'rgba(40,50,70,.16)'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    const h = st.minute / 60; if ((h > 5.5 && h < 8) || (h > 18 && h < 20.5)) { ctx.fillStyle = 'rgba(255,150,70,.12)'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    if (na > 0) {
+      ctx.fillStyle = `rgba(10,16,44,${na})`; ctx.fillRect(0, 0, cv.width, cv.height);
+      for (const [x, y] of windows) { const g = ctx.createRadialGradient(x, y, 2, x, y, 44); g.addColorStop(0, `rgba(255,214,120,${na * 1.3})`); g.addColorStop(1, 'rgba(255,214,120,0)'); ctx.fillStyle = g; ctx.fillRect(x - 44, y - 44, 88, 88); ctx.fillStyle = `rgba(255,226,150,${Math.min(1, na * 1.7)})`; ctx.fillRect(x - 7, y - 6, 14, 13); }
+      const r = rng(3); for (let i = 0; i < 40; i++) { ctx.fillStyle = `rgba(255,255,255,${na * (.4 + .5 * Math.sin(t / 700 + i))})`; ctx.fillRect(r() * cv.width, r() * 200, 2, 2); }
+    }
+    if (/rain|storm/.test(w)) { ctx.strokeStyle = 'rgba(200,220,255,.5)'; ctx.lineWidth = 1.5; const n = /steady|storm/.test(w) ? 160 : 70; for (let i = 0; i < n; i++) { const x = (i * 97.3 + t * 0.25) % cv.width, y = (i * 53.7 + t * 0.9) % cv.height; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 5, y + 15); ctx.stroke(); } }
+    if (/storm/.test(w) && (t % 9000) < 90) { ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    for (const [name, [x, y]] of Object.entries(st.places)) label(name === 'Tavern' ? 'The Gilded Newt' : name === 'Shrine' ? 'Old Oak Shrine' : name, x * T, (y + (name === 'Dock' ? 3.5 : name === 'Garden' ? 1.45 : name === 'Square' ? -1.9 : 0.75)) * T + (name === 'Cottages' ? 2.2 * T : 0), '#f3ead2', 13);
+    if (asleep) { const [cx, cy] = st.places.Cottages; for (let i = 0; i < 3; i++) { const k = ((t / 2600) + i / 3) % 1; label('z', (cx + 0.6 + k) * T, (cy - 2 - k * 2.2) * T, `rgba(255,255,255,${1 - k})`, 14 + k * 12); } }
+    else {
+      for (const a of order) { const p = pos[a.name]; label(a.name, p.x * T, p.y * T + 15, selected === a.name ? '#e3b95a' : '#fff', 12); }
+      const now = Date.now() / 1000 + skew;
+      for (const a of order) if (a.say && now - a.say_at < 26) { const p = pos[a.name]; bubble(a.say, p.x * T, p.y * T - 36, a.color); }
+    }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------------------------------------------------------------- side panel
+const colorOf = n => (st.agents.find(a => a.name === n) || {}).color || '#ccc';
+function renderFeed() {
+  const last = st.events.length ? st.events[st.events.length - 1].id : 0;
+  if (last === lastEv) return; lastEv = last;
+  const box = $('feed'), stick = box.scrollTop < 40; box.replaceChildren();
+  for (const e of st.events.slice().reverse()) {
+    const d = el('div', 'ev'), stamp = `Day ${e.day} · ${hhmm(e.minute)}`;
+    if (e.kind === 'turn') {
+      const top = el('div'); const who = el('span', 'who', e.who); who.style.color = colorOf(e.who); top.append(who, ' ' + e.activity);
+      d.append(el('div', 't', `${stamp} · ${e.place}`), top);
+      if (e.say) d.append(el('div', 'say', (e.to ? `to ${e.to}: ` : '') + '“' + e.say + '”'));
+      if (e.thought) d.append(el('div', 'th', e.thought));
+      if (e.to_place) d.append(el('div', 'th', `→ walks to the ${e.to_place}`));
+    } else {
+      d.classList.add('sys');
+      d.append(el('div', 't', stamp), el('div', '', e.kind === 'whisper' ? `You whispered to ${e.who}: “${e.text}”` : e.kind === 'news' ? `News: ${e.text}` : e.text));
+    }
+    box.append(d);
+  }
+  if (stick) box.scrollTop = 0;
+}
+function renderPeople() {
+  const box = $('people'); box.replaceChildren();
+  for (const a of st.agents) {
+    const c = el('div', 'card' + (selected === a.name ? ' sel' : '')); c.style.borderLeftColor = a.color; c.id = 'card-' + a.name;
+    c.append(el('h3', '', a.name), el('div', 'sub', `${a.age}, ${a.job} · ${a.traits}`),
+      el('p', '', `At the ${a.place}, ${a.activity}. Mood: ${a.mood}.`));
+    if (a.thought) c.append(el('p', 'th', '“' + a.thought + '”'));
+    const f = Object.entries(a.feelings).map(([k, v]) => `${k}: ${v}`).join(' · '); if (f) c.append(el('small', '', f));
+    if (a.reflection) c.append(el('small', '', 'Last night — ' + a.reflection));
+    c.onclick = () => { selected = a.name; $('to').value = a.name; renderPeople(); };
+    box.append(c);
+  }
+}
+let chronKey = '';
+function renderChron() {
+  const key = st.chronicle.map(c => c.day).join(); if (key === chronKey) return; chronKey = key;
+  const box = $('chron'); box.replaceChildren();
+  if (!st.chronicle.length) box.append(el('div', 'empty', 'The first chronicle is written when night falls on day 1.'));
+  for (const c of st.chronicle) { const d = el('div', 'chr'); d.append(el('h3', '', `Day ${c.day} — ${c.title}`), el('div', 'w', c.weather)); c.body.split(/\n+/).forEach(p => d.append(el('p', '', p))); box.append(d); }
+}
+async function poll() {
+  try {
+    const r = await fetch('/api/state'); st = await r.json(); skew = st.now - Date.now() / 1000;
+    syncPositions();
+    $('clock').textContent = `Day ${st.day} · ${hhmm(st.minute)} · ${st.weather}`;
+    $('status').textContent = st.status + ` · ${st.models.actor}`; $('status').className = st.status === 'running' ? '' : 'off';
+    $('news').textContent = st.news;
+    if ($('to').options.length === 1) for (const a of st.agents) $('to').add(new Option('Whisper to ' + a.name, a.name));
+    renderFeed(); renderPeople(); renderChron();
+  } catch (e) { $('status').textContent = 'connection lost'; $('status').className = 'off'; }
+  setTimeout(poll, 2500);
+}
+poll();
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button, .tab').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); $(b.dataset.tab).classList.add('on');
+});
+cv.onclick = ev => {
+  if (!st) return; const r = cv.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * W, y = (ev.clientY - r.top) / r.height * H;
+  let best = null, bd = 1.6; for (const a of st.agents) { const p = pos[a.name], d = Math.hypot(p.x - x, p.y - 0.6 - y); if (d < bd) { bd = d; best = a.name; } }
+  selected = best; if (best) { $('to').value = best; document.querySelector('[data-tab=people]').click(); renderPeople(); const c = $('card-' + best); if (c) c.scrollIntoView({ block: 'nearest' }); }
+};
+$('whisper').onsubmit = async ev => {
+  ev.preventDefault(); const text = $('msg').value.trim(); if (!text) return;
+  await fetch('/api/whisper', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: $('to').value, text }) });
+  $('msg').value = ''; lastEv = 0;
+};
+</script>
+</body>
+</html>
