@@ -5,7 +5,7 @@ Six villagers, each driven by a local Ollama model, walk around, talk, remember
 and reflect. Every night a larger model writes the day's chronicle and invents
 tomorrow's twist. Standard library only.  Open http://<server>:8377/
 """
-import json, os, random, re, sqlite3, threading, time, urllib.error, urllib.request
+import contextlib, json, os, random, re, sqlite3, threading, time, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 try:                      # optional: only the Oracle needs the Anthropic SDK (pip install anthropic)
@@ -24,7 +24,9 @@ MINUTES_PER_TURN = 5          # village minutes per turn
 WAKE, SLEEP = 6 * 60, 22 * 60
 ORACLE_MODEL = os.environ.get("EMBERWICK_ORACLE_MODEL", "claude-opus-5-5")   # Anthropic model
 ORACLE_XAI_MODEL = os.environ.get("EMBERWICK_ORACLE_XAI_MODEL", "")            # blank = pick the newest Grok the key can use
-ORACLE_PROVIDER = os.environ.get("EMBERWICK_ORACLE_PROVIDER", "auto")           # auto | anthropic | xai
+ORACLE_PROVIDER = os.environ.get("EMBERWICK_ORACLE_PROVIDER", "auto")           # auto | anthropic | xai | colibri
+COLIBRI_URL = os.environ.get("EMBERWICK_COLIBRI_URL", "http://127.0.0.1:8000").rstrip("/")  # local colibri: last-resort Oracle in auto mode
+COLIBRI_MODEL = os.environ.get("EMBERWICK_COLIBRI_MODEL", "")                    # blank = first model the server lists
 ORACLE_COOLDOWN = float(os.environ.get("EMBERWICK_ORACLE_COOLDOWN", 3600))  # real seconds between consultations
 DEEP = os.environ.get("EMBERWICK_DEEP_MODEL", NARRATOR)   # bigger model for key moments and nightly reflection
 DEEP_EVERY = int(os.environ.get("EMBERWICK_DEEP_EVERY", 4))  # at most one conversation reply in this many turns
@@ -33,7 +35,7 @@ YIELD = os.environ.get("EMBERWICK_YIELD", "1") == "1"  # pause while Ollama serv
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(HERE, "emberwick.db")
 
-PLACES = {  # name: (x, y, description) — tile coordinates on a 40x24 map
+PLACES = {  # name: (x, y, description) — tile coordinates on a 58x24 map
     "Square":   (20, 12, "the village square with its old stone well"),
     "Bakery":   (8, 6, "Mira's bakery, warm and smelling of bread"),
     "Garden":   (20, 4, "the herb garden, rows of plants and beehives"),
@@ -46,6 +48,7 @@ PLACES = {  # name: (x, y, description) — tile coordinates on a 40x24 map
     "Woods":    (14, 2.6, "the Woods, where timber is cut"),
     "Quarry":   (37.5, 2.6, "the stone Quarry"),
     "Oracle":   (3, 3.2, "the ring of standing stones where the Oracle dwells"),
+    "Meadow":   (49, 12, "the open Meadow east of the Shrine, new ground for farms and building"),
 }
 
 ITEMS = ["coins", "wood", "stone", "fish", "bread", "herbs", "ale"]
@@ -58,21 +61,24 @@ START = {"Mira": {"bread": 4}, "Tobias": {"wood": 4}, "Isolde": {"coins": 6}, "B
 # what can be built: where, what it costs, turns of work, map slots (tile x, y), what it does
 BLUEPRINTS = {
     "house":   dict(site="Cottages", cost={"wood": 12, "stone": 8}, labour=6, perk="a home of your own",
-                    slots=[(6.5, 11.6), (9.6, 11.4), (4.6, 17.4), (1.6, 18.8), (12.6, 11.5)]),
+                    slots=[(6.5, 11.6), (9.6, 11.4), (4.6, 17.4), (1.6, 18.8), (12.6, 11.5),
+                           (5.6, 8.8), (12.4, 8.6), (6.6, 14.4), (14.6, 9.0)]),
     "stall":   dict(site="Square", cost={"wood": 8}, labour=3, perk="earns its owner 3 coins every morning",
-                    slots=[(16.2, 11.3), (23.8, 11.3), (16.5, 15.6), (23.5, 15.6)]),
+                    slots=[(16.2, 11.3), (23.8, 11.3), (16.5, 15.6), (23.5, 15.6), (26.4, 13.2), (13.8, 13.4)]),
     "boat":    dict(site="Dock", cost={"wood": 14}, labour=5, perk="its owner catches more fish",
-                    slots=[(15.8, 21.9), (26.5, 22.4), (12, 22.8)]),
+                    slots=[(15.8, 21.9), (26.5, 22.4), (12, 22.8), (31, 23.2), (8.8, 23.0)]),
     "tower":   dict(site="Dock", cost={"stone": 16, "wood": 8}, labour=8, perk="a watchtower over the lake",
-                    slots=[(29.5, 20.8), (10.5, 20.8)]),
+                    slots=[(29.5, 20.8), (10.5, 20.8), (34.5, 19.6)]),
     "beehive": dict(site="Garden", cost={"wood": 5}, labour=2, perk="gives its owner 2 herbs every morning",
-                    slots=[(16.3, 3.6), (23.8, 3.6), (16.3, 5.2), (23.8, 5.2)]),
+                    slots=[(16.3, 3.6), (23.8, 3.6), (16.3, 5.2), (23.8, 5.2), (16.3, 6.8), (23.8, 6.8)]),
     "mill":    dict(site="Garden", cost={"wood": 16, "stone": 12}, labour=8, perk="everyone bakes more bread",
                     slots=[(26.3, 3.6)]),
     "statue":  dict(site="Shrine", cost={"stone": 10}, labour=4, perk="honours the spirit of the lake",
-                    slots=[(33.6, 12.2), (37.8, 11.2)]),
+                    slots=[(33.6, 12.2), (37.8, 11.2), (32.0, 10.8), (39.8, 11.6)]),
     "shed":    dict(site="Workshop", cost={"wood": 8, "stone": 4}, labour=3, perk="a storehouse",
-                    slots=[(14.5, 19.2), (12.8, 14.9)]),
+                    slots=[(14.5, 19.2), (12.8, 14.9), (6.2, 19.6)]),
+    "farm":    dict(site="Meadow", cost={"wood": 6, "stone": 2}, labour=3, perk="gives its owner 2 bread every morning",
+                    slots=[(45.2, 9.0), (52.8, 9.0), (45.2, 15.6), (52.8, 15.6), (49, 7.2), (49, 17.6)]),
 }
 
 CAST = {
@@ -121,10 +127,17 @@ S = {}            # world state, persisted as JSON
 status = "starting"
 
 # ---------------------------------------------------------------- storage
+@contextlib.contextmanager
 def db():
+    """`with db() as c:` commits on success and always closes. sqlite3's own `with` only commits,
+    so returning the bare connection leaked one file handle per call until the server hit its limit."""
     c = sqlite3.connect(DB, timeout=30)
-    c.execute("PRAGMA journal_mode=WAL")
-    return c
+    try:
+        c.execute("PRAGMA journal_mode=WAL")
+        with c:
+            yield c
+    finally:
+        c.close()
 
 def init_db():
     with db() as c:
@@ -155,6 +168,8 @@ def migrate():
     S.setdefault("structures", [])
     S.setdefault("voice", None)
     S.setdefault("oracle", {"last": 0, "speech": "", "at": 0})
+    S.setdefault("prayers", [])
+    S.setdefault("wishes", [])
     S["news"] = S["news"].split(" Also: ")[0]
     for n, a in S["agents"].items():
         a.setdefault("inv", new_inv(n))
@@ -163,16 +178,37 @@ def migrate():
         a.setdefault("self", "")
         if not isinstance(a.get("whisper"), dict):
             a["whisper"] = None
+    house_everyone()
+
+def house_everyone():
+    """Every villager owns a finished house: finish the one they started, or raise one on a free lot."""
+    for n in S["agents"]:
+        if any(s["type"] == "house" and s["owner"] == n and s["done"] for s in S["structures"]):
+            continue
+        s = next((x for x in S["structures"] if x["type"] == "house" and x["owner"] == n), None)
+        if s is None:
+            used = {(x["x"], x["y"]) for x in S["structures"] if x["type"] == "house"}
+            free = [p for p in BLUEPRINTS["house"]["slots"] if tuple(p) not in used]
+            if not free:
+                continue
+            s = dict(id=max([x["id"] for x in S["structures"]], default=0) + 1, type="house", owner=n, site="Cottages",
+                     x=free[0][0], y=free[0][1], have={}, labour=0, done=False, helpers=[], day=S["day"])
+            S["structures"].append(s)
+        s.update(have=dict(BLUEPRINTS["house"]["cost"]), labour=BLUEPRINTS["house"]["labour"], done=True)
+        if S["agents"][n].get("memories") is not None:
+            remember(n, "The whole village came together and finished a house for me at the Cottages.")
+        log_event(kind="news", text=f"The village raises a house for {n} at the Cottages.")
 
 def new_world():
     first = "Last night several people saw a green light glowing under the lake. The midsummer fair is nine days away."
     S.update(day=1, minute=WAKE, weather="morning mist", news=first, phase="day", chain=0, queue=[], agents={},
-             structures=[], voice=None, oracle={"last": 0, "speech": "", "at": 0})
+             structures=[], voice=None, oracle={"last": 0, "speech": "", "at": 0}, prayers=[], wishes=[])
     for n, c in CAST.items():
         S["agents"][n] = dict(place=c["home"], activity="starting the day", say="", say_to="", say_at=0,
                               thought="", mood="calm", memories=[f"News this morning: {first}"],
                               today=[], reflections=[], feelings=dict(c["feel"]), pending=None, whisper=None,
                               offer=None, inv=new_inv(n), plan=[], self="")
+    house_everyone()
 
 def load():
     init_db()
@@ -294,7 +330,7 @@ def do_build(n, typ, place):
         if not free:
             remember(n, f"There is no room left for another {typ}.")
             return ""
-        s = dict(id=len(S["structures"]) + 1, type=typ, owner=n, site=place, x=free[0][0], y=free[0][1],
+        s = dict(id=max([x["id"] for x in S["structures"]], default=0) + 1, type=typ, owner=n, site=place, x=free[0][0], y=free[0][1],
                  have={}, labour=0, done=False, helpers=[], day=S["day"])
         S["structures"].append(s)
         started = True
@@ -378,8 +414,22 @@ def providers():
     claude = anthropic is not None and bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
                                             or os.path.isdir(os.path.expanduser("~/.config/anthropic")))
     grok = bool(os.environ.get("XAI_API_KEY"))
-    want = {"anthropic": ["anthropic"], "xai": ["xai"]}.get(ORACLE_PROVIDER, ["anthropic", "xai"])
-    return [p for p in want if (p == "anthropic" and claude) or (p == "xai" and grok)]
+    want = {"anthropic": ["anthropic"], "xai": ["xai"], "colibri": ["colibri"]}.get(ORACLE_PROVIDER, ["anthropic", "xai", "colibri"])
+    ok = {"anthropic": claude, "xai": grok}
+    return [p for p in want if (ok[p] if p in ok else colibri_up())]
+
+_colibri_seen = [0.0, False]
+
+def colibri_up():
+    """Is the local colibri server answering? Checked at most every 30 s."""
+    if time.time() - _colibri_seen[0] > 30:
+        try:
+            with urllib.request.urlopen(COLIBRI_URL + "/health", timeout=2) as r:
+                _colibri_seen[1] = r.status == 200
+        except Exception:
+            _colibri_seen[1] = False
+        _colibri_seen[0] = time.time()
+    return _colibri_seen[1]
 
 def oracle_state():
     """'asleep' (no usable backend), 'resting' (consulted within the hour) or 'ready'."""
@@ -480,6 +530,54 @@ def ask_grok(world):
         raise RuntimeError(f"xAI error {e.code}: {clip(detail, 140)}") from None
     return json.loads(data["choices"][0]["message"]["content"]), model
 
+def loose_oracle_json(text):
+    """Parse an Oracle reply from a model without a JSON grammar: tolerate fences, trailing commas and stray text."""
+    text = re.sub(r"```(?:json)?", "", text)
+    m = re.search(r"\{.*\}", text, re.S)
+    if m:
+        for cand in (m.group(0), re.sub(r",\s*([}\]])", r"\1", m.group(0))):
+            try:
+                return json.loads(cand)
+            except ValueError:
+                pass
+    field = lambda k: (re.search(r'"%s"\s*:\s*"((?:[^"\\]|\\.)*)"' % k, text, re.S) or [None, None])[1]
+    speech, answer = field("speech"), field("answer")
+    pm = re.search(r'"plan"\s*:\s*\[(.*?)\]', text, re.S)
+    if speech is None or answer is None:
+        return None
+    plan = re.findall(r'"((?:[^"\\]|\\.)*)"', pm.group(1)) if pm else []
+    unq = lambda x: x.replace('\\"', '"').replace("\\n", " ")
+    return {"speech": unq(speech), "answer": unq(answer), "plan": [unq(x) for x in plan]}
+
+def ask_colibri(world, extra=""):
+    """Local fallback: colibri's OpenAI-compatible API, no key. Slow (a few tok/s) but free and private."""
+    model = COLIBRI_MODEL
+    if not model:
+        with urllib.request.urlopen(COLIBRI_URL + "/v1/models", timeout=10) as r:
+            model = json.load(r)["data"][0]["id"]
+    # the qwen36 engine has no response_format grammar yet, so the schema goes in the prompt and the reply is validated here
+    system = (ORACLE_SYSTEM + extra + "\n\nReply with ONLY one JSON object, no markdown fences and no other text, shaped exactly like this "
+              'schema: {"speech": string, "answer": string, "plan": [string, ...]}')
+    body = {"model": model, "stream": False, "max_tokens": 1200, "temperature": 0.7,
+            "chat_template_kwargs": {"enable_thinking": False},
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": world}]}
+    last = "no reply"
+    for _ in range(2):   # one retry if the JSON comes back malformed
+        req = urllib.request.Request(COLIBRI_URL + "/v1/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=900) as r:
+                data = json.load(r)
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"colibri error {e.code}") from None
+        text = re.sub(r"<think>.*?</think>", "", data["choices"][0]["message"]["content"], flags=re.S)
+        reply = loose_oracle_json(text)
+        if isinstance(reply, dict) and isinstance(reply.get("speech"), str) and isinstance(reply.get("answer"), str) \
+                and isinstance(reply.get("plan"), list):
+            reply["plan"] = [str(x) for x in reply["plan"]]
+            return {k: reply[k] for k in ("speech", "answer", "plan")}, model
+        last = "colibri returned malformed JSON"
+    raise RuntimeError(last)
+
 def ask_claude(world):
     """One Anthropic call. Returns (parsed reply, model), or raises."""
     client = anthropic.Anthropic()
@@ -510,7 +608,7 @@ def ask_oracle(world):
     why = []
     for prov in providers():
         try:
-            return ask_claude(world) if prov == "anthropic" else ask_grok(world)
+            return {"anthropic": ask_claude, "xai": ask_grok, "colibri": ask_colibri}[prov](world)
         except Exception as e:
             why.append(anthropic_why(e) if prov == "anthropic" and anthropic and isinstance(e, anthropic.AnthropicError)
                        else clip(str(e) or type(e).__name__, 140))
@@ -549,6 +647,113 @@ def oracle_consult(n, question):
                       (S["day"], S["minute"], n, question, speech, answer, json.dumps(plan)))
         log_event(kind="oracle", who=n, text=speech)
         save()
+
+# ---------------------------------------------------------------- the steward: colibri unsticks a villager now and then
+STEWARD_EVERY = float(os.environ.get("EMBERWICK_STEWARD_EVERY", 5400))  # real seconds between passes; 0 = off
+
+STEWARD_RULES = """
+
+This is a dream-visit: you speak to the villager in a dream. You cannot create, give or lend anything, and you hold \
+no goods. Every plan step must be exactly one of these, with real names and numbers taken from the world state:
+- "Walk to <Place>"
+- "Use action work N times at <Place>"   (only at a place that yields something)
+- "At <Place>, offer <Villager> N <item> for M <item>"   (the other villager must be standing there and must hold M of that item; \
+the petitioner must hold N of what they give)
+- "Use action build_<type> at <site> until it is finished"
+Prefer trading away things the petitioner holds in surplus. Plans of 2-5 steps are best."""
+
+def holders(n, items):
+    """'Tobias (at the Dock) has 80 fish. ...' for villagers other than n who hold any of items, biggest first."""
+    rows = sorted(((o, i, oa["inv"].get(i, 0), oa["place"]) for o, oa in S["agents"].items() if o != n for i in items
+                   if oa["inv"].get(i, 0) > 0), key=lambda r: -r[2])[:4]
+    return " ".join(f"{o} (at the {pl}) has {q} {i}." for o, i, q, pl in rows) or f"Nobody else has any {' or '.join(items)}."
+
+def stuck_question(n):
+    """(score, question in the villager's voice) for how stuck n looks, or None. Higher score = more stuck."""
+    a, inv = S["agents"][n], S["agents"][n]["inv"]
+    if a.get("plan_new"):
+        return None                       # fresh counsel they have not acted on yet
+    found = []
+    if inv.get("bread", 0) + inv.get("fish", 0) == 0:
+        found.append((3, f"I have no bread or fish for tonight and I carry {inv_text(inv)}. "
+                         f"{holders(n, ['fish', 'bread'])} What fair trade gets me food before night?"))
+    for s in S["structures"]:
+        if s["owner"] == n and not s["done"]:
+            mats, _ = needs(s)
+            short = {i: q - inv.get(i, 0) for i, q in mats.items() if inv.get(i, 0) < q}
+            if short:
+                found.append((2, f"My {s['type']} at the {s['site']} still needs {needs_text(s)}, and I am short of "
+                                 + ", ".join(f"{q} {i}" for i, q in short.items())
+                                 + f". I carry {inv_text(inv)}. {holders(n, list(short))} What trades get me what I lack?"))
+            else:
+                found.append((1, f"I have what my {s['type']} at the {s['site']} needs ({needs_text(s)}). "
+                                 "What exact steps finish it?"))
+    if not a.get("plan"):
+        found.append((1, f"I carry {inv_text(inv)} and have no plan. What is the most useful thing I can do next, "
+                         "for myself and for the village?"))
+    if not found:
+        return None
+    score = sum(f[0] for f in found)
+    return score, max(found)[1]
+
+def colibri_idle():
+    """colibri is up and has nothing running or queued (so the steward never piles up work)."""
+    try:
+        with urllib.request.urlopen(COLIBRI_URL + "/health", timeout=3) as r:
+            sch = json.load(r).get("scheduler", {})
+        return not sch.get("active") and not sch.get("queued")
+    except Exception:
+        return False
+
+def steward_pass():
+    """Pick the most stuck villager, ask colibri for a plan in the Oracle's voice, hand it to them as a dream."""
+    with lock:
+        if S["minute"] >= SLEEP:
+            return False
+        last = S.setdefault("steward", {}).get("who")
+        cands = [(q[0], n, q[1]) for n in S["agents"] if (q := stuck_question(n))]
+        cands = [c for c in cands if c[1] != last] or cands     # don't counsel the same villager twice running
+        if not cands:
+            S["steward"].update(at=time.time())
+            return False
+        _, n, question = max(cands)
+        world = oracle_world(n, question)
+    try:
+        r, model = ask_colibri(world, STEWARD_RULES)
+        speech, answer = clip(r.get("speech"), 400), str(r.get("answer") or "").strip()[:1500]
+        plan = [clip(p, 200) for p in (r.get("plan") or [])[:8] if str(p).strip()]
+        plan = [p for p in plan if re.match(r"(walk to|use action|at the |at [A-Z])", p, re.I)]   # drop steps no villager can do
+    except Exception as e:
+        with lock:
+            S["steward"].update(at=time.time(), who=n)
+            log_event(kind="steward_fail", who=n, text=clip(str(e), 200))
+            save()
+        return False
+    with lock:
+        a = S["agents"][n]
+        if plan:
+            a["plan"], a["plan_new"] = plan, True
+        remember(n, f'I dreamed the Oracle spoke to me about this: "{clip(question, 160)}" It said: "{speech}"')
+        remember(n, f"The Oracle's counsel in my dream: {clip(answer, 420)}")
+        with db() as c:
+            c.execute("INSERT INTO oracle (day, minute, who, question, speech, answer, plan) VALUES (?,?,?,?,?,?,?)",
+                      (S["day"], S["minute"], n, "(steward) " + question, speech, answer, json.dumps(plan)))
+        S["steward"].update(at=time.time(), who=n, model=model)
+        log_event(kind="steward", who=n, text=speech, question=question, plan=plan)
+        save()
+    return True
+
+def steward():
+    """Background loop: never blocks villager turns, since colibri can take minutes to answer."""
+    time.sleep(120)                       # let the village settle after a restart
+    while True:
+        try:
+            due = time.time() - S.get("steward", {}).get("at", 0) >= STEWARD_EVERY
+            if due and colibri_idle():
+                steward_pass()
+        except Exception as e:
+            print(f"steward: {type(e).__name__}: {e}", flush=True)
+        time.sleep(60)
 
 # ---------------------------------------------------------------- a villager's turn
 def pick_agent():
@@ -637,6 +842,15 @@ def agent_turn():
                        '"consult" and put your request in "question"' + ("." if at else "; you will be taken there."))
             actions.append("consult")
             extra = {"question": STR}
+        if not any(p["who"] == n for p in S["prayers"]):
+            at = a["place"] == "Shrine"
+            u.append(("You are at the Old Oak Shrine. " if at else "")
+                     + "Once a day anyone may pray at the Old Oak Shrine. At nightfall the heavens grant ONE wish to ONE "
+                       "villager only, and only if it is reasonable: something small and concrete, like a few goods, some "
+                       "coins, or the materials for a building already under way. To pray, use action \"pray\" and put "
+                       'your wish in "wish"' + ("." if at else "; you will be taken there."))
+            actions.append("pray")
+            extra = {**extra, "wish": STR}
         if pending and pending["from"] in here:
             u.append(f'{pending["from"]} just said to you: "{pending["text"]}" Answer them in your own words.')
         if whisper and whisper.get("all"):
@@ -684,7 +898,7 @@ def agent_turn():
             remember(n, f'Alone at the {old} I said aloud: "{say}"')
         a["say"], a["say_to"], a["say_at"] = say, to, time.time() if say else a["say_at"]
 
-        act, did, petition = str(r.get("action") or "none"), "", ""
+        act, did, petition, prayer = str(r.get("action") or "none"), "", "", ""
         if act == "work":
             item, q = work_yield(n, old)
             if q:
@@ -704,8 +918,14 @@ def agent_turn():
         elif act == "decline" and offer:
             remember(offer["from"], f"{n} declined my offer.")
             did = f"declined {offer['from']}'s offer"
+        elif act == "pray" and "pray" in actions:
+            prayer = clip(r.get("wish") or say or a["thought"], 240)
+            if prayer:
+                S["prayers"].append(dict(who=n, day=S["day"], minute=S["minute"], wish=prayer))
+                remember(n, f'I prayed at the Old Oak Shrine for this: "{prayer}"')
+                did = "knelt at the Old Oak Shrine and prayed" if old == "Shrine" else "walked to the Old Oak Shrine to pray"
 
-        go = "Oracle" if petition else r.get("go_to")
+        go = "Oracle" if petition else "Shrine" if prayer else r.get("go_to")
         moved = go in PLACES and go != old
         if moved:
             a["place"] = go
@@ -714,10 +934,97 @@ def agent_turn():
             remember(n, f"At the {old} I was {a['activity']}.")
         log_event(kind="turn", who=n, place=old, to_place=go if moved else "", activity=a["activity"],
                   say=say, to=to, thought=a["thought"], mood=a["mood"], did=did, deep=deep)
+        if prayer:
+            log_event(kind="prayer", who=n, text=prayer)
         S["minute"] += MINUTES_PER_TURN
         save()
     if petition:
         oracle_consult(n, petition)
+
+# ---------------------------------------------------------------- prayers: one reasonable wish granted each night
+WISH_GOODS, WISH_COINS = 5, 10   # the most a granted wish can give, enforced here whatever the model answers
+
+def as_int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
+
+def grant_wish(day):
+    """Nightfall: the heavens weigh today's prayers and grant at most one, if it is reasonable."""
+    global status
+    with lock:
+        prayers = [p for p in S["prayers"] if p["day"] == day]
+        if not prayers:
+            return
+        lines = [f'{i}. {p["who"]} ({CAST[p["who"]]["job"]}; carries {inv_text(S["agents"][p["who"]]["inv"])}): "{p["wish"]}"'
+                 for i, p in enumerate(prayers, 1)]
+        sites = [f'{s["id"]}: {sname(s)} at the {s["site"]} (still needs {needs_text(s)})' for s in S["structures"] if not s["done"]]
+    status = "night — the heavens weigh the prayers"
+    system = ("You are the quiet power that answers prayers in Emberwick, a small lakeside village. Each night you grant at "
+              "most ONE wish to ONE villager, and only if it is reasonable: small, concrete, kind, and possible with the "
+              "village's ordinary goods. Refuse wishes that are vague, greedy, harmful, meant to control other people, or "
+              "impossible (riches, love, magic, knowing the future). Prefer a wish that meets a real need or helps the village.")
+    user = ("Tonight's prayers:\n" + "\n".join(lines)
+            + "\nBuildings under way (id: name):\n" + ("\n".join("- " + s for s in sites) or "- none")
+            + f"\nGoods in the village: {', '.join(ITEMS)}. A granted wish may give the wisher up to {WISH_GOODS} goods in "
+              f"total (coins not counted) and up to {WISH_COINS} coins, and/or supply the missing materials (not the work) "
+              "of ONE building under way.\n"
+              'Answer in JSON: "choice" = the number of the prayer you grant, or 0 for none; "reason" = one sentence on why; '
+              '"items" = list of {"item", "qty"} given to the wisher (empty if none); "building" = the id of a building whose '
+              'materials you supply, or 0; "blessing" = one sentence, as a storyteller, on what the wisher finds when they '
+              "wake (concrete, gentle, a little magical).")
+    schema = obj({"choice": {"type": "integer"}, "reason": STR,
+                  "items": {"type": "array", "items": obj({"item": {"type": "string", "enum": ITEMS}, "qty": {"type": "integer"}})},
+                  "building": {"type": "integer"}, "blessing": STR})
+    r = {}
+    for model, keep in ((NARRATOR, "15m"), (ACTOR, -1)):
+        try:
+            r = chat(model, system, user, schema, keep_alive=keep, num_predict=320, temperature=0.4)
+            break
+        except Exception:
+            r = {}
+    with lock:
+        choice = as_int(r.get("choice"))
+        if not 1 <= choice <= len(prayers):
+            why = clip(r.get("reason"), 200)
+            log_event(kind="wish_none", text="The heavens heard every prayer tonight and granted none." + (f" {why}" if why else ""))
+            for p in prayers:
+                remember(p["who"], "I prayed at the shrine today, but nothing came of it.")
+            save()
+            return
+        p = prayers[choice - 1]
+        n, a = p["who"], S["agents"][p["who"]]
+        asked, gifts, goods, coins = {}, [], WISH_GOODS, WISH_COINS
+        for it in r.get("items") or []:
+            if isinstance(it, dict) and it.get("item") in ITEMS and as_int(it.get("qty")) > 0:
+                asked[it["item"]] = asked.get(it["item"], 0) + as_int(it["qty"])
+        for item, q in asked.items():
+            if item == "coins":
+                k = min(q, coins); coins -= k
+            else:
+                k = min(q, goods); goods -= k
+            if k:
+                a["inv"][item] += k
+                gifts.append(f"{k} {item}")
+        s = next((x for x in S["structures"] if not x["done"] and x["id"] == as_int(r.get("building"))), None)
+        if s:
+            mats, _ = needs(s)
+            for item, q in mats.items():
+                s["have"][item] = s["have"].get(item, 0) + q
+            if mats:
+                gifts.append(f"the missing {', '.join(f'{q} {i}' for i, q in mats.items())} for {sname(s)}")
+        blessing = clip(r.get("blessing"), 260) or f"{n}'s prayer was answered in the night."
+        S["wishes"] = (S["wishes"] + [dict(day=day, who=n, wish=p["wish"], reason=clip(r.get("reason"), 200),
+                                           gifts=gifts, blessing=blessing, at=time.time())])[-20:]
+        remember(n, f'In the night my prayer ("{p["wish"]}") was answered: {blessing}'
+                    + (f" I received {', '.join(gifts)}." if gifts else ""))
+        for o in S["agents"]:
+            if o != n:
+                remember(o, f"Word is that {n}'s prayer at the Old Oak Shrine was answered in the night."
+                         + (" Mine was not." if any(q["who"] == o for q in prayers) else ""))
+        log_event(kind="wish", who=n, text=blessing, wish=p["wish"], gifts=gifts)
+        save()
 
 # ---------------------------------------------------------------- night: reflection, chronicle, new day
 def night():
@@ -736,6 +1043,11 @@ def night():
                 remember(n, "I had nothing to eat and went to bed hungry. Tomorrow I must get bread or fish.")
         save()
         day, weather, news = S["day"], S["weather"], S["news"]
+
+    try:
+        grant_wish(day)
+    except Exception as e:
+        print("grant_wish failed:", e, flush=True)
 
     for n in CAST:
         status = f"night — {n} is dreaming"
@@ -779,12 +1091,17 @@ def night():
     with lock:
         refl = [f"- {n} ({CAST[n]['job']}): {S['agents'][n]['reflections'][-1] if S['agents'][n]['reflections'] else '…'}"
                 for n in CAST]
+        wished = next((w for w in S["wishes"] if w["day"] == day), None)
+        prayed = [p["who"] for p in S["prayers"] if p["day"] == day]
     system = ("You are the chronicler of Emberwick, a small lakeside village. You write a wry, warm, vivid daily "
               "chronicle in the past tense, like a storybook narrator who knows everyone's business.")
     user = (f"Day {day}. Weather: {weather}. News that morning: {news}\n"
             "What each villager concluded at day's end:\n" + "\n".join(refl) +
             "\nDeeds of the day (work, trade, building):\n" + ("\n".join(deeds) or "- nothing of note") +
             "\nThings said during the day:\n" + "\n".join(lines) +
+            (f'\nPrayers at the Old Oak Shrine today came from {", ".join(prayed)}. Tonight the heavens granted '
+             f'{wished["who"]}\'s wish ("{wished["wish"]}"): {wished["blessing"]}' if wished else
+             f'\nPrayers at the Old Oak Shrine today came from {", ".join(prayed)}; none was granted.' if prayed else "") +
             '\nAnswer in JSON: "title" = 3 to 6 words; "chronicle" = 120 to 170 words in at most two paragraphs, '
             'naming names and quoting at most one line; "omen" = ONE sentence stating a small, concrete, surprising '
             "event that happens in the village tomorrow morning and that the villagers will have to react to "
@@ -805,7 +1122,8 @@ def night():
     with lock:
         with db() as c:
             c.execute("INSERT OR REPLACE INTO chronicle VALUES (?,?,?,?)", (day, title, body, weather))
-        S.update(day=day + 1, minute=WAKE, weather=random.choice(WEATHER), news=omen, phase="day", chain=0)
+        S.update(day=day + 1, minute=WAKE, weather=random.choice(WEATHER), news=omen, phase="day", chain=0,
+                 prayers=[p for p in S["prayers"] if p["day"] > day])
         log_event(kind="chronicle", text=f"Day {day}: {title}")
         log_event(kind="news", text=omen)
         for s_ in S["structures"]:
@@ -813,6 +1131,8 @@ def night():
                 S["agents"][s_["owner"]]["inv"]["coins"] += 3
             if s_["done"] and s_["type"] == "beehive":
                 S["agents"][s_["owner"]]["inv"]["herbs"] += 2
+            if s_["done"] and s_["type"] == "farm":
+                S["agents"][s_["owner"]]["inv"]["bread"] += 2
         for n, a in S["agents"].items():
             a.update(today=[], pending=None, offer=None, activity="waking up", mood="rested")
             remember(n, f"News this morning (day {S['day']}): {omen}")
@@ -868,6 +1188,7 @@ def state_json():
         return json.dumps(dict(now=time.time(), structures=structs, oracle=orc, voice=S.get("voice"), day=S["day"], minute=S["minute"], weather=S["weather"],
                                news=S["news"], phase=S["phase"], status=status, agents=agents,
                                places={k: v[:2] for k, v in PLACES.items()}, events=ev[::-1], chronicle=chron,
+                               prayers=[p for p in S["prayers"] if p["day"] == S["day"]], wishes=S["wishes"][-12:][::-1],
                                models=dict(actor=ACTOR, narrator=NARRATOR)))
 
 class Handler(BaseHTTPRequestHandler):
@@ -922,5 +1243,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     load()
     threading.Thread(target=run, daemon=True).start()
+    if STEWARD_EVERY > 0:
+        threading.Thread(target=steward, daemon=True).start()
     print(f"Emberwick is awake on http://{BIND}:{PORT}/  (actor={ACTOR}, narrator={NARRATOR})", flush=True)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()

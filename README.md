@@ -11,8 +11,14 @@ They also have an economy. Each villager carries coins and goods, gathers wood a
 the Woods, stone at the Quarry and food at their workplace, trades with whoever
 is standing next to them, and must eat every night. With enough materials and
 work they build things that appear on the map: houses, market stalls, boats,
-beehives, a windmill, statues, sheds and watchtowers. Some of these pay off, for
-example a stall earns its owner coins every morning.
+beehives, a windmill, statues, sheds, watchtowers and farms on the Meadow. Some of
+these pay off, for example a stall earns its owner coins every morning and a farm
+bakes them bread. Everyone starts with a house of their own.
+
+If a [colibri](https://github.com/JustVugg/colibri) server is running locally, a
+steward thread checks in every 90 minutes, finds the villager most stuck (no
+food, a stalled build, no plan) and has the Oracle send them a dream with a
+concrete plan. It runs beside the village, so turns keep going while it thinks.
 
 - **No required dependencies**: one Python file (standard library only) and one HTML file.
 - **Runs on CPU**: built on a 4-core i7 with a 1 GB model at about 22 tokens/s.
@@ -64,6 +70,8 @@ file. Each consultation is one API call, so at most 24 a day.
 | `EMBERWICK_ORACLE_XAI_MODEL` | newest Grok the key lists | Model used when the Oracle runs on xAI |
 | `EMBERWICK_ORACLE_PROVIDER` | `auto` | `anthropic`, `xai`, or `auto` (try Claude first, then Grok) |
 | `EMBERWICK_ORACLE_COOLDOWN` | `3600` | Real seconds between consultations |
+| `EMBERWICK_COLIBRI_URL` / `EMBERWICK_COLIBRI_MODEL` | `http://127.0.0.1:8000` / first listed | Local [colibri](https://github.com/JustVugg/colibri) server, used as the Oracle's last resort and by the steward |
+| `EMBERWICK_STEWARD_EVERY` | `5400` | Real seconds between steward passes (`0` turns it off): colibri sends the most stuck villager a dream with a plan |
 | `EMBERWICK_YIELD` | `1` | Pause while Ollama has other models loaded |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API |
 
