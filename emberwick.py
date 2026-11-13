@@ -158,6 +158,7 @@ def migrate():
         a.setdefault("inv", new_inv(n))
         a.setdefault("offer", None)
         a.setdefault("plan", [])
+        a.setdefault("self", "")
         if not isinstance(a.get("whisper"), dict):
             a["whisper"] = None
 
@@ -169,7 +170,7 @@ def new_world():
         S["agents"][n] = dict(place=c["home"], activity="starting the day", say="", say_to="", say_at=0,
                               thought="", mood="calm", memories=[f"News this morning: {first}"],
                               today=[], reflections=[], feelings=dict(c["feel"]), pending=None, whisper=None,
-                              offer=None, inv=new_inv(n), plan=[])
+                              offer=None, inv=new_inv(n), plan=[], self="")
 
 def load():
     init_db()
@@ -216,10 +217,12 @@ def hhmm(m):
 
 def persona(n):
     c = CAST[n]
+    grown = S["agents"][n].get("self", "") if S.get("agents") else ""
     return (f"You are {n}, {c['age']}, {c['job']} of Emberwick, a small lakeside village. "
             f"Personality: {c['traits']}. Deep down you want {c['goal']}. Your secret: {c['secret']}. "
             f"You dream of building {c['dream']}. Villagers gather materials, trade with each other and build things. "
-            "Stay in character and speak in first person. Be concrete and specific. Move things forward: "
+            + (f"How living here has changed you so far: {grown} Let that show in how you act and speak. " if grown else "")
+            + "Stay in character and speak in first person. Be concrete and specific. Move things forward: "
             "pursue what you want, react to news, seek people out; do not repeat what you already said or did. "
             "You are a person; never mention AI.")
 
@@ -725,15 +728,21 @@ def night():
                      + "\n".join("- " + t for t in today[-30:]) +
                      '\nAnswer in JSON: "reflection" = one or two first-person sentences on what mattered most today '
                      'and what you intend to do tomorrow; "feelings" = how you now feel about each person you dealt '
-                     "with today, 3 to 6 words each.",
-                     obj({"reflection": STR, "feelings": {"type": "array", "items": obj(
+                     'with today, 3 to 6 words each; "growth" = two first-person sentences on how this day has changed '
+                     "who you are: what you have become more or less, bolder, warier, fonder, harder, softer. You are "
+                     "still recognisably yourself, but let real change show, and build on this earlier description of "
+                     f"yourself: {S['agents'][n].get('self') or 'none yet, this is your first night'}. Be specific to "
+                     "what actually happened to you, not general.",
+                     obj({"reflection": STR, "growth": STR, "feelings": {"type": "array", "items": obj(
                          {"name": {"type": "string", "enum": others}, "feeling": STR})}}),
-                     keep_alive=-1, num_predict=220, temperature=0.7)
+                     keep_alive=-1, num_predict=340, temperature=0.7)
         except Exception:
             continue
         with lock:
             a = S["agents"][n]
             a["reflections"] = (a["reflections"] + [f"Day {day}: {clip(r.get('reflection'), 300)}"])[-5:]
+            if r.get("growth"):
+                a["self"] = clip(r["growth"], 330)
             for f in (r.get("feelings") or [])[:5]:
                 if f.get("name") in others and f.get("feeling"):
                     a["feelings"][f["name"]] = clip(f["feeling"], 50)
@@ -822,7 +831,7 @@ def state_json():
         agents = [dict(name=n, job=CAST[n]["job"], color=CAST[n]["color"], hair=CAST[n]["hair"], age=CAST[n]["age"],
                        traits=CAST[n]["traits"], place=a["place"], activity=a["activity"], say=a["say"],
                        say_to=a["say_to"], say_at=a["say_at"], thought=a["thought"], mood=a["mood"],
-                       feelings=a["feelings"], reflection=(a["reflections"] or [""])[-1], inv=a["inv"],
+                       feelings=a["feelings"], reflection=(a["reflections"] or [""])[-1], inv=a["inv"], growth=a.get("self", ""),
                        owns=[s["type"] for s in S["structures"] if s["done"] and s["owner"] == n], plan=a.get("plan", []))
                   for n, a in S["agents"].items()]
         structs = []

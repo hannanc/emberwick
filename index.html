@@ -379,6 +379,7 @@ function renderPeople() {
     if (a.thought) c.append(el('p', 'th', '“' + a.thought + '”'));
     if (a.plan.length) { c.append(el('small', '', "The Oracle's counsel:")); const ol = el('ol'); a.plan.forEach(p => ol.append(el('li', '', p))); c.append(ol); }
     const f = Object.entries(a.feelings).map(([k, v]) => `${k}: ${v}`).join(' · '); if (f) c.append(el('small', '', f));
+    if (a.growth) c.append(el('small', '', 'Growing — ' + a.growth));
     if (a.reflection) c.append(el('small', '', 'Last night — ' + a.reflection));
     c.onclick = () => { selected = a.name; $('to').value = a.name; renderPeople(); };
     box.append(c);
