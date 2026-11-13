@@ -456,13 +456,14 @@ def oracle_consult(n, question):
         elif anthropic and isinstance(e, anthropic.RateLimitError):
             why = "rate limited"
         elif anthropic and isinstance(e, anthropic.APIStatusError):
-            why = f"API error {e.status_code}"
+            why = f"API error {e.status_code}: {clip(getattr(e, 'message', ''), 110)}"
         elif anthropic and isinstance(e, anthropic.APIConnectionError):
             why = "could not reach the API"
         else:
             why = clip(f"{type(e).__name__}: {e}", 120)
         with lock:
-            S["oracle"]["last"] = time.time() - ORACLE_COOLDOWN + 600      # try again in ten minutes
+            billing = "credit balance" in why
+            S["oracle"]["last"] = time.time() - ORACLE_COOLDOWN + (1800 if billing else 600)  # retry in 30 / 10 minutes
             remember(n, "I asked the Oracle, but the stones stayed silent.")
             log_event(kind="oracle_fail", who=n, text=f"The stones stayed silent ({why}).")
             save()
