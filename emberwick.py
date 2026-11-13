@@ -5,7 +5,7 @@ Six villagers, each driven by a local Ollama model, walk around, talk, remember
 and reflect. Every night a larger model writes the day's chronicle and invents
 tomorrow's twist. Standard library only.  Open http://<server>:8377/
 """
-import json, os, random, sqlite3, threading, time, urllib.error, urllib.request
+import json, os, random, re, sqlite3, threading, time, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 try:                      # optional: only the Oracle needs the Anthropic SDK (pip install anthropic)
@@ -386,7 +386,7 @@ Your reply has three parts:
 be plain.
 - answer: the full solution in plain words, at most 150 words. If they asked for something to be made (a verse, a \
 contract, a recipe, a fair price, a schedule), this is the finished thing.
-- plan: up to 6 steps the petitioner should now carry out, in order. Each step is one concrete thing they can do under \
+- plan: up to 8 steps the petitioner should now carry out, in order. Each step is one concrete thing they can do under \
 the world's rules, with exact names and numbers, for example "Walk to the Woods", "Use action work 4 times to gather \
 12 wood", "At the Dock, offer Wren 3 bread for 6 fish", "At the Dock use action build_boat until it is finished". \
 Check the numbers against the inventories and costs you were given so the plan really works. Use an empty list if no \
@@ -441,10 +441,10 @@ def pick_xai_model(key):
         req = urllib.request.Request("https://api.x.ai/v1/models", headers={"Authorization": "Bearer " + key})
         with urllib.request.urlopen(req, timeout=30) as r:
             ids = [m["id"] for m in json.load(r).get("data", [])]
-        text = [i for i in ids if i.startswith("grok") and not any(x in i for x in ("image", "vision", "imagine", "mini", "fast", "code", "embed"))]
-        if not text:
-            raise RuntimeError("the xAI key lists no usable Grok model: " + ", ".join(ids[:8]))
-        _xai_model.append(sorted(text)[-1])     # highest name sorts last
+        plain = {i: float(i[5:]) for i in ids if re.fullmatch(r"grok-\d+(\.\d+)?", i)}   # grok-4.7, not grok-build / -imagine / dated variants
+        if not plain:
+            raise RuntimeError("the xAI key lists no general Grok model: " + ", ".join(ids[:8]))
+        _xai_model.append(max(plain, key=plain.get))
     return _xai_model[0]
 
 def ask_grok(world):
@@ -515,7 +515,7 @@ def oracle_consult(n, question):
     try:
         r, model = ask_oracle(world)
         speech, answer = clip(r.get("speech"), 400), str(r.get("answer") or "").strip()[:1500]
-        plan = [clip(p, 200) for p in (r.get("plan") or [])[:6] if str(p).strip()]
+        plan = [clip(p, 200) for p in (r.get("plan") or [])[:8] if str(p).strip()]
     except Exception as e:
         why = clip(str(e), 260)
         with lock:
