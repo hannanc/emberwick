@@ -609,15 +609,14 @@ def agent_turn():
                      + "\n".join(f"{i}. {p}" for i, p in enumerate(a["plan"], 1)))
         extra = {}
         if oracle_state() == "ready":
-            if a["place"] == "Oracle":
-                u.append('The Oracle is awake before you. It answers one petition an hour and can solve what is too hard '
-                         'for you: plans, sums, schemes, riddles, things to be written. Use action "consult" and put your '
-                         'request in "question".')
-                actions.append("consult")
-                extra = {"question": STR}
-            else:
-                u.append("The Oracle at the standing stones is awake and will answer one villager's hard problem "
-                         "(walk to the Oracle to consult it).")
+            at = a["place"] == "Oracle"
+            u.append(("The Oracle is awake before you. " if at else
+                      "The Oracle at the standing stones in the north-west is awake, and you may go there right now. ")
+                     + "It answers one petition an hour, for one villager only (whoever asks first), and can solve what "
+                       "is too hard for you: plans, sums, schemes, riddles, things to be written. To ask, use action "
+                       '"consult" and put your request in "question"' + ("." if at else "; you will be taken there."))
+            actions.append("consult")
+            extra = {"question": STR}
         if pending and pending["from"] in here:
             u.append(f'{pending["from"]} just said to you: "{pending["text"]}" Answer them in your own words.')
         if whisper and whisper.get("all"):
@@ -677,12 +676,13 @@ def agent_turn():
             did = do_accept(n, offer)
         elif act == "consult" and "consult" in actions and oracle_state() == "ready":
             petition = clip(r.get("question") or say or a["thought"], 300)
-            did = "knelt before the Oracle and asked for help"
+            did = "knelt before the Oracle and asked for help" if old == "Oracle" else \
+                  "hurried to the Oracle and asked for help"
         elif act == "decline" and offer:
             remember(offer["from"], f"{n} declined my offer.")
             did = f"declined {offer['from']}'s offer"
 
-        go = r.get("go_to")
+        go = "Oracle" if petition else r.get("go_to")
         moved = go in PLACES and go != old
         if moved:
             a["place"] = go
