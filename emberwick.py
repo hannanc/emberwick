@@ -181,8 +181,11 @@ def chat(model, system, user, schema, keep_alive, num_predict=180, temperature=0
 def other_models_busy():
     try:
         with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=5) as r:
-            names = [m["name"] for m in json.load(r).get("models", [])]
-        return [n for n in names if n not in (ACTOR, NARRATOR)]
+            models = json.load(r).get("models", [])
+        soon = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 86400))
+        # a model pinned in memory (expiry far in the future) is not a sign that someone is using it
+        return [m["name"] for m in models if m["name"] not in (ACTOR, NARRATOR)
+                and str(m.get("expires_at", ""))[:10] <= soon]
     except Exception:
         return []
 
