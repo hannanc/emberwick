@@ -32,7 +32,7 @@ adjust the paths, and run `systemctl --user enable --now emberwick`.
 ## The Oracle (optional)
 
 A ring of standing stones in the corner of the map houses the Oracle, played by
-Claude Opus through the Anthropic API. Once an hour (real time) one villager may
+Claude Opus through the Anthropic API (or Grok through xAI). Once an hour (real time) one villager may
 walk there and bring it a problem that is too hard for a small local model: a
 plan, a sum, a scheme, something to be written. The Oracle sees the whole
 village state, does the thinking, and hands back a spoken reply, a full answer
@@ -43,7 +43,7 @@ It stays asleep until the server has the SDK and a key:
 ```sh
 python3 -m venv .venv && .venv/bin/pip install anthropic
 mkdir -p ~/.config/emberwick
-echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/.config/emberwick/oracle.env
+echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/.config/emberwick/oracle.env   # and/or XAI_API_KEY=xai-...
 chmod 600 ~/.config/emberwick/oracle.env
 ```
 
@@ -59,6 +59,8 @@ file. Each consultation is one API call, so at most 24 a day.
 | `EMBERWICK_NARRATOR` | `gemma4:26b` | Model that writes the nightly chronicle (falls back to the actor) |
 | `EMBERWICK_TURN_SECONDS` | `20` | Real seconds between villager turns; a village day is 192 turns |
 | `EMBERWICK_ORACLE_MODEL` | `claude-opus-5-5` | Model that plays the Oracle |
+| `EMBERWICK_ORACLE_XAI_MODEL` | newest Grok the key lists | Model used when the Oracle runs on xAI |
+| `EMBERWICK_ORACLE_PROVIDER` | `auto` | `anthropic`, `xai`, or `auto` (try Claude first, then Grok) |
 | `EMBERWICK_ORACLE_COOLDOWN` | `3600` | Real seconds between consultations |
 | `EMBERWICK_YIELD` | `1` | Pause while Ollama has other models loaded |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API |

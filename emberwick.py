@@ -5,7 +5,7 @@ Six villagers, each driven by a local Ollama model, walk around, talk, remember
 and reflect. Every night a larger model writes the day's chronicle and invents
 tomorrow's twist. Standard library only.  Open http://<server>:8377/
 """
-import json, os, random, sqlite3, threading, time, urllib.request
+import json, os, random, sqlite3, threading, time, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 try:                      # optional: only the Oracle needs the Anthropic SDK (pip install anthropic)
@@ -22,7 +22,9 @@ NARRATOR = os.environ.get("EMBERWICK_NARRATOR", "gemma4:26b")  # writes the nigh
 TURN_SECONDS = float(os.environ.get("EMBERWICK_TURN_SECONDS", 20))  # real seconds per villager turn
 MINUTES_PER_TURN = 5          # village minutes per turn
 WAKE, SLEEP = 6 * 60, 22 * 60
-ORACLE_MODEL = os.environ.get("EMBERWICK_ORACLE_MODEL", "claude-opus-5-5")
+ORACLE_MODEL = os.environ.get("EMBERWICK_ORACLE_MODEL", "claude-opus-5-5")   # Anthropic model
+ORACLE_XAI_MODEL = os.environ.get("EMBERWICK_ORACLE_XAI_MODEL", "")            # blank = pick the newest Grok the key can use
+ORACLE_PROVIDER = os.environ.get("EMBERWICK_ORACLE_PROVIDER", "auto")           # auto | anthropic | xai
 ORACLE_COOLDOWN = float(os.environ.get("EMBERWICK_ORACLE_COOLDOWN", 3600))  # real seconds between consultations
 YIELD = os.environ.get("EMBERWICK_YIELD", "1") == "1"  # pause while Ollama serves other models
 
@@ -359,11 +361,17 @@ def do_accept(n, o):
     return f"traded {o['want_qty']} {o['want']} to {o['from']} for {o['give_qty']} {o['give']}"
 
 # ---------------------------------------------------------------- the Oracle (Claude, once an hour)
+def providers():
+    """Usable Oracle backends in the order they are tried."""
+    claude = anthropic is not None and bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+                                            or os.path.isdir(os.path.expanduser("~/.config/anthropic")))
+    grok = bool(os.environ.get("XAI_API_KEY"))
+    want = {"anthropic": ["anthropic"], "xai": ["xai"]}.get(ORACLE_PROVIDER, ["anthropic", "xai"])
+    return [p for p in want if (p == "anthropic" and claude) or (p == "xai" and grok)]
+
 def oracle_state():
-    """'asleep' (no SDK or credentials), 'resting' (consulted within the hour) or 'ready'."""
-    creds = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN") \
-        or os.path.isdir(os.path.expanduser("~/.config/anthropic"))
-    if anthropic is None or not creds:
+    """'asleep' (no usable backend), 'resting' (consulted within the hour) or 'ready'."""
+    if not providers():
         return "asleep"
     return "ready" if time.time() - S["oracle"]["last"] >= ORACLE_COOLDOWN else "resting"
 
@@ -424,8 +432,44 @@ def oracle_world(n, question):
     L += ["", f'{n} stands before you and asks: "{question}"']
     return "\n".join(L)
 
+_xai_model = []
+
+def pick_xai_model(key):
+    if ORACLE_XAI_MODEL:
+        return ORACLE_XAI_MODEL
+    if not _xai_model:
+        req = urllib.request.Request("https://api.x.ai/v1/models", headers={"Authorization": "Bearer " + key})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            ids = [m["id"] for m in json.load(r).get("data", [])]
+        text = [i for i in ids if i.startswith("grok") and not any(x in i for x in ("image", "vision", "imagine", "mini", "fast", "code", "embed"))]
+        if not text:
+            raise RuntimeError("the xAI key lists no usable Grok model: " + ", ".join(ids[:8]))
+        _xai_model.append(sorted(text)[-1])     # highest name sorts last
+    return _xai_model[0]
+
+def ask_grok(world):
+    key = os.environ["XAI_API_KEY"]
+    model = pick_xai_model(key)
+    body = {"model": model, "stream": False,
+            "messages": [{"role": "system", "content": ORACLE_SYSTEM}, {"role": "user", "content": world}],
+            "response_format": {"type": "json_schema", "json_schema": {"name": "oracle_reply", "strict": True, "schema": ORACLE_SCHEMA}}}
+    req = urllib.request.Request("https://api.x.ai/v1/chat/completions", json.dumps(body).encode(),
+                                 {"Content-Type": "application/json", "Authorization": "Bearer " + key})
+    try:
+        with urllib.request.urlopen(req, timeout=600) as r:
+            data = json.load(r)
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = json.load(e).get("error", "")
+            detail = detail.get("message", "") if isinstance(detail, dict) else str(detail)
+        except Exception:
+            pass
+        raise RuntimeError(f"xAI error {e.code}: {clip(detail, 140)}") from None
+    return json.loads(data["choices"][0]["message"]["content"]), model
+
 def ask_claude(world):
-    """One Oracle call. Returns the parsed reply, or raises."""
+    """One Anthropic call. Returns (parsed reply, model), or raises."""
     client = anthropic.Anthropic()
     req = dict(model=ORACLE_MODEL, max_tokens=16000, system=ORACLE_SYSTEM,
                messages=[{"role": "user", "content": world}],
@@ -436,7 +480,29 @@ def ask_claude(world):
         resp = client.messages.create(**req)
     if resp.stop_reason == "refusal":
         raise RuntimeError("the Oracle declined to answer")
-    return json.loads(next(b.text for b in resp.content if b.type == "text"))
+    return json.loads(next(b.text for b in resp.content if b.type == "text")), ORACLE_MODEL
+
+def anthropic_why(e):
+    if isinstance(e, anthropic.AuthenticationError):
+        return "the Anthropic key was rejected"
+    if isinstance(e, anthropic.RateLimitError):
+        return "Anthropic rate limited"
+    if isinstance(e, anthropic.APIStatusError):
+        return f"Anthropic error {e.status_code}: {clip(getattr(e, 'message', ''), 110)}"
+    if isinstance(e, anthropic.APIConnectionError):
+        return "could not reach Anthropic"
+    return clip(f"{type(e).__name__}: {e}", 120)
+
+def ask_oracle(world):
+    """Try each backend in turn. Returns (reply, model); raises with every reason if all fail."""
+    why = []
+    for prov in providers():
+        try:
+            return ask_claude(world) if prov == "anthropic" else ask_grok(world)
+        except Exception as e:
+            why.append(anthropic_why(e) if prov == "anthropic" and anthropic and isinstance(e, anthropic.AnthropicError)
+                       else clip(str(e) or type(e).__name__, 140))
+    raise RuntimeError("; ".join(why) or "no backend available")
 
 def oracle_consult(n, question):
     global status
@@ -447,22 +513,13 @@ def oracle_consult(n, question):
         save()
     status = f"{n} is consulting the Oracle"
     try:
-        r = ask_claude(world)
+        r, model = ask_oracle(world)
         speech, answer = clip(r.get("speech"), 400), str(r.get("answer") or "").strip()[:1500]
         plan = [clip(p, 200) for p in (r.get("plan") or [])[:6] if str(p).strip()]
     except Exception as e:
-        if anthropic and isinstance(e, anthropic.AuthenticationError):
-            why = "the API key was rejected"
-        elif anthropic and isinstance(e, anthropic.RateLimitError):
-            why = "rate limited"
-        elif anthropic and isinstance(e, anthropic.APIStatusError):
-            why = f"API error {e.status_code}: {clip(getattr(e, 'message', ''), 110)}"
-        elif anthropic and isinstance(e, anthropic.APIConnectionError):
-            why = "could not reach the API"
-        else:
-            why = clip(f"{type(e).__name__}: {e}", 120)
+        why = clip(str(e), 260)
         with lock:
-            billing = "credit balance" in why
+            billing = "credit balance" in why or "credits" in why
             S["oracle"]["last"] = time.time() - ORACLE_COOLDOWN + (1800 if billing else 600)  # retry in 30 / 10 minutes
             remember(n, "I asked the Oracle, but the stones stayed silent.")
             log_event(kind="oracle_fail", who=n, text=f"The stones stayed silent ({why}).")
@@ -473,7 +530,7 @@ def oracle_consult(n, question):
         a["plan"] = plan
         remember(n, f'I asked the Oracle: "{clip(question, 160)}" It said: "{speech}"')
         remember(n, f"The Oracle's answer: {clip(answer, 420)}")
-        S["oracle"].update(speech=speech, at=time.time())
+        S["oracle"].update(speech=speech, at=time.time(), model=model)
         with db() as c:
             c.execute("INSERT INTO oracle (day, minute, who, question, speech, answer, plan) VALUES (?,?,?,?,?,?,?)",
                       (S["day"], S["minute"], n, question, speech, answer, json.dumps(plan)))
@@ -777,7 +834,7 @@ def state_json():
                                 done=s["done"], helpers=s["helpers"], day=s["day"], perk=bp["perk"],
                                 progress=round(got / total, 3), needs="" if s["done"] else needs_text(s)))
         ost = oracle_state()
-        orc = dict(state=ost, model=ORACLE_MODEL, speech=S["oracle"]["speech"], at=S["oracle"]["at"], log=consults,
+        orc = dict(state=ost, model=S["oracle"].get("model") or "/".join(providers()) or ORACLE_MODEL, speech=S["oracle"]["speech"], at=S["oracle"]["at"], log=consults,
                    wait=max(0, int((ORACLE_COOLDOWN - (time.time() - S["oracle"]["last"])) / 60)) if ost == "resting" else 0)
         return json.dumps(dict(now=time.time(), structures=structs, oracle=orc, voice=S.get("voice"), day=S["day"], minute=S["minute"], weather=S["weather"],
                                news=S["news"], phase=S["phase"], status=status, agents=agents,

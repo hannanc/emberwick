@@ -400,10 +400,10 @@ function renderOracle() {
   const O = st.oracle, key = O.state + O.wait + O.log.length; if (key === oracleKey) return; oracleKey = key;
   const box = $('oracle'); box.replaceChildren();
   const head = el('div', 'card'); head.style.borderLeftColor = '#a98cf0';
-  head.append(el('h3', '', 'The Oracle'), el('div', 'sub', `Played by ${O.model} · one petition an hour`),
+  head.append(el('h3', '', 'The Oracle'), el('div', 'sub', `${O.state === 'asleep' ? 'No backend configured' : 'Last answered by ' + O.model} · one petition an hour`),
     el('p', '', O.state === 'ready' ? 'Awake. The first villager to walk to the standing stones and ask will be answered.'
       : O.state === 'resting' ? `Resting. It will answer again in about ${O.wait} minute${O.wait === 1 ? '' : 's'}.`
-      : 'Asleep. It needs an Anthropic API key on the server before it can speak (see the README).'));
+      : 'Asleep. It needs an Anthropic or xAI API key on the server before it can speak (see the README).'));
   box.append(head);
   for (const c of O.log) {
     const d = el('div', 'card'); d.style.borderLeftColor = colorOf(c.who);
