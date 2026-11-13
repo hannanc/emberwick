@@ -41,6 +41,9 @@
   .card p { margin:6px 0 0; }
   .card .th { font-style:italic; color:#c9c4b6; }
   .card small { color:var(--dim); display:block; margin-top:6px; }
+  .card ol { margin:6px 0 0; padding-left:20px; }
+  .card .q { font-style:italic; color:#c9c4b6; }
+  .card .sp { font:15px/1.5 Georgia, serif; color:#cdb7f0; }
   .chr { margin-bottom:22px; font:15px/1.6 Georgia, serif; }
   .chr h3 { margin:0 0 4px; color:var(--gold); font:600 17px Georgia, serif; }
   .chr .w { color:var(--dim); font:12px system-ui; margin-bottom:6px; }
@@ -68,11 +71,13 @@
       <button data-tab="feed" class="on">Live</button>
       <button data-tab="people">Villagers</button>
       <button data-tab="built">Built</button>
+      <button data-tab="oracle">Oracle</button>
       <button data-tab="chron">Chronicle</button>
     </nav>
     <div id="feed" class="tab on"></div>
     <div id="people" class="tab"></div>
     <div id="built" class="tab"></div>
+    <div id="oracle" class="tab"></div>
     <div id="chron" class="tab"></div>
     <div id="note"></div>
     <form id="whisper">
@@ -88,7 +93,7 @@ const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
 let st = null, lastEv = 0, selected = null, skew = 0;
 const pos = {};                 // name -> {x, y, route:[[x,y]...], place}
-const STAND = { Dock: 1.2, Square: 1.4, Garden: 1.7, Shrine: 1.6, Cottages: 1.9 };
+const STAND = { Oracle: 1.7, Dock: 1.2, Square: 1.4, Garden: 1.7, Shrine: 1.6, Cottages: 1.9 };
 const windows = [];             // lit at night
 
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -154,6 +159,14 @@ function buildScenery() {
   const [fx, fy] = P.Woods;                                                                               // woods
   for (let i = 0; i < 13; i++) { const x = fx + (r() - .5) * 7.5, y = fy - 1.6 + r() * 2.6, k = 0.9 + r() * 0.6; items.push([y, () => tree(g, x, y, k)]); }
   items.push([fy + 1.2, () => { for (const [a, b] of [[-1.6, 1.1], [1.4, 1.3], [0.2, 0.9]]) { g.fillStyle = '#7a5a3a'; g.beginPath(); g.ellipse((fx + a) * T, (fy + b) * T, 8, 5, 0, 0, 7); g.fill(); g.fillStyle = '#c9a56a'; g.beginPath(); g.ellipse((fx + a) * T, (fy + b) * T - 2, 7, 4, 0, 0, 7); g.fill(); } }]);
+  const [ox, oy] = P.Oracle;                                                                              // oracle stones
+  items.push([oy + 0.9, () => {
+    g.fillStyle = 'rgba(60,50,90,.35)'; g.beginPath(); g.ellipse(ox * T, (oy + 0.3) * T, 2.3 * T, 1.15 * T, 0, 0, 7); g.fill();
+    for (let i = 0; i < 7; i++) { const a = Math.PI * (0.05 + i * 0.15) + Math.PI, sx = ox * T + Math.cos(a) * 2 * T, sy = (oy + 0.3) * T + Math.sin(a) * 1 * T, h = 30 + (i % 3) * 9;
+      g.fillStyle = 'rgba(0,0,0,.22)'; g.beginPath(); g.ellipse(sx, sy + 2, 9, 4, 0, 0, 7); g.fill();
+      g.fillStyle = '#8b8f99'; g.beginPath(); g.roundRect(sx - 7, sy - h, 14, h, 5); g.fill(); g.fillStyle = '#6d717b'; g.fillRect(sx - 7, sy - h + 4, 4, h - 6); }
+    g.fillStyle = '#5d6069'; g.beginPath(); g.ellipse(ox * T, (oy + 0.35) * T, 15, 8, 0, 0, 7); g.fill();
+  }]);
   const [qx, qy] = P.Quarry;                                                                              // quarry
   items.push([qy + 0.8, () => {
     g.fillStyle = '#6f7378'; g.beginPath(); g.moveTo((qx - 2.3) * T, (qy + 0.8) * T); g.lineTo((qx - 1.9) * T, (qy - 1.2) * T); g.lineTo((qx - 0.4) * T, (qy - 2) * T); g.lineTo((qx + 1.2) * T, (qy - 1.5) * T); g.lineTo((qx + 2.2) * T, (qy + 0.8) * T); g.closePath(); g.fill();
@@ -293,6 +306,14 @@ function frame(t) {
       if (!asleep) things.push([p.y, () => person(a, p, t, walking)]);
     }
     things.sort((a, b) => a[0] - b[0]).forEach(d => d[1]());
+    const O = st.oracle, [ox, oy] = st.places.Oracle, fx = ox * T, fy = (oy + 0.2) * T;      // the Oracle's flame
+    if (O.state !== 'asleep') {
+      const k = O.state === 'ready' ? 1 : 0.35, r = (16 + Math.sin(t / 350) * 4) * k + 6, gr = ctx.createRadialGradient(fx, fy - 10, 1, fx, fy - 10, r * 2.6);
+      gr.addColorStop(0, `rgba(205,170,255,${0.85 * k + 0.1})`); gr.addColorStop(0.4, `rgba(140,110,240,${0.4 * k})`); gr.addColorStop(1, 'rgba(140,110,240,0)');
+      ctx.fillStyle = gr; ctx.fillRect(fx - r * 3, fy - 10 - r * 3, r * 6, r * 6);
+      ctx.fillStyle = `rgba(240,225,255,${0.5 + 0.5 * k})`; ctx.beginPath(); ctx.ellipse(fx, fy - 10 - Math.sin(t / 500) * 2, 4 * k + 2, 7 * k + 3, 0, 0, 7); ctx.fill();
+      if (O.state === 'ready') wins.push([fx, fy - 10]);
+    }
     const w = st.weather, na = nightAlpha(st.minute);
     if (/mist|haze/.test(w)) { ctx.fillStyle = /haze/.test(w) ? 'rgba(255,214,140,.16)' : 'rgba(230,236,240,.24)'; ctx.fillRect(0, 0, cv.width, cv.height); }
     if (/rain|storm|overcast/.test(w)) { ctx.fillStyle = 'rgba(40,50,70,.16)'; ctx.fillRect(0, 0, cv.width, cv.height); }
@@ -317,6 +338,7 @@ function frame(t) {
       const latest = {};                                    // one bubble per place: whoever spoke last
       for (const a of order) if (a.say && now - a.say_at < 26 && (!latest[a.place] || a.say_at > latest[a.place].say_at)) latest[a.place] = a;
       for (const a of Object.values(latest)) { const p = pos[a.name]; bubble(a.say, p.x * T, p.y * T - 36, a.color); }
+      if (st.oracle.speech && now - st.oracle.at < 60) bubble(st.oracle.speech, Math.max(150, st.places.Oracle[0] * T), st.places.Oracle[1] * T - 30, '#a98cf0');
     }
   }
   requestAnimationFrame(frame);
@@ -340,7 +362,7 @@ function renderFeed() {
       if (e.to_place) d.append(el('div', 'th', `→ walks to the ${e.to_place}`));
     } else {
       d.classList.add('sys');
-      d.append(el('div', 't', stamp), el('div', '', e.kind === 'whisper' ? `You whispered to ${e.who}: “${e.text}”` : e.kind === 'voice' ? `Your voice boomed from the sky: “${e.text}”` : e.kind === 'news' ? `News: ${e.text}` : e.text));
+      d.append(el('div', 't', stamp), el('div', '', e.kind === 'whisper' ? `You whispered to ${e.who}: “${e.text}”` : e.kind === 'voice' ? `Your voice boomed from the sky: “${e.text}”` : e.kind === 'oracle_ask' ? `${e.who} asks the Oracle: “${e.text}”` : e.kind === 'oracle' ? `The Oracle answers ${e.who}: “${e.text}”` : e.kind === 'oracle_fail' ? `${e.who} called on the Oracle. ${e.text}` : e.kind === 'news' ? `News: ${e.text}` : e.text));
     }
     box.append(d);
   }
@@ -355,6 +377,7 @@ function renderPeople() {
     const inv = Object.entries(a.inv).filter(([, q]) => q).map(([k, q]) => `${q} ${k}`).join(', ') || 'nothing';
     c.append(el('p', '', `Carries ${inv}.` + (a.owns.length ? ` Owns: ${a.owns.join(', ')}.` : '')));
     if (a.thought) c.append(el('p', 'th', '“' + a.thought + '”'));
+    if (a.plan.length) { c.append(el('small', '', "The Oracle's counsel:")); const ol = el('ol'); a.plan.forEach(p => ol.append(el('li', '', p))); c.append(ol); }
     const f = Object.entries(a.feelings).map(([k, v]) => `${k}: ${v}`).join(' · '); if (f) c.append(el('small', '', f));
     if (a.reflection) c.append(el('small', '', 'Last night — ' + a.reflection));
     c.onclick = () => { selected = a.name; $('to').value = a.name; renderPeople(); };
@@ -372,6 +395,24 @@ function renderBuilt() {
     box.append(c);
   }
 }
+let oracleKey = null;
+function renderOracle() {
+  const O = st.oracle, key = O.state + O.wait + O.log.length; if (key === oracleKey) return; oracleKey = key;
+  const box = $('oracle'); box.replaceChildren();
+  const head = el('div', 'card'); head.style.borderLeftColor = '#a98cf0';
+  head.append(el('h3', '', 'The Oracle'), el('div', 'sub', `Played by ${O.model} · one petition an hour`),
+    el('p', '', O.state === 'ready' ? 'Awake. The first villager to walk to the standing stones and ask will be answered.'
+      : O.state === 'resting' ? `Resting. It will answer again in about ${O.wait} minute${O.wait === 1 ? '' : 's'}.`
+      : 'Asleep. It needs an Anthropic API key on the server before it can speak (see the README).'));
+  box.append(head);
+  for (const c of O.log) {
+    const d = el('div', 'card'); d.style.borderLeftColor = colorOf(c.who);
+    d.append(el('h3', '', `${c.who} asked`), el('div', 'sub', `Day ${c.day} · ${hhmm(c.minute)}`), el('p', 'q', '“' + c.question + '”'), el('p', 'sp', '“' + c.speech + '”'));
+    c.answer.split(/\n+/).forEach(x => d.append(el('p', '', x)));
+    if (c.plan.length) { const ol = el('ol'); c.plan.forEach(x => ol.append(el('li', '', x))); d.append(ol); }
+    box.append(d);
+  }
+}
 let chronKey = '';
 function renderChron() {
   const key = st.chronicle.map(c => c.day).join(); if (key === chronKey) return; chronKey = key;
@@ -387,7 +428,7 @@ async function poll() {
     $('status').textContent = st.status + ` · ${st.models.actor}`; $('status').className = st.status === 'running' ? '' : 'off';
     $('news').textContent = st.news;
     if ($('to').options.length === 1) for (const a of st.agents) $('to').add(new Option('Whisper to ' + a.name, a.name));
-    renderFeed(); renderPeople(); renderBuilt(); renderChron();
+    renderFeed(); renderPeople(); renderBuilt(); renderOracle(); renderChron();
   } catch (e) { $('status').textContent = 'connection lost'; $('status').className = 'off'; }
   setTimeout(poll, 2500);
 }

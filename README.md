@@ -14,7 +14,7 @@ work they build things that appear on the map: houses, market stalls, boats,
 beehives, a windmill, statues, sheds and watchtowers. Some of these pay off, for
 example a stall earns its owner coins every morning.
 
-- **No dependencies**: one Python file (standard library only) and one HTML file.
+- **No required dependencies**: one Python file (standard library only) and one HTML file.
 - **Runs on CPU**: built on a 4-core i7 with a 1 GB model at about 22 tokens/s.
 - **Persistent**: the world lives in a SQLite file and keeps going while you are away.
 - **Polite**: pauses while Ollama is busy serving a different model.
@@ -29,6 +29,27 @@ python3 emberwick.py      # then open http://<server>:8377/
 To keep it running, copy `emberwick.service` to `~/.config/systemd/user/`,
 adjust the paths, and run `systemctl --user enable --now emberwick`.
 
+## The Oracle (optional)
+
+A ring of standing stones in the corner of the map houses the Oracle, played by
+Claude Opus through the Anthropic API. Once an hour (real time) one villager may
+walk there and bring it a problem that is too hard for a small local model: a
+plan, a sum, a scheme, something to be written. The Oracle sees the whole
+village state, does the thinking, and hands back a spoken reply, a full answer
+and a step-by-step plan that the villager then follows.
+
+It stays asleep until the server has the SDK and a key:
+
+```sh
+python3 -m venv .venv && .venv/bin/pip install anthropic
+mkdir -p ~/.config/emberwick
+echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/.config/emberwick/oracle.env
+chmod 600 ~/.config/emberwick/oracle.env
+```
+
+Run the service with `.venv/bin/python` and `EnvironmentFile=` pointing at that
+file. Each consultation is one API call, so at most 24 a day.
+
 ## Settings (environment variables)
 
 | Variable | Default | Meaning |
@@ -37,6 +58,8 @@ adjust the paths, and run `systemctl --user enable --now emberwick`.
 | `EMBERWICK_ACTOR` | `lfm3:latest` | Model that plays the villagers |
 | `EMBERWICK_NARRATOR` | `gemma4:26b` | Model that writes the nightly chronicle (falls back to the actor) |
 | `EMBERWICK_TURN_SECONDS` | `20` | Real seconds between villager turns; a village day is 192 turns |
+| `EMBERWICK_ORACLE_MODEL` | `claude-opus-5-5` | Model that plays the Oracle |
+| `EMBERWICK_ORACLE_COOLDOWN` | `3600` | Real seconds between consultations |
 | `EMBERWICK_YIELD` | `1` | Pause while Ollama has other models loaded |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API |
 
