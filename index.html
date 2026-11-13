@@ -355,7 +355,7 @@ function renderFeed() {
     const d = el('div', 'ev'), stamp = `Day ${e.day} · ${hhmm(e.minute)}`;
     if (e.kind === 'turn') {
       const top = el('div'); const who = el('span', 'who', e.who); who.style.color = colorOf(e.who); top.append(who, ' ' + e.activity);
-      d.append(el('div', 't', `${stamp} · ${e.place}`), top);
+      d.append(el('div', 't', `${stamp} · ${e.place}` + (e.deep ? ' · ✦ thinking hard' : '')), top);
       if (e.say) d.append(el('div', 'say', (e.to ? `to ${e.to}: ` : '') + '“' + e.say + '”'));
       if (e.did) d.append(el('div', 'did', '⚒ ' + e.who + ' ' + e.did));
       if (e.thought) d.append(el('div', 'th', e.thought));

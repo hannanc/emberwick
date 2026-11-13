@@ -57,6 +57,8 @@ file. Each consultation is one API call, so at most 24 a day.
 | `EMBERWICK_PORT` / `EMBERWICK_BIND` | `8377` / `0.0.0.0` | Where the page is served |
 | `EMBERWICK_ACTOR` | `lfm3:latest` | Model that plays the villagers |
 | `EMBERWICK_NARRATOR` | `gemma4:26b` | Model that writes the nightly chronicle (falls back to the actor) |
+| `EMBERWICK_DEEP_MODEL` | same as the narrator | Bigger model for key moments (whispers, offers, a fresh Oracle plan, an occasional conversation reply) and the nightly reflection |
+| `EMBERWICK_DEEP_EVERY` | `4` | At most one conversation reply in this many turns uses the bigger model |
 | `EMBERWICK_TURN_SECONDS` | `20` | Real seconds between villager turns; a village day is 192 turns |
 | `EMBERWICK_ORACLE_MODEL` | `claude-opus-5-5` | Model that plays the Oracle |
 | `EMBERWICK_ORACLE_XAI_MODEL` | newest Grok the key lists | Model used when the Oracle runs on xAI |

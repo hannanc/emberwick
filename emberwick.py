@@ -26,6 +26,8 @@ ORACLE_MODEL = os.environ.get("EMBERWICK_ORACLE_MODEL", "claude-opus-5-5")   # A
 ORACLE_XAI_MODEL = os.environ.get("EMBERWICK_ORACLE_XAI_MODEL", "")            # blank = pick the newest Grok the key can use
 ORACLE_PROVIDER = os.environ.get("EMBERWICK_ORACLE_PROVIDER", "auto")           # auto | anthropic | xai
 ORACLE_COOLDOWN = float(os.environ.get("EMBERWICK_ORACLE_COOLDOWN", 3600))  # real seconds between consultations
+DEEP = os.environ.get("EMBERWICK_DEEP_MODEL", NARRATOR)   # bigger model for key moments and nightly reflection
+DEEP_EVERY = int(os.environ.get("EMBERWICK_DEEP_EVERY", 4))  # at most one conversation reply in this many turns
 YIELD = os.environ.get("EMBERWICK_YIELD", "1") == "1"  # pause while Ollama serves other models
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -193,13 +195,20 @@ def chat(model, system, user, schema, keep_alive, num_predict=180, temperature=0
     with urllib.request.urlopen(req, timeout=900) as r:
         return json.loads(json.load(r)["message"]["content"])
 
+def chat_deep(system, user, schema, num_predict, temperature=0.9):
+    """The bigger model for moments that matter; falls back to the everyday model if it fails."""
+    try:
+        return chat(DEEP, system, user, schema, keep_alive="15m", num_predict=num_predict, temperature=temperature), True
+    except Exception:
+        return chat(ACTOR, system, user, schema, keep_alive=-1, num_predict=num_predict, temperature=temperature), False
+
 def other_models_busy():
     try:
         with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=5) as r:
             models = json.load(r).get("models", [])
         soon = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 86400))
         # a model pinned in memory (expiry far in the future) is not a sign that someone is using it
-        return [m["name"] for m in models if m["name"] not in (ACTOR, NARRATOR)
+        return [m["name"] for m in models if m["name"] not in (ACTOR, NARRATOR, DEEP)
                 and str(m.get("expires_at", ""))[:10] <= soon]
     except Exception:
         return []
@@ -531,6 +540,7 @@ def oracle_consult(n, question):
     with lock:
         a = S["agents"][n]
         a["plan"] = plan
+        a["plan_new"] = True
         remember(n, f'I asked the Oracle: "{clip(question, 160)}" It said: "{speech}"')
         remember(n, f"The Oracle's answer: {clip(answer, 420)}")
         S["oracle"].update(speech=speech, at=time.time(), model=model)
@@ -564,6 +574,13 @@ def agent_turn():
             if o != n:
                 where.setdefault(oa["place"], []).append(o)
         pending, whisper, offer = a["pending"], a["whisper"], a["offer"]
+        S["since_deep"] = S.get("since_deep", DEEP_EVERY) + 1
+        # key moments: whispers and voices, trade offers and a fresh Oracle plan always; a conversation reply now and then
+        deep = bool(whisper or offer or a.get("plan_new")) or \
+            bool(pending and pending["from"] in here and S["since_deep"] >= DEEP_EVERY)
+        if deep:
+            S["since_deep"] = 0
+        a["plan_new"] = False
         mine = [s["type"] for s in S["structures"] if s["done"] and s["owner"] == n]
         u = [f"It is day {S['day']}, {hhmm(S['minute'])}. Weather: {S['weather']}. {time_hint(S['minute'])}",
              f"You are at the {a['place']} ({PLACES[a['place']][2]}), and were just {a['activity']}.",
@@ -640,7 +657,10 @@ def agent_turn():
                       "go_to": {"type": "string", "enum": ["stay"] + list(PLACES)}, "activity": STR, "mood": STR})
         system, user = persona(n), "\n".join(u)
 
-    r = chat(ACTOR, system, user, schema, keep_alive=-1, num_predict=220)
+    if deep:
+        r, deep = chat_deep(system, user, schema, num_predict=220)
+    else:
+        r = chat(ACTOR, system, user, schema, keep_alive=-1, num_predict=220)
 
     with lock:
         a = S["agents"][n]
@@ -693,7 +713,7 @@ def agent_turn():
         elif not say and not did:
             remember(n, f"At the {old} I was {a['activity']}.")
         log_event(kind="turn", who=n, place=old, to_place=go if moved else "", activity=a["activity"],
-                  say=say, to=to, thought=a["thought"], mood=a["mood"], did=did)
+                  say=say, to=to, thought=a["thought"], mood=a["mood"], did=did, deep=deep)
         S["minute"] += MINUTES_PER_TURN
         save()
     if petition:
@@ -723,7 +743,7 @@ def night():
             today = list(S["agents"][n]["today"])
         others = [o for o in CAST if o != n]
         try:
-            r = chat(ACTOR, persona(n),
+            r, _ = chat_deep(persona(n),
                      "The day is over and you are in bed. This is what happened to you today:\n"
                      + "\n".join("- " + t for t in today[-30:]) +
                      '\nAnswer in JSON: "reflection" = one or two first-person sentences on what mattered most today '
@@ -735,7 +755,7 @@ def night():
                      "what actually happened to you, not general.",
                      obj({"reflection": STR, "growth": STR, "feelings": {"type": "array", "items": obj(
                          {"name": {"type": "string", "enum": others}, "feeling": STR})}}),
-                     keep_alive=-1, num_predict=340, temperature=0.7)
+                     num_predict=340, temperature=0.7)
         except Exception:
             continue
         with lock:
