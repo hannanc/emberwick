@@ -32,35 +32,64 @@ PLACES = {  # name: (x, y, description) — tile coordinates on a 40x24 map
     "Dock":     (20, 19, "the wooden dock on the lake"),
     "Workshop": (9, 17, "Tobias's carpentry workshop"),
     "Cottages": (3, 12, "Cottage Row, where everyone lives"),
+    "Woods":    (14, 2.6, "the Woods, where timber is cut"),
+    "Quarry":   (37.5, 2.6, "the stone Quarry"),
+}
+
+ITEMS = ["coins", "wood", "stone", "fish", "bread", "herbs", "ale"]
+# place: (item, yield for anyone, specialist who gets 3)
+WORK = {"Woods": ("wood", 2, "Tobias"), "Quarry": ("stone", 2, None), "Dock": ("fish", 1, "Wren"),
+        "Garden": ("herbs", 1, "Hesper"), "Bakery": ("bread", 1, "Mira"), "Tavern": ("ale", 1, "Bram"),
+        "Library": ("coins", 0, "Isolde")}
+START = {"Mira": {"bread": 4}, "Tobias": {"wood": 4}, "Isolde": {"coins": 6}, "Bram": {"ale": 4},
+         "Wren": {"fish": 4}, "Hesper": {"herbs": 4}}
+# what can be built: where, what it costs, turns of work, map slots (tile x, y), what it does
+BLUEPRINTS = {
+    "house":   dict(site="Cottages", cost={"wood": 12, "stone": 8}, labour=6, perk="a home of your own",
+                    slots=[(6.5, 11.6), (9.6, 11.4), (4.6, 17.4), (1.6, 18.8), (12.6, 11.5)]),
+    "stall":   dict(site="Square", cost={"wood": 8}, labour=3, perk="earns its owner 3 coins every morning",
+                    slots=[(16.2, 11.3), (23.8, 11.3), (16.5, 15.6), (23.5, 15.6)]),
+    "boat":    dict(site="Dock", cost={"wood": 14}, labour=5, perk="its owner catches more fish",
+                    slots=[(15.8, 21.9), (26.5, 22.4), (12, 22.8)]),
+    "tower":   dict(site="Dock", cost={"stone": 16, "wood": 8}, labour=8, perk="a watchtower over the lake",
+                    slots=[(29.5, 20.8), (10.5, 20.8)]),
+    "beehive": dict(site="Garden", cost={"wood": 5}, labour=2, perk="gives its owner 2 herbs every morning",
+                    slots=[(16.3, 3.6), (23.8, 3.6), (16.3, 5.2), (23.8, 5.2)]),
+    "mill":    dict(site="Garden", cost={"wood": 16, "stone": 12}, labour=8, perk="everyone bakes more bread",
+                    slots=[(26.3, 3.6)]),
+    "statue":  dict(site="Shrine", cost={"stone": 10}, labour=4, perk="honours the spirit of the lake",
+                    slots=[(33.6, 12.2), (37.8, 11.2)]),
+    "shed":    dict(site="Workshop", cost={"wood": 8, "stone": 4}, labour=3, perk="a storehouse",
+                    slots=[(14.5, 19.2), (12.8, 14.9)]),
 }
 
 CAST = {
-    "Mira": dict(age=34, job="the baker", color="#e0703a", hair="#5a2d1a",
+    "Mira": dict(age=34, dream="a windmill by the Garden, for finer flour", job="the baker", color="#e0703a", hair="#5a2d1a",
         traits="warm, nosy, superstitious, quick to laugh",
         goal="to win the midsummer fair's baking prize and to find out who keeps leaving wildflowers at your door",
         secret="you burned last year's prize loaf and blamed the oven",
         home="Bakery", feel={"Tobias": "reliable but grumpy", "Bram": "best gossip partner"}),
-    "Tobias": dict(age=58, job="the carpenter", color="#7b8f4a", hair="#b9b9b0",
+    "Tobias": dict(age=58, dream="the sailboat, at the Dock", job="the carpenter", color="#7b8f4a", hair="#b9b9b0",
         traits="gruff, proud, sentimental underneath, few words",
         goal="to finish the sailboat you began with your late brother before the midsummer fair",
         secret="you are the one leaving wildflowers at Mira's door and would die of embarrassment if anyone knew",
         home="Workshop", feel={"Mira": "admires her, tongue-tied", "Wren": "reckless but good hands"}),
-    "Isolde": dict(age=27, job="the librarian", color="#5b7fd1", hair="#22203a",
+    "Isolde": dict(age=27, dream="a house of your own with a quiet writing room", job="the librarian", color="#5b7fd1", hair="#22203a",
         traits="curious, anxious, bookish, dry wit",
         goal="to get someone to read your adventure manuscript and tell you honestly if it is good",
         secret="you write the anonymous adventure serials that everyone in the village reads",
         home="Library", feel={"Hesper": "fascinating, slightly frightening", "Bram": "too loud, kind"}),
-    "Bram": dict(age=41, job="the tavern keeper", color="#c9a227", hair="#2b1b10",
+    "Bram": dict(age=41, dream="a market stall on the Square to earn extra coins", job="the tavern keeper", color="#c9a227", hair="#2b1b10",
         traits="jovial, generous, a shameless gossip, worries in private",
         goal="to keep the Gilded Newt open through the season and pay off what you owe",
         secret="you owe a great deal of money to a merchant from the city who is due to visit",
         home="Tavern", feel={"Mira": "dear friend", "Tobias": "owes me a table repair"}),
-    "Wren": dict(age=19, job="the fisher", color="#3aa6a0", hair="#c4572e",
+    "Wren": dict(age=19, dream="a boat of your own", job="the fisher", color="#3aa6a0", hair="#c4572e",
         traits="restless, daring, kind, speaks before thinking",
         goal="to leave Emberwick and see the sea, though you feel guilty about leaving the village behind",
         secret="you saw something large move under the lake and told no one",
         home="Dock", feel={"Tobias": "like a stern uncle", "Hesper": "knows more than she says"}),
-    "Hesper": dict(age=73, job="the herbalist and shrine-keeper", color="#9a5fc0", hair="#e8e4da",
+    "Hesper": dict(age=73, dream="a statue of the lake spirit at the Shrine, and beehives in the Garden", job="the herbalist and shrine-keeper", color="#9a5fc0", hair="#e8e4da",
         traits="cryptic, sharp, mischievous, patient",
         goal="to find an apprentice worthy of the old knowledge before you grow too old",
         secret="you believe something ancient sleeps under the lake and that it is waking",
@@ -100,13 +129,33 @@ def log_event(**e):
     with db() as c:
         c.execute("INSERT INTO events (day, minute, data) VALUES (?,?,?)", (S["day"], S["minute"], json.dumps(e)))
 
+def new_inv(n):
+    inv = dict.fromkeys(ITEMS, 0)
+    inv["coins"] = 10
+    for k, v in START[n].items():
+        inv[k] += v
+    return inv
+
+def migrate():
+    """Bring a world saved by an older version up to date."""
+    S.setdefault("structures", [])
+    S.setdefault("voice", None)
+    S["news"] = S["news"].split(" Also: ")[0]
+    for n, a in S["agents"].items():
+        a.setdefault("inv", new_inv(n))
+        a.setdefault("offer", None)
+        if not isinstance(a.get("whisper"), dict):
+            a["whisper"] = None
+
 def new_world():
     first = "Last night several people saw a green light glowing under the lake. The midsummer fair is nine days away."
-    S.update(day=1, minute=WAKE, weather="morning mist", news=first, phase="day", chain=0, queue=[], agents={})
+    S.update(day=1, minute=WAKE, weather="morning mist", news=first, phase="day", chain=0, queue=[], agents={},
+             structures=[], voice=None)
     for n, c in CAST.items():
         S["agents"][n] = dict(place=c["home"], activity="starting the day", say="", say_to="", say_at=0,
                               thought="", mood="calm", memories=[f"News this morning: {first}"],
-                              today=[], reflections=[], feelings=dict(c["feel"]), pending=None, whisper="")
+                              today=[], reflections=[], feelings=dict(c["feel"]), pending=None, whisper=None,
+                              offer=None, inv=new_inv(n))
 
 def load():
     init_db()
@@ -114,6 +163,7 @@ def load():
         row = c.execute("SELECT v FROM kv WHERE k='state'").fetchone()
     if row:
         S.update(json.loads(row[0]))
+        migrate()
     else:
         new_world()
         log_event(kind="news", text=S["news"])
@@ -151,6 +201,7 @@ def persona(n):
     c = CAST[n]
     return (f"You are {n}, {c['age']}, {c['job']} of Emberwick, a small lakeside village. "
             f"Personality: {c['traits']}. Deep down you want {c['goal']}. Your secret: {c['secret']}. "
+            f"You dream of building {c['dream']}. Villagers gather materials, trade with each other and build things. "
             "Stay in character and speak in first person. Be concrete and specific. Move things forward: "
             "pursue what you want, react to news, seek people out; do not repeat what you already said or did. "
             "You are a person; never mention AI.")
@@ -171,8 +222,132 @@ def time_hint(m):
     if h < 21: return "It is evening; people gather at the Tavern or the Square."
     return "It is late; time to head to the Cottages to sleep."
 
+# ---------------------------------------------------------------- economy helpers
+def inv_text(inv):
+    return ", ".join(f"{q} {i}" for i, q in inv.items() if q) or "nothing"
+
+def sname(s):
+    return f"{s['owner']}'s {s['type']}"
+
+def has(owner, typ):
+    return any(s["done"] and s["type"] == typ and (owner is None or s["owner"] == owner) for s in S["structures"])
+
+def work_yield(n, place):
+    if place not in WORK:
+        return None, 0
+    item, base, specialist = WORK[place]
+    q = 3 if n == specialist else base
+    if q and place == "Dock" and has(n, "boat"): q += 1
+    if q and place == "Bakery" and has(None, "mill"): q += 1
+    return item, q
+
+def needs(s):
+    """What a structure still lacks: ({item: qty}, turns of work)."""
+    bp = BLUEPRINTS[s["type"]]
+    return ({i: c - s["have"].get(i, 0) for i, c in bp["cost"].items() if c > s["have"].get(i, 0)},
+            bp["labour"] - s["labour"])
+
+def needs_text(s):
+    mats, work = needs(s)
+    parts = [f"{q} {i}" for i, q in mats.items()] + ([f"{work} turns of work"] if work > 0 else [])
+    return ", ".join(parts)
+
+def do_build(n, typ, place):
+    bp, a = BLUEPRINTS[typ], S["agents"][n]
+    if place != bp["site"]:
+        remember(n, f"I wanted to build a {typ}, but that has to be done at the {bp['site']}.")
+        return ""
+    s = next((x for x in S["structures"] if x["type"] == typ and not x["done"]), None)
+    started = False
+    if not s:
+        used = [(x["x"], x["y"]) for x in S["structures"] if x["type"] == typ]
+        free = [p for p in bp["slots"] if tuple(p) not in [tuple(u) for u in used]]
+        if not free:
+            remember(n, f"There is no room left for another {typ}.")
+            return ""
+        s = dict(id=len(S["structures"]) + 1, type=typ, owner=n, site=place, x=free[0][0], y=free[0][1],
+                 have={}, labour=0, done=False, helpers=[], day=S["day"])
+        S["structures"].append(s)
+        started = True
+    mats, _ = needs(s)
+    gave = []
+    for item, q in mats.items():
+        k = min(q, a["inv"][item])
+        if k:
+            a["inv"][item] -= k
+            s["have"][item] = s["have"].get(item, 0) + k
+            gave.append(f"{k} {item}")
+    mats, work = needs(s)
+    if n != s["owner"] and n not in s["helpers"] and (gave or not mats):
+        s["helpers"].append(n)
+    if not mats and not gave:
+        s["labour"] += 1
+        work -= 1
+        if work <= 0:
+            s["done"], s["day"] = True, S["day"]
+            for o in S["agents"]:
+                remember(o, f"{sname(s)} at the {place} is finished!" if o != n else f"I finished building {sname(s)} at the {place}!")
+            return f"finished building {sname(s)}"
+        remember(n, f"I worked on {sname(s)}; {work} more turns of work to go.")
+        return f"worked on {sname(s)} ({work} turns of work left)"
+    left = needs_text(s)
+    if gave:
+        remember(n, f"I delivered {', '.join(gave)} to {sname(s)}. It still needs {left}.")
+        return ("started building a %s and " % typ if started else "") + f"delivered {', '.join(gave)} to {sname(s)} (still needs {left})"
+    remember(n, f"{'I staked out the site for my ' + typ if started else 'I had no materials for ' + sname(s)}. It needs {left}.")
+    return f"staked out a site for a {typ} (needs {left})" if started else ""
+
+def do_offer(n, to, r):
+    a = S["agents"][n]
+    gi, wi = r.get("give"), r.get("want")
+    try:
+        gq, wq = max(0, min(30, int(r.get("give_qty") or 0))), max(0, min(30, int(r.get("want_qty") or 0)))
+    except (TypeError, ValueError):
+        return ""
+    if not to:
+        remember(n, "I wanted to trade, but nobody was here.")
+        return ""
+    if gi not in ITEMS or gq < 1 or gi == wi:
+        return ""
+    if a["inv"][gi] < gq:
+        remember(n, f"I wanted to offer {gq} {gi}, but I only have {a['inv'][gi]}.")
+        return ""
+    b = S["agents"][to]
+    if wi not in ITEMS or wq < 1:
+        a["inv"][gi] -= gq
+        b["inv"][gi] += gq
+        remember(n, f"I gave {to} {gq} {gi}.")
+        remember(to, f"{n} gave me {gq} {gi}.")
+        return f"gave {to} {gq} {gi}"
+    b["offer"] = {"from": n, "give": gi, "give_qty": gq, "want": wi, "want_qty": wq}
+    b["pending"] = b["pending"] or {"from": n, "text": "I have an offer for you."}
+    remember(n, f"I offered {to} {gq} {gi} for {wq} {wi}.")
+    remember(to, f"{n} offered me {gq} {gi} for {wq} {wi}.")
+    return f"offered {to} {gq} {gi} for {wq} {wi}"
+
+def do_accept(n, o):
+    if not o:
+        return ""
+    a, b = S["agents"][n], S["agents"][o["from"]]
+    if a["place"] != b["place"]:
+        remember(n, f"{o['from']} had left before I could accept the trade.")
+        return ""
+    if b["inv"][o["give"]] < o["give_qty"] or a["inv"][o["want"]] < o["want_qty"]:
+        remember(n, f"The trade with {o['from']} fell through: I did not have {o['want_qty']} {o['want']}."
+                 if a["inv"][o["want"]] < o["want_qty"] else f"The trade with {o['from']} fell through.")
+        remember(o["from"], f"My trade with {n} fell through.")
+        return ""
+    b["inv"][o["give"]] -= o["give_qty"]; a["inv"][o["give"]] += o["give_qty"]
+    a["inv"][o["want"]] -= o["want_qty"]; b["inv"][o["want"]] += o["want_qty"]
+    remember(n, f"I traded {o['want_qty']} {o['want']} to {o['from']} for {o['give_qty']} {o['give']}.")
+    remember(o["from"], f"{n} accepted: I got {o['want_qty']} {o['want']} for {o['give_qty']} {o['give']}.")
+    return f"traded {o['want_qty']} {o['want']} to {o['from']} for {o['give_qty']} {o['give']}"
+
 # ---------------------------------------------------------------- a villager's turn
 def pick_agent():
+    called = [n for n, a in S["agents"].items() if a["whisper"]]
+    if called:
+        return called[0]
     waiting = [n for n, a in S["agents"].items() if a["pending"]]
     if waiting and S["chain"] < 3:
         S["chain"] += 1
@@ -191,36 +366,75 @@ def agent_turn():
         for o, oa in S["agents"].items():
             if o != n:
                 where.setdefault(oa["place"], []).append(o)
-        pending, whisper = a["pending"], a["whisper"]
+        pending, whisper, offer = a["pending"], a["whisper"], a["offer"]
+        mine = [s["type"] for s in S["structures"] if s["done"] and s["owner"] == n]
         u = [f"It is day {S['day']}, {hhmm(S['minute'])}. Weather: {S['weather']}. {time_hint(S['minute'])}",
              f"You are at the {a['place']} ({PLACES[a['place']][2]}), and were just {a['activity']}.",
              ("Here with you: " + "; ".join(f"{o} ({S['agents'][o]['activity']})" for o in here) + ".") if here
              else "Nobody else is here.",
              "Where the others are: " + "; ".join(f"{p}: {', '.join(v)}" for p, v in where.items()) + ".",
              f"Village news today: {S['news']}",
-             "Your recent memories:\n" + "\n".join("- " + m for m in a["memories"][-7:])]
+             "Your recent memories:\n" + "\n".join("- " + m for m in a["memories"][-6:])]
         if a["reflections"]:
             u.append("What you concluded on earlier nights:\n" + "\n".join("- " + r for r in a["reflections"][-2:]))
         if a["feelings"]:
             u.append("How you feel about people: " + "; ".join(f"{k}: {v}" for k, v in a["feelings"].items()) + ".")
+        u.append(f"You carry: {inv_text(a['inv'])}." + (f" You own: {', '.join(mine)}." if mine else "")
+                 + " You must have bread or fish to eat each night.")
+        item, q = work_yield(n, a["place"])
+        actions = ["none"]
+        if q:
+            u.append(f'Action "work" here gives you {q} {item}.')
+            actions.append("work")
+        u.append("Where things come from: wood at the Woods, stone at the Quarry, fish at the Dock, herbs at the "
+                 "Garden, bread at the Bakery, ale at the Tavern.")
+        open_ = [s for s in S["structures"] if not s["done"]]
+        if open_:
+            u.append("Being built: " + "; ".join(f"{sname(s)} at the {s['site']} (still needs {needs_text(s)})" for s in open_)
+                     + ". Anyone can help.")
+        can = []
+        for t, bp in BLUEPRINTS.items():
+            if any(s["type"] == t and not s["done"] for s in S["structures"]) or \
+               sum(s["type"] == t for s in S["structures"]) < len(bp["slots"]):
+                cost = " + ".join(f"{c} {i}" for i, c in bp["cost"].items())
+                can.append(f"{t} at the {bp['site']} ({cost}; {bp['perk']})")
+                if bp["site"] == a["place"]:
+                    actions.append("build_" + t)
+        u.append("Things that can be built: " + "; ".join(can) + ". To build, go to the site and use the build action "
+                 "there: it first delivers the materials you carry, then each use does one turn of work.")
+        if here:
+            u.append('To trade with someone here use action "offer": you give give_qty of give, and ask want_qty of want '
+                     '(want "nothing" makes it a gift).')
+            actions.append("offer")
+        if offer:
+            u.append(f'{offer["from"]} offers you {offer["give_qty"]} {offer["give"]} in exchange for '
+                     f'{offer["want_qty"]} {offer["want"]}. Use action "accept" or "decline".')
+            actions += ["accept", "decline"]
         if pending and pending["from"] in here:
-            u.append(f'{pending["from"]} just said to you: "{pending["text"]}" Answer them.')
-        if whisper:
-            u.append(f'A sudden, strangely vivid thought enters your mind, as if whispered: "{whisper}" You feel compelled to act on it.')
+            u.append(f'{pending["from"]} just said to you: "{pending["text"]}" Answer them in your own words.')
+        if whisper and whisper.get("all"):
+            u.append(f'A great voice from the sky just boomed over the whole village: "{whisper["text"]}" '
+                     "Everyone heard it. React to it now, out loud.")
+        elif whisper:
+            u.append(f'A sudden, strangely vivid thought enters your mind, as if whispered: "{whisper["text"]}" '
+                     "You feel compelled to act on it now and to say something about it out loud.")
         u.append("Decide what you do in the next few minutes. Answer in JSON: "
-                 '"thought" = one private sentence; "go_to" = a place name to walk there, or "stay"; '
-                 '"activity" = 3 to 8 words for what you are doing, like "kneading rye dough"; '
-                 '"say" = one or two sentences you say out loud to someone here, or "" to stay quiet; '
-                 '"mood" = one word.')
-        schema = obj({"thought": STR, "go_to": {"type": "string", "enum": ["stay"] + list(PLACES)},
-                      "activity": STR, "say": STR, "mood": STR})
+                 '"thought" = one private sentence; "say" = one or two sentences you say out loud, or "" to stay quiet; '
+                 f'"action" = one of: {", ".join(actions)}; '
+                 '"give", "give_qty", "want", "want_qty" = only for action "offer", otherwise "nothing" and 0; '
+                 '"go_to" = a place to walk to afterwards, or "stay"; '
+                 '"activity" = 3 to 8 words for what you are doing, like "kneading rye dough"; "mood" = one word.')
+        thing = {"type": "string", "enum": ["nothing"] + ITEMS}
+        schema = obj({"thought": STR, "say": STR, "action": {"type": "string", "enum": actions},
+                      "give": thing, "give_qty": {"type": "integer"}, "want": thing, "want_qty": {"type": "integer"},
+                      "go_to": {"type": "string", "enum": ["stay"] + list(PLACES)}, "activity": STR, "mood": STR})
         system, user = persona(n), "\n".join(u)
 
-    r = chat(ACTOR, system, user, schema, keep_alive=-1)
+    r = chat(ACTOR, system, user, schema, keep_alive=-1, num_predict=220)
 
     with lock:
         a = S["agents"][n]
-        a["pending"], a["whisper"] = None, ""
+        a["pending"], a["whisper"], a["offer"] = None, None, None
         old = a["place"]
         here = [o for o in S["agents"] if o != n and S["agents"][o]["place"] == old]
         say = clip(r.get("say"), 240)
@@ -229,24 +443,43 @@ def agent_turn():
         if a["activity"][:1].isupper() and not a["activity"].startswith("I "):
             a["activity"] = a["activity"][0].lower() + a["activity"][1:]
         to = ""
-        if say and here:
+        if here:
             to = pending["from"] if pending and pending["from"] in here else random.choice(here)
+        if say and to:
             remember(n, f'At the {old} I said to {to}: "{say}"')
             for o in here:
                 remember(o, f'At the {old}, {n} said to {"me" if o == to else to}: "{say}"')
             S["agents"][to]["pending"] = {"from": n, "text": say}
-        elif not here:
-            say = ""
+        elif say:
+            remember(n, f'Alone at the {old} I said aloud: "{say}"')
         a["say"], a["say_to"], a["say_at"] = say, to, time.time() if say else a["say_at"]
+
+        act, did = str(r.get("action") or "none"), ""
+        if act == "work":
+            item, q = work_yield(n, old)
+            if q:
+                a["inv"][item] += q
+                did = f"{'earned' if item == 'coins' else 'got'} {q} {item} working at the {old}"
+                remember(n, f"I worked at the {old} and got {q} {item}.")
+        elif act.startswith("build_") and act[6:] in BLUEPRINTS:
+            did = do_build(n, act[6:], old)
+        elif act == "offer":
+            did = do_offer(n, to, r)
+        elif act == "accept":
+            did = do_accept(n, offer)
+        elif act == "decline" and offer:
+            remember(offer["from"], f"{n} declined my offer.")
+            did = f"declined {offer['from']}'s offer"
+
         go = r.get("go_to")
         moved = go in PLACES and go != old
         if moved:
             a["place"] = go
             remember(n, f"I left the {old} and walked to the {go}.")
-        elif not say:
+        elif not say and not did:
             remember(n, f"At the {old} I was {a['activity']}.")
         log_event(kind="turn", who=n, place=old, to_place=go if moved else "", activity=a["activity"],
-                  say=say, to=to, thought=a["thought"], mood=a["mood"])
+                  say=say, to=to, thought=a["thought"], mood=a["mood"], did=did)
         S["minute"] += MINUTES_PER_TURN
         save()
 
@@ -258,6 +491,13 @@ def night():
         for a in S["agents"].values():
             a.update(place="Cottages", activity="sleeping", say="", pending=None)
         log_event(kind="night", text="Night falls over Emberwick. The villagers go home to sleep.")
+        for n, a in S["agents"].items():
+            food = next((f for f in ("bread", "fish") if a["inv"][f] > 0), None)
+            if food:
+                a["inv"][food] -= 1
+                remember(n, f"I ate {food} for supper.")
+            else:
+                remember(n, "I had nothing to eat and went to bed hungry. Tomorrow I must get bread or fish.")
         save()
         day, weather, news = S["day"], S["weather"], S["news"]
 
@@ -292,6 +532,8 @@ def night():
     said = [e for e in rows if e.get("kind") == "turn" and e.get("say")]
     step = max(1, len(said) // 28)
     lines = [f'- {hhmm(e["minute"])} {e["place"]}, {e["who"]} to {e["to"]}: "{clip(e["say"], 150)}"' for e in said[::step]]
+    deeds = [f'- {e["who"]} {e["did"]}' for e in rows if e.get("kind") == "turn" and e.get("did")]
+    deeds = [d for d in deeds if "build" in d or "traded" in d or "gave" in d][-14:] or deeds[-8:]
     with lock:
         refl = [f"- {n} ({CAST[n]['job']}): {S['agents'][n]['reflections'][-1] if S['agents'][n]['reflections'] else '…'}"
                 for n in CAST]
@@ -299,6 +541,7 @@ def night():
               "chronicle in the past tense, like a storybook narrator who knows everyone's business.")
     user = (f"Day {day}. Weather: {weather}. News that morning: {news}\n"
             "What each villager concluded at day's end:\n" + "\n".join(refl) +
+            "\nDeeds of the day (work, trade, building):\n" + ("\n".join(deeds) or "- nothing of note") +
             "\nThings said during the day:\n" + "\n".join(lines) +
             '\nAnswer in JSON: "title" = 3 to 6 words; "chronicle" = 120 to 170 words in at most two paragraphs, '
             'naming names and quoting at most one line; "omen" = ONE sentence stating a small, concrete, surprising '
@@ -323,8 +566,13 @@ def night():
         S.update(day=day + 1, minute=WAKE, weather=random.choice(WEATHER), news=omen, phase="day", chain=0)
         log_event(kind="chronicle", text=f"Day {day}: {title}")
         log_event(kind="news", text=omen)
+        for s_ in S["structures"]:
+            if s_["done"] and s_["type"] == "stall":
+                S["agents"][s_["owner"]]["inv"]["coins"] += 3
+            if s_["done"] and s_["type"] == "beehive":
+                S["agents"][s_["owner"]]["inv"]["herbs"] += 2
         for n, a in S["agents"].items():
-            a.update(today=[], pending=None, activity="waking up", mood="rested")
+            a.update(today=[], pending=None, offer=None, activity="waking up", mood="rested")
             remember(n, f"News this morning (day {S['day']}): {omen}")
         save()
 
@@ -358,9 +606,18 @@ def state_json():
         agents = [dict(name=n, job=CAST[n]["job"], color=CAST[n]["color"], hair=CAST[n]["hair"], age=CAST[n]["age"],
                        traits=CAST[n]["traits"], place=a["place"], activity=a["activity"], say=a["say"],
                        say_to=a["say_to"], say_at=a["say_at"], thought=a["thought"], mood=a["mood"],
-                       feelings=a["feelings"], reflection=(a["reflections"] or [""])[-1])
+                       feelings=a["feelings"], reflection=(a["reflections"] or [""])[-1], inv=a["inv"],
+                       owns=[s["type"] for s in S["structures"] if s["done"] and s["owner"] == n])
                   for n, a in S["agents"].items()]
-        return json.dumps(dict(now=time.time(), day=S["day"], minute=S["minute"], weather=S["weather"],
+        structs = []
+        for s in S["structures"]:
+            bp = BLUEPRINTS[s["type"]]
+            total = sum(bp["cost"].values()) + bp["labour"]
+            got = sum(min(s["have"].get(i, 0), c) for i, c in bp["cost"].items()) + s["labour"]
+            structs.append(dict(id=s["id"], type=s["type"], owner=s["owner"], site=s["site"], x=s["x"], y=s["y"],
+                                done=s["done"], helpers=s["helpers"], day=s["day"], perk=bp["perk"],
+                                progress=round(got / total, 3), needs="" if s["done"] else needs_text(s)))
+        return json.dumps(dict(now=time.time(), structures=structs, voice=S.get("voice"), day=S["day"], minute=S["minute"], weather=S["weather"],
                                news=S["news"], phase=S["phase"], status=status, agents=agents,
                                places={k: v[:2] for k, v in PLACES.items()}, events=ev[::-1], chronicle=chron,
                                models=dict(actor=ACTOR, narrator=NARRATOR)))
@@ -399,15 +656,18 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return self.send(400, '{"error":"bad request"}')
         with lock:
+            if S["phase"] == "night":
+                return self.send(200, '{"ok":false,"note":"Everyone is asleep. Try again in the morning."}')
             if to in S["agents"]:
-                S["agents"][to]["whisper"] = text
+                S["agents"][to]["whisper"] = {"text": text}
                 remember(to, f'A strange thought came to me as if whispered: "{text}"')
                 log_event(kind="whisper", who=to, text=text)
             else:
-                S["news"] = clip(S["news"] + " Also: " + text, 600)
-                for name in S["agents"]:
-                    remember(name, f"News went around the village: {text}")
-                log_event(kind="news", text=text)
+                S["voice"] = {"text": text, "at": time.time()}
+                for name, a in S["agents"].items():
+                    a["whisper"] = {"text": text, "all": True}
+                    remember(name, f'A great voice from the sky boomed over the village: "{text}"')
+                log_event(kind="voice", text=text)
             save()
         self.send(200, '{"ok":true}')
 

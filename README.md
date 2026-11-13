@@ -7,6 +7,13 @@ chronicle of the day and invents the twist that greets the village next morning.
 
 Open it in a browser, watch, and whisper thoughts into their heads.
 
+They also have an economy. Each villager carries coins and goods, gathers wood at
+the Woods, stone at the Quarry and food at their workplace, trades with whoever
+is standing next to them, and must eat every night. With enough materials and
+work they build things that appear on the map: houses, market stalls, boats,
+beehives, a windmill, statues, sheds and watchtowers. Some of these pay off, for
+example a stall earns its owner coins every morning.
+
 - **No dependencies**: one Python file (standard library only) and one HTML file.
 - **Runs on CPU**: built on a 4-core i7 with a 1 GB model at about 22 tokens/s.
 - **Persistent**: the world lives in a SQLite file and keeps going while you are away.
