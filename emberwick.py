@@ -175,6 +175,10 @@ def migrate():
         a.setdefault("inv", new_inv(n))
         a.setdefault("offer", None)
         a.setdefault("plan", [])
+        if a["plan"] and "plan_at" not in a:
+            a["plan"] = []                # counsel from before plans could expire is stale by now
+        a.setdefault("plan_at", 0)
+        a.setdefault("plan_work", 0)
         a.setdefault("self", "")
         if not isinstance(a.get("whisper"), dict):
             a["whisper"] = None
@@ -305,6 +309,58 @@ def work_yield(n, place):
     if q and place == "Dock" and has(n, "boat"): q += 1
     if q and place == "Bakery" and has(None, "mill"): q += 1
     return item, q
+
+def has_room(typ):
+    """Can a build_<typ> still go somewhere: an unfinished one to work on, or a free slot?"""
+    return any(s["type"] == typ and not s["done"] for s in S["structures"]) or \
+        sum(s["type"] == typ for s in S["structures"]) < len(BLUEPRINTS[typ]["slots"])
+
+# ---------------------------------------------------------------- Oracle plans: steps fall away once done, plans expire
+PLAN_LIFE = 1440                  # village minutes a plan stays in a villager's head
+
+def village_minutes():
+    return S["day"] * 1440 + S["minute"]
+
+def set_plan(a, plan):
+    a["plan"], a["plan_new"], a["plan_at"], a["plan_work"] = plan, True, village_minutes(), 0
+
+def step_done(a, step, act, did):
+    """Is this plan step carried out (or impossible), judging by where the villager is and what they just did?"""
+    low = step.lower()
+    m = re.search(r"build_(\w+)", low)
+    if m:
+        typ = m.group(1)
+        return did.startswith("finished building") or typ not in BLUEPRINTS or not has_room(typ)
+    if re.search(r"\boffer\b", low):
+        return did.startswith(("offered", "traded", "gave"))
+    m = re.search(r"\bwork\b(?:\s+(\d+|once|twice))?", low)
+    if m and ("action work" in low or m.group(1)):
+        want = {"once": 1, "twice": 2}.get(m.group(1) or "", None) or int(m.group(1) or 1)
+        if act == "work" and did:
+            a["plan_work"] += 1
+        if a["plan_work"] >= want:
+            a["plan_work"] = 0
+            return True
+        return False
+    m = re.match(r"walk to (?:the )?(\w+)", low)
+    if m:
+        return a["place"].lower() == m.group(1)
+    return False
+
+def advance_plan(n, act, did):
+    a = S["agents"][n]
+    if not a["plan"]:
+        return
+    if village_minutes() - a.get("plan_at", 0) >= PLAN_LIFE:
+        a["plan"] = []
+        remember(n, "The Oracle's old counsel has faded from my mind; I will decide for myself.")
+        return
+    while a["plan"] and step_done(a, a["plan"][0], act, did):
+        step = a["plan"].pop(0)
+        if not re.match(r"walk to", step, re.I):
+            act, did = "", ""             # one action satisfies at most one doing-step; walks can chain
+        if not a["plan"]:
+            remember(n, "I have carried out all of the Oracle's counsel.")
 
 def needs(s):
     """What a structure still lacks: ({item: qty}, turns of work)."""
@@ -478,7 +534,8 @@ def oracle_world(n, question):
          "one turn of work. Anyone may contribute to anyone's project.",
          "Blueprints: " + "; ".join(
              f"build_{t} at {bp['site']}: " + " + ".join(f"{c} {i}" for i, c in bp["cost"].items())
-             + f", {bp['labour']} turns of work ({bp['perk']})" for t, bp in BLUEPRINTS.items()) + ".",
+             + f", {bp['labour']} turns of work ({bp['perk']})" + ("" if has_room(t) else " — NO ROOM LEFT, cannot be built")
+             for t, bp in BLUEPRINTS.items()) + ".",
          "", "STRUCTURES"]
     L += [f"- {sname(s)} at {s['site']}: " + ("finished" if s["done"] else "needs " + needs_text(s))
           for s in S["structures"]] or ["- none yet"]
@@ -637,8 +694,7 @@ def oracle_consult(n, question):
         return
     with lock:
         a = S["agents"][n]
-        a["plan"] = plan
-        a["plan_new"] = True
+        set_plan(a, plan)
         remember(n, f'I asked the Oracle: "{clip(question, 160)}" It said: "{speech}"')
         remember(n, f"The Oracle's answer: {clip(answer, 420)}")
         S["oracle"].update(speech=speech, at=time.time(), model=model)
@@ -732,7 +788,7 @@ def steward_pass():
     with lock:
         a = S["agents"][n]
         if plan:
-            a["plan"], a["plan_new"] = plan, True
+            set_plan(a, plan)
         remember(n, f'I dreamed the Oracle spoke to me about this: "{clip(question, 160)}" It said: "{speech}"')
         remember(n, f"The Oracle's counsel in my dream: {clip(answer, 420)}")
         with db() as c:
@@ -813,8 +869,7 @@ def agent_turn():
                      + ". Anyone can help.")
         can = []
         for t, bp in BLUEPRINTS.items():
-            if any(s["type"] == t and not s["done"] for s in S["structures"]) or \
-               sum(s["type"] == t for s in S["structures"]) < len(bp["slots"]):
+            if has_room(t):
                 cost = " + ".join(f"{c} {i}" for i, c in bp["cost"].items())
                 can.append(f"{t} at the {bp['site']} ({cost}; {bp['perk']})")
                 if bp["site"] == a["place"]:
@@ -932,6 +987,7 @@ def agent_turn():
             remember(n, f"I left the {old} and walked to the {go}.")
         elif not say and not did:
             remember(n, f"At the {old} I was {a['activity']}.")
+        advance_plan(n, act, did)
         log_event(kind="turn", who=n, place=old, to_place=go if moved else "", activity=a["activity"],
                   say=say, to=to, thought=a["thought"], mood=a["mood"], did=did, deep=deep)
         if prayer:
