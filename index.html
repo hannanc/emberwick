@@ -269,6 +269,8 @@ const PLACE_NAME = { Tavern: 'The Gilded Newt', Shrine: 'Old Oak Shrine' };
 let st = null, selected = null, hover = null, skew = 0, filter = 'all', scenery = null, pathPts = {};
 const pos = {};               // name -> {x, y, route:[[x,y]...], place, walking}
 const windows = [];           // static window / lamp lights in world px
+const chimneys = [];          // static chimney tops in world px [x, y]; moving ones are collected per frame in smokes
+let smokes = [], millAng = 0, millSp = .77;
 
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function hash(s) { let h = 7; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 2654435761); return h >>> 0; }
@@ -344,7 +346,7 @@ function house(g, x, y, w, h, wall, roof, o = {}) {
   const lg = g.createLinearGradient(X - w2, 0, X + w2, 0); lg.addColorStop(0, 'rgba(255,255,255,.10)'); lg.addColorStop(1, 'rgba(0,0,0,.16)');
   g.fillStyle = lg; g.fillRect(X - w2, Y - hh, w2 * 2, hh);
   g.fillStyle = 'rgba(0,0,0,.2)'; g.fillRect(X - w2, Y - 4, w2 * 2, 4); g.fillRect(X - w2, Y - hh, w2 * 2, 7);
-  if (o.chimney) { const cx = X + w2 * 0.45; g.fillStyle = '#6b5a50'; g.fillRect(cx, Y - hh - T * 1.25, 11, T * 0.95); g.fillStyle = '#4f423a'; g.fillRect(cx - 2, Y - hh - T * 1.25, 15, 4); }
+  if (o.chimney) { const cx = X + w2 * 0.45; g.fillStyle = '#6b5a50'; g.fillRect(cx, Y - hh - T * 1.25, 11, T * 0.95); g.fillStyle = '#4f423a'; g.fillRect(cx - 2, Y - hh - T * 1.25, 15, 4); (o.chim || chimneys).push([cx + 5.5, Y - hh - T * 1.25 - 2]); }
   g.fillStyle = roof; g.beginPath(); g.moveTo(X - w2 - 8, Y - hh); g.lineTo(X, Y - hh - pitch); g.lineTo(X + w2 + 8, Y - hh); g.closePath(); g.fill();
   g.fillStyle = 'rgba(255,255,255,.12)'; g.beginPath(); g.moveTo(X - w2 - 8, Y - hh); g.lineTo(X, Y - hh - pitch); g.lineTo(X, Y - hh); g.closePath(); g.fill();
   g.fillStyle = 'rgba(0,0,0,.12)'; g.beginPath(); g.moveTo(X, Y - hh - pitch); g.lineTo(X + w2 + 8, Y - hh); g.lineTo(X, Y - hh); g.closePath(); g.fill();
@@ -386,7 +388,7 @@ function buildScenery() {
   const s = document.createElement('canvas'); s.width = Math.round((WW + 2 * M) * SS); s.height = Math.round((WH + 2 * M) * SS);
   const g = s.getContext('2d'), r = rng(7);
   g.setTransform(SS, 0, 0, SS, M * SS, M * SS);
-  windows.length = 0;
+  windows.length = 0; chimneys.length = 0;
   // ground: two octaves of soft colour noise, upscaled smoothly so no tile grid shows
   for (const [cell, alpha] of [[56, 1], [18, .45]]) {
     const n = document.createElement('canvas'), nw = Math.ceil((WW + 2 * M) / cell) + 1, nh = Math.ceil((WH + 2 * M) / cell) + 1; n.width = nw; n.height = nh;
@@ -669,13 +671,14 @@ function drawStruct(s, t, wins) {
     g.fillStyle = s.repair ? '#d9604a' : '#e8bd5f'; g.beginPath(); g.roundRect(X - 25, Y + 8, Math.max(4, 50 * s.progress), 7, 3.5); g.fill();
     return;
   }
-  if (s.type === 'house') house(g, s.x, s.y, 2.4, 1.3, '#e6d6b2', c, { win: [0.55], pitch: 0.95, wins });
+  if (s.type === 'house') house(g, s.x, s.y, 2.4, 1.3, '#e6d6b2', c, { win: [0.55], pitch: 0.95, wins, chimney: 1, chim: smokes });
   else if (s.type === 'shed') house(g, s.x, s.y, 2, 1, '#9c7648', '#5a4030', { win: [], pitch: 0.7, wins });
   else if (s.type === 'stall') {
     shadow(g, X, Y + 2, 30, 7);
     g.fillStyle = '#6a4a2e'; g.fillRect(X - 26, Y - 40, 4, 40); g.fillRect(X + 22, Y - 40, 4, 40);
     g.fillStyle = '#a2794a'; g.fillRect(X - 28, Y - 18, 56, 12);
-    for (let i = 0; i < 6; i++) { g.fillStyle = i % 2 ? '#f4efe2' : c; g.beginPath(); g.roundRect(X - 30 + i * 10, Y - 50, 10, 14, [0, 0, 5, 5]); g.fill(); }
+    for (let i = 0; i < 6; i++) { const fl = REDUCE ? 0 : Math.sin(t / 420 + i * .9 + s.x) * (/windy|storm/.test(st.weather) ? 2.6 : .9); g.fillStyle = i % 2 ? '#f4efe2' : c; g.beginPath(); g.roundRect(X - 30 + i * 10, Y - 50, 10, 14 + fl, [0, 0, 5, 5]); g.fill(); }   // awning flutters
+    g.fillStyle = '#c98a45'; g.strokeStyle = 'rgba(60,35,15,.5)'; g.lineWidth = .8; for (const dx of [-24, 24]) { g.beginPath(); g.ellipse(X + dx, Y - 20, 4.4, 2.6, 0, 0, 7); g.fill(); g.stroke(); }   // loaves at the ends of the counter
     for (let i = 0; i < 4; i++) { g.fillStyle = ['#e0a23a', '#c0392b', '#6fbf5a', '#f4e36b'][i]; g.beginPath(); g.arc(X - 18 + i * 12, Y - 21, 4, 0, 7); g.fill(); }
   } else if (s.type === 'boat') {
     const b = REDUCE ? 0 : Math.sin(t / 1100 + s.id) * 1.5, rk = REDUCE ? 0 : Math.sin(t / 1500 + s.id * 2) * .03;
@@ -691,24 +694,27 @@ function drawStruct(s, t, wins) {
     g.fillStyle = '#8e9297'; g.fillRect(X - 13, Y - 86, 26, 86); g.fillStyle = '#74787d'; g.fillRect(X + 4, Y - 86, 9, 86);
     g.fillStyle = '#6f7378'; for (let i = 0; i < 3; i++) g.fillRect(X - 17 + i * 13, Y - 98, 8, 12); g.fillRect(X - 17, Y - 88, 34, 6);
     g.fillStyle = '#31475c'; g.fillRect(X - 5, Y - 72, 10, 12); wins.push([X, Y - 66]);
-    g.fillStyle = c; g.beginPath(); g.moveTo(X, Y - 118); g.lineTo(X + 18, Y - 112); g.lineTo(X, Y - 106); g.fill(); g.fillRect(X - 1, Y - 118, 2, 22);
+    g.fillStyle = '#4a3222'; g.fillRect(X - 1, Y - 119, 2, 23);
+    { const am = REDUCE ? 0 : /windy|storm/.test(st.weather) ? 1.9 : 1, ph = t / 230 + s.x, top = [], bot = []; g.fillStyle = c;   // a flag whose cloth ripples in the wind
+      for (let k = 0; k <= 6; k++) { const u = k / 6, wv = Math.sin(ph - k * .9) * am * 3 * u; top.push([X + 1 + u * 19, Y - 118 + wv + u * 3]); bot.push([X + 1 + u * 19, Y - 106 + wv - u * 3]); }
+      g.beginPath(); top.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); bot.reverse().forEach(([x, y]) => g.lineTo(x, y)); g.closePath(); g.fill(); }
   } else if (s.type === 'beehive') {
     for (const dx of [-12, 10]) { shadow(g, X + dx, Y + 1, 11, 4); for (let i = 0; i < 3; i++) { g.fillStyle = i % 2 ? '#c9952c' : '#e3b23c'; g.beginPath(); g.ellipse(X + dx, Y - 5 - i * 6, 10 - i * 2, 5, 0, 0, 7); g.fill(); } }
-    for (let i = 0; i < 4; i++) { g.fillStyle = '#2b2410'; g.fillRect(X + Math.sin(t / 300 + i * 2) * 16, Y - 22 + Math.cos(t / 240 + i) * 8, 2, 2); }
+    if (st.phase !== 'night') for (let i = 0; i < 5; i++) { const bt = REDUCE ? 1000 : t, bx = X + Math.sin(bt / 300 + i * 2) * 18, by = Y - 22 + Math.cos(bt / 240 + i * 1.3) * 9; g.fillStyle = 'rgba(255,255,255,.6)'; g.beginPath(); g.ellipse(bx - .5, by - 2, 1.6, 1.1, Math.sin(bt / 40 + i) * .6, 0, 7); g.fill(); g.fillStyle = '#2b2410'; g.beginPath(); g.ellipse(bx, by, 2.1, 1.4, 0, 0, 7); g.fill(); g.fillStyle = '#e3b23c'; g.fillRect(bx - .4, by - 1.2, .9, 2.4); }
   } else if (s.type === 'mill') {
     shadow(g, X, Y + 2, 30, 8);
     g.fillStyle = '#d8ccb0'; g.beginPath(); g.moveTo(X - 24, Y); g.lineTo(X - 14, Y - 74); g.lineTo(X + 14, Y - 74); g.lineTo(X + 24, Y); g.closePath(); g.fill();
     g.fillStyle = 'rgba(0,0,0,.12)'; g.beginPath(); g.moveTo(X, Y); g.lineTo(X, Y - 74); g.lineTo(X + 14, Y - 74); g.lineTo(X + 24, Y); g.closePath(); g.fill();
     g.fillStyle = c; g.beginPath(); g.moveTo(X - 18, Y - 74); g.lineTo(X, Y - 96); g.lineTo(X + 18, Y - 74); g.fill();
     g.fillStyle = '#4a3222'; g.fillRect(X - 6, Y - 20, 12, 20); wins.push([X, Y - 44]); g.fillStyle = '#31475c'; g.fillRect(X - 6, Y - 50, 12, 12);
-    g.save(); g.translate(X, Y - 70); g.rotate(REDUCE ? 0.4 : t / (/windy/.test(st.weather) ? 500 : 1300));
+    g.save(); g.translate(X, Y - 70); g.rotate(millAng);
     for (let i = 0; i < 4; i++) { g.rotate(Math.PI / 2); g.fillStyle = '#5a4030'; g.fillRect(-2, 0, 4, 50); g.fillStyle = 'rgba(244,239,226,.92)'; g.fillRect(2, 10, 13, 38); }
     g.restore(); g.fillStyle = '#4a3222'; g.beginPath(); g.arc(X, Y - 70, 5, 0, 7); g.fill();
   } else if (s.type === 'farm') {
     g.fillStyle = '#7a5a34'; g.beginPath(); g.roundRect(X - 46, Y - 30, 92, 34, 6); g.fill();
     for (let i = 0; i < 5; i++) {
       g.fillStyle = '#5e4428'; g.fillRect(X - 42, Y - 26 + i * 6.5, 84, 3);
-      for (let j = 0; j < 14; j++) { const sway = Math.sin(t / 700 + j * 0.6 + i) * 1.2; g.strokeStyle = (i + j) % 3 ? '#e2c25a' : '#c9a83e'; g.lineWidth = 1.6;
+      for (let j = 0; j < 14; j++) { const sway = Math.sin(t / 700 + j * 0.6 + i) * (/windy|storm/.test(st.weather) ? 2.4 : 1.2), rp = .3 + (s.id * 37 % 70) / 100 + (st.minute > 1020 ? .05 : 0); g.strokeStyle = `hsl(${lerp(100, 46, Math.min(1, rp))} ${(i + j) % 3 ? 62 : 58}% ${(i + j) % 3 ? 52 : 44}%)`; g.lineWidth = 1.6;   // greener when young, golden when ripe
         g.beginPath(); g.moveTo(X - 40 + j * 6, Y - 24 + i * 6.5); g.lineTo(X - 40 + j * 6 + sway, Y - 31 + i * 6.5); g.stroke(); }
     }
     g.fillStyle = '#5a4030'; g.fillRect(X + 34, Y - 52, 3, 30); g.fillRect(X + 26, Y - 44, 19, 3);   // scarecrow in the owner's colour
@@ -828,6 +834,9 @@ function drawOverlay(t, asleep, order) {
 }
 
 // ================================================================ frame
+function smoke(x, y, t, seed, wind, k = 1) {   // a curl of chimney smoke: five puffs rising and fading
+  for (let i = 0; i < 5; i++) { const q = ((REDUCE ? .4 : t / 2400) + i / 5 + seed * .37) % 1, drift = wind ? q * 40 : Math.sin(q * 5 + i + seed) * 6; ctx.fillStyle = `rgba(232,232,232,${.38 * k * (1 - q)})`; ctx.beginPath(); ctx.arc(x + drift, y - q * 46, 5 + q * 9, 0, 7); ctx.fill(); }
+}
 let mistTex = null, vigKey = '', vigGr = null;
 function mistSprite() {   // one soft, wide, flat blob drawn once; the mist bands are scaled copies of it
   if (mistTex) return mistTex;
@@ -850,6 +859,8 @@ function frame(t) {
     }
     if (cam.follow && selected && pos[selected]) { cam.tx = pos[selected].x * T; cam.ty = pos[selected].y * T - 20; clampT(); }
     const k = 1 - Math.pow(0.0004, dt); cam.x = lerp(cam.x, cam.tx, k); cam.y = lerp(cam.y, cam.ty, k); cam.z = lerp(cam.z, cam.tz, k);
+    { const tgt = REDUCE || st.phase === 'night' ? 0 : /storm/.test(st.weather) ? 2.6 : /windy/.test(st.weather) ? 2 : /rain/.test(st.weather) ? .5 : .77;   // sails turn faster in wind and stop at night
+      millSp = lerp(millSp, tgt, 1 - Math.pow(.2, dt)); millAng = FROZEN != null ? FROZEN / 1300 : REDUCE ? .4 : millAng + millSp * dt; }
     const z = cam.z, w = st.weather, S = sky(st.minute, w), rain = /rain|storm/.test(w), wind = /windy|storm/.test(w);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#16241a'; ctx.fillRect(0, 0, cv.width, cv.height);
@@ -896,13 +907,25 @@ function frame(t) {
       const ph = ((t / 1400) + i * 0.37) % 1, r2 = rng(i * 31 + Math.floor((t / 1400) + i * 0.37)), x = (6 + r2() * 28) * T, y = (20.6 + r2() * 4) * T;
       if (!inLake(x / T, y / T)) continue; ctx.strokeStyle = `rgba(220,235,255,${.45 * (1 - ph)})`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.ellipse(x, y, 2 + ph * 12, 1 + ph * 4, 0, 0, 7); ctx.stroke();
     }
-    const [bx, by] = st.places.Bakery;                                                                 // chimney smoke
-    for (let i = 0; i < 5; i++) { const q = ((t / 2400) + i / 5) % 1, drift = wind ? q * 40 : Math.sin(q * 5 + i) * 6; ctx.fillStyle = `rgba(232,232,232,${.38 * (1 - q)})`; ctx.beginPath(); ctx.arc((bx + 0.92) * T + 5 + drift, (by - 3.1) * T - q * 46, 5 + q * 9, 0, 7); ctx.fill(); }
 
     const order = st.agents.slice().sort((a, b) => pos[a.name].y - pos[b.name].y), wins = [], things = [];
     for (const s of st.structures) things.push([s.y, () => drawStruct(s, t, wins)]);
     if (!asleep) for (const a of order) things.push([pos[a.name].y, () => person(a, pos[a.name], t)]);
-    things.sort((a, b) => a[0] - b[0]).forEach(d => d[1]());
+    smokes.length = 0; things.sort((a, b) => a[0] - b[0]).forEach(d => d[1]());
+    const hr0 = st.minute / 60, hearth = hr0 >= 5 && hr0 < 9.5 || hr0 >= 17 && hr0 < 22.5, calm = !/storm|steady/.test(w);   // chimneys: bakery and tavern always, houses at breakfast and supper
+    chimneys.forEach(([x, y], i) => smoke(x, y, t, i, wind)); if (hearth && calm) smokes.forEach(([x, y], i) => smoke(x, y, t, i + 3, wind, .8));
+    if (S.light < .3 && !rain && hr0 >= 7 && hr0 < 19) {                                               // butterflies over the Garden and Meadow, birds crossing at midday
+      const cols = ['#f2c14e', '#e98bb0', '#8fb8f0', '#f6f2ea', '#c58cf0'];
+      for (let i = 0; i < 6; i++) { const [px, py] = i < 3 ? st.places.Garden : st.places.Meadow, ft = REDUCE ? 4000 : t, x = px * T + Math.sin(ft / 1900 + i * 2.1) * 2.6 * T + Math.sin(ft / 650 + i) * 9, y = (py + (i < 3 ? 0.4 : -0.5)) * T + Math.cos(ft / 1500 + i * 1.7) * 1.3 * T - 24 + Math.sin(ft / 330 + i) * 4, fl = REDUCE ? 1 : Math.abs(Math.sin(t / 85 + i * 1.3)) * 4.2 + .8;
+        shadow(ctx, x, y + 30, 4, 1.5, .12); ctx.fillStyle = cols[(i * 2) % 5]; ctx.strokeStyle = 'rgba(40,30,20,.5)'; ctx.lineWidth = .7;
+        for (const d of [-1, 1]) { ctx.beginPath(); ctx.ellipse(x + d * fl * .6, y - 1, fl, 3, d * .4, 0, 7); ctx.fill(); ctx.stroke(); } ctx.fillStyle = '#2a2018'; ctx.fillRect(x - .6, y - 3, 1.2, 6); }
+      const ph = ((t + 6000) % 40000) / 40000 / .38;
+      if (!REDUCE && ph < 1) { const kf = Math.floor((t + 6000) / 40000), fy = (3 + (kf % 3) * 4.5) * T, fx = -160 + ph * (WW + 320);
+        [[0, 0], [-17, -9], [-17, 9], [-34, -18], [-34, 18]].forEach(([dx, dy], j) => { const bx = fx + dx, by = fy + dy + Math.sin(t / 900 + j) * 3, wv = Math.sin(t / 150 + j * .9) * 4.5;
+          ctx.fillStyle = 'rgba(10,20,8,.13)'; ctx.beginPath(); ctx.ellipse(bx + 20, by + 70, 7, 2.4, 0, 0, 7); ctx.fill();
+          ctx.strokeStyle = 'rgba(32,30,34,.9)'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(bx - 8, by - wv); ctx.quadraticCurveTo(bx - 3, by - 2 - wv * .3, bx, by); ctx.quadraticCurveTo(bx + 3, by - 2 - wv * .3, bx + 8, by - wv); ctx.stroke(); });
+      }
+    }
 
     if (st.places.Cemetery) {                                                                          // a headstone per grave
       const [cx, cy] = st.places.Cemetery;
