@@ -550,7 +550,12 @@ function sky(minute, w) {
   const lum = (0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]) / 255;
   return { c: c.map(Math.round), light: clamp((0.86 - lum) * 1.9, 0, 1) };
 }
-const glow = (x, y, r, a, col = '255,200,110') => { const gr = ctx.createRadialGradient(x, y, 1, x, y, r); gr.addColorStop(0, `rgba(${col},${a})`); gr.addColorStop(1, `rgba(${col},0)`); ctx.fillStyle = gr; ctx.fillRect(x - r, y - r, r * 2, r * 2); };
+const glowGr = {};   // one unit-radius gradient per colour, reused with translate/scale instead of building a new one per glow
+const glow = (x, y, r, a, col = '255,200,110') => {
+  let gr = glowGr[col]; if (!gr) { gr = glowGr[col] = ctx.createRadialGradient(0, 0, 0, 0, 0, 1); gr.addColorStop(0, `rgba(${col},1)`); gr.addColorStop(1, `rgba(${col},0)`); }
+  ctx.save(); ctx.translate(x, y); ctx.scale(r, r); ctx.globalAlpha *= Math.min(1, a); ctx.fillStyle = gr; ctx.fillRect(-1, -1, 2, 2); ctx.restore();
+};
+let cloudGr = null, busy = true, lastDraw = -1e9; const frameMs = [];
 
 // ================================================================ dynamic world
 const LOOK = {   // hand-made founders; everyone else is derived from hash(name) in look()
@@ -926,6 +931,8 @@ function mistSprite() {   // one soft, wide, flat blob drawn once; the mist band
 }
 let prev = performance.now();
 function frame(t) {
+  if (!busy && FROZEN == null && t - lastDraw < 100) { requestAnimationFrame(frame); return; }   // nothing moving: redraw at most every 100 ms
+  const t0 = DEBUG.fps ? performance.now() : 0; lastDraw = t;
   const dt = Math.min(0.1, (t - prev) / 1000); prev = t; if (FROZEN != null) t = FROZEN; lastT = t;
   if (st && scenery) {
     const asleep = st.phase === 'night';
@@ -941,7 +948,9 @@ function frame(t) {
     const k = 1 - Math.pow(0.0004, dt); cam.x = lerp(cam.x, cam.tx, k); cam.y = lerp(cam.y, cam.ty, k); cam.z = lerp(cam.z, cam.tz, k);
     { const tgt = REDUCE || st.phase === 'night' ? 0 : /storm/.test(st.weather) ? 2.6 : /windy/.test(st.weather) ? 2 : /rain/.test(st.weather) ? .5 : .77;   // sails turn faster in wind and stop at night
       millSp = lerp(millSp, tgt, 1 - Math.pow(.2, dt)); millAng = FROZEN != null ? FROZEN / 1300 : REDUCE ? .4 : millAng + millSp * dt; }
-    const z = cam.z, w = st.weather, S = sky(st.minute, w), rain = /rain|storm/.test(w), wind = /windy|storm/.test(w);
+    const z = cam.z, vx0 = cam.x - vw / 2 / z, vx1 = cam.x + vw / 2 / z, vy0 = cam.y - vh / 2 / z, vy1 = cam.y + vh / 2 / z, lakeVis = vy1 > 19.4 * T && vx1 > 4 * T && vx0 < 36 * T;   // what is on screen, in world px
+    const vis = (x, y, mx, up, dn) => x > vx0 - mx && x < vx1 + mx && y > vy0 - dn && y < vy1 + up;   // is a thing with this margin (px) on screen?
+    const w = st.weather, S = sky(st.minute, w), rain = /rain|storm/.test(w), wind = /windy|storm/.test(w);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#16241a'; ctx.fillRect(0, 0, cv.width, cv.height);
     const [shx0, shy0] = shakeOffset(t);
@@ -951,8 +960,10 @@ function frame(t) {
 
     if (!REDUCE && S.light < .6 && !rain) for (let i = 0; i < 3; i++) {   // drifting cloud shadows
       const cx = ((t / (wind ? 30 : 70) + i * 700) % (WW + 2 * M + 1000)) - M - 500, cy = 120 + i * 260 + Math.sin(i * 3) * 80;
-      const gr = ctx.createRadialGradient(cx, cy, 20, cx, cy, 380); gr.addColorStop(0, 'rgba(10,20,30,.10)'); gr.addColorStop(1, 'rgba(10,20,30,0)'); ctx.fillStyle = gr; ctx.fillRect(cx - 380, cy - 380, 760, 760);
+      if (!cloudGr) { cloudGr = ctx.createRadialGradient(0, 0, 20 / 380, 0, 0, 1); cloudGr.addColorStop(0, 'rgba(10,20,30,.10)'); cloudGr.addColorStop(1, 'rgba(10,20,30,0)'); }
+      if (cx > vx0 - 380 && cx < vx1 + 380) { ctx.save(); ctx.translate(cx, cy); ctx.scale(380, 380); ctx.fillStyle = cloudGr; ctx.fillRect(-1, -1, 2, 2); ctx.restore(); }
     }
+    if (lakeVis) {
     ctx.save(); ctx.beginPath(); ctx.ellipse(20 * T, 25 * T, 15.4 * T, 5.3 * T, 0, 0, 7); ctx.clip();   // everything on the water stays inside the lake
     ctx.lineCap = 'round'; ctx.lineWidth = 1.8;                                                        // drifting wave arcs that fade in and out
     for (let i = 0; i < 30; i++) {
@@ -984,26 +995,27 @@ function frame(t) {
             ctx.fillStyle = '#9fb3c1'; ctx.beginPath(); ctx.moveTo(-4, 0); ctx.lineTo(-8, -2.4); ctx.lineTo(-8, 2.4); ctx.closePath(); ctx.fill(); ctx.restore(); }
         } }
     }
-    if (rain && !REDUCE) for (let i = 0; i < 14; i++) {                                                 // rain rings on the lake
+    }
+    if (lakeVis && rain && !REDUCE) for (let i = 0; i < 14; i++) {                                                 // rain rings on the lake
       const ph = ((t / 1400) + i * 0.37) % 1, r2 = rng(i * 31 + Math.floor((t / 1400) + i * 0.37)), x = (6 + r2() * 28) * T, y = (20.6 + r2() * 4) * T;
       if (!inLake(x / T, y / T)) continue; ctx.strokeStyle = `rgba(220,235,255,${.45 * (1 - ph)})`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.ellipse(x, y, 2 + ph * 12, 1 + ph * 4, 0, 0, 7); ctx.stroke();
     }
 
     const order = st.agents.slice().sort((a, b) => pos[a.name].y - pos[b.name].y), wins = [], things = [];
-    for (const s of st.structures) things.push([s.y, () => drawStruct(s, t, wins)]);
-    if (!asleep) for (const a of order) things.push([pos[a.name].y, () => person(a, pos[a.name], t)]);
+    for (const s of st.structures) if (vis(s.x * T, s.y * T, 130, 60, 160)) things.push([s.y, () => drawStruct(s, t, wins)]);   // off-screen things are skipped
+    if (!asleep) for (const a of order) if (vis(pos[a.name].x * T, pos[a.name].y * T, 70, 40, 100)) things.push([pos[a.name].y, () => person(a, pos[a.name], t)]);
     drawFx(t, wind, true); smokes.length = 0; things.sort((a, b) => a[0] - b[0]).forEach(d => d[1]());
     drawFx(t, wind, false); drawSpeaking(t);
     const hr0 = st.minute / 60, hearth = hr0 >= 5 && hr0 < 9.5 || hr0 >= 17 && hr0 < 22.5, calm = !/storm|steady/.test(w);   // chimneys: bakery and tavern always, houses at breakfast and supper
-    chimneys.forEach(([x, y], i) => smoke(x, y, t, i, wind)); if (hearth && calm) smokes.forEach(([x, y], i) => smoke(x, y, t, i + 3, wind, .8));
+    chimneys.forEach(([x, y], i) => { if (vis(x, y, 70, 90, 30)) smoke(x, y, t, i, wind); }); if (hearth && calm) smokes.forEach(([x, y], i) => { if (vis(x, y, 70, 90, 30)) smoke(x, y, t, i + 3, wind, .8); });
     if (S.light < .3 && !rain && hr0 >= 7 && hr0 < 19) {                                               // butterflies over the Garden and Meadow, birds crossing at midday
       const cols = ['#f2c14e', '#e98bb0', '#8fb8f0', '#f6f2ea', '#c58cf0'];
       for (let i = 0; i < 6; i++) { const [px, py] = i < 3 ? st.places.Garden : st.places.Meadow, ft = REDUCE ? 4000 : t, x = px * T + Math.sin(ft / 1900 + i * 2.1) * 2.6 * T + Math.sin(ft / 650 + i) * 9, y = (py + (i < 3 ? 0.4 : -0.5)) * T + Math.cos(ft / 1500 + i * 1.7) * 1.3 * T - 24 + Math.sin(ft / 330 + i) * 4, fl = REDUCE ? 1 : Math.abs(Math.sin(t / 85 + i * 1.3)) * 4.2 + .8;
-        shadow(ctx, x, y + 30, 4, 1.5, .12); ctx.fillStyle = cols[(i * 2) % 5]; ctx.strokeStyle = 'rgba(40,30,20,.5)'; ctx.lineWidth = .7;
+        if (!vis(x, y, 20, 40, 60)) continue; shadow(ctx, x, y + 30, 4, 1.5, .12); ctx.fillStyle = cols[(i * 2) % 5]; ctx.strokeStyle = 'rgba(40,30,20,.5)'; ctx.lineWidth = .7;
         for (const d of [-1, 1]) { ctx.beginPath(); ctx.ellipse(x + d * fl * .6, y - 1, fl, 3, d * .4, 0, 7); ctx.fill(); ctx.stroke(); } ctx.fillStyle = '#2a2018'; ctx.fillRect(x - .6, y - 3, 1.2, 6); }
       const ph = ((t + 6000) % 40000) / 40000 / .38;
       if (!REDUCE && ph < 1) { const kf = Math.floor((t + 6000) / 40000), fy = (3 + (kf % 3) * 4.5) * T, fx = -160 + ph * (WW + 320);
-        [[0, 0], [-17, -9], [-17, 9], [-34, -18], [-34, 18]].forEach(([dx, dy], j) => { const bx = fx + dx, by = fy + dy + Math.sin(t / 900 + j) * 3, wv = Math.sin(t / 150 + j * .9) * 4.5;
+        [[0, 0], [-17, -9], [-17, 9], [-34, -18], [-34, 18]].forEach(([dx, dy], j) => { const bx = fx + dx, by = fy + dy + Math.sin(t / 900 + j) * 3, wv = Math.sin(t / 150 + j * .9) * 4.5; if (!vis(bx, by, 30, 30, 90)) return;
           ctx.fillStyle = 'rgba(10,20,8,.13)'; ctx.beginPath(); ctx.ellipse(bx + 20, by + 70, 7, 2.4, 0, 0, 7); ctx.fill();
           ctx.strokeStyle = 'rgba(32,30,34,.9)'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(bx - 8, by - wv); ctx.quadraticCurveTo(bx - 3, by - 2 - wv * .3, bx, by); ctx.quadraticCurveTo(bx + 3, by - 2 - wv * .3, bx + 8, by - wv); ctx.stroke(); });
       }
@@ -1061,18 +1073,18 @@ function frame(t) {
     if (S.light > 0.05) {                                                                              // warm lights come on
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       const fk = i => REDUCE ? 1 : .92 + .08 * Math.sin(t / 170 + i * 1.7);                                // lamps and windows flicker a little
-      windows.concat(wins).forEach(([x, y, s = 1, col], i) => glow(x, y, 46 * s + 8, S.light * 0.55 * s * fk(i), col));
-      for (const [x, y, s, col] of candles) glow(x, y, 26, Math.max(.15, S.light) * s, col);
+      windows.concat(wins).forEach(([x, y, s = 1, col], i) => { if (vis(x, y, 60, 60, 60)) glow(x, y, 46 * s + 8, S.light * 0.55 * s * fk(i), col); });
+      for (const [x, y, s, col] of candles) if (vis(x, y, 40, 40, 40)) glow(x, y, 26, Math.max(.15, S.light) * s, col);
       if (O.state === 'ready') glow(fx, fy - 10, 70, S.light * 0.5, '190,160,255');
       if (S.light > 0.55 && !rain) {                                                                   // fireflies
         const fl = S.light - 0.55;
-        for (let i = 0; i < 22; i++) { const base = [st.places.Garden, st.places.Woods, st.places.Shrine][i % 3], x = (base[0] + Math.sin(t / 2100 + i * 1.7) * 2.6) * T, y = (base[1] + 0.6 + Math.cos(t / 1700 + i * 2.3) * 1.3) * T, a = fl * (0.6 + 0.4 * Math.sin(t / 260 + i * 5)); glow(x, y, 9, a * 1.6, '220,255,140'); }
+        for (let i = 0; i < 22; i++) { const base = [st.places.Garden, st.places.Woods, st.places.Shrine][i % 3], x = (base[0] + Math.sin(t / 2100 + i * 1.7) * 2.6) * T, y = (base[1] + 0.6 + Math.cos(t / 1700 + i * 2.3) * 1.3) * T, a = fl * (0.6 + 0.4 * Math.sin(t / 260 + i * 5)); if (vis(x, y, 20, 20, 20)) glow(x, y, 9, a * 1.6, '220,255,140'); }
       }
       ctx.restore();
       ctx.save(); ctx.globalAlpha = Math.min(1, S.light * 1.3);
-      windows.concat(wins).forEach(([x, y, s = 1, col], i) => { if (s >= 1) { ctx.globalAlpha = Math.min(1, S.light * 1.3) * fk(i); ctx.fillStyle = 'rgb(255,222,150)'; ctx.fillRect(x - 7, y - 6.5, 14, 13); } });
+      windows.concat(wins).forEach(([x, y, s = 1, col], i) => { if (s >= 1 && vis(x, y, 20, 20, 20)) { ctx.globalAlpha = Math.min(1, S.light * 1.3) * fk(i); ctx.fillStyle = 'rgb(255,222,150)'; ctx.fillRect(x - 7, y - 6.5, 14, 13); } });
       ctx.restore();
-      if (S.light > 0.6) {                                                                             // the lake is the night sky: a moon streak and a few stars
+      if (S.light > 0.6 && lakeVis) {                                                                             // the lake is the night sky: a moon streak and a few stars
         const m = clamp((S.light - 0.6) / 0.3, 0, 1); ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
         for (let i = 0; i < 9; i++) { const yy = (20.35 + i * 0.46) * T, ww = (22 - i * 2) * (0.75 + 0.25 * (REDUCE ? 1 : Math.sin(t / 700 + i * 2.1))), xx = 27.5 * T + (REDUCE ? 0 : Math.sin(t / 1300 + i * 1.3) * 5); ctx.strokeStyle = `rgba(200,220,255,${.5 * m * (1 - i * .07)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(xx - ww, yy); ctx.lineTo(xx + ww, yy); ctx.stroke(); }
         const r2 = rng(1234); for (let i = 0; i < 16; i++) { const x = (6 + r2() * 28) * T, y = (19.8 + r2() * 4.6) * T, a = (REDUCE ? .6 : .5 + .5 * Math.sin(t / 420 + i * 2.7)) * m * .8; if (inLake(x / T, y / T) && inLake(x / T, y / T - .6)) { glow(x, y, 7, a, '200,220,255'); ctx.fillStyle = `rgba(235,245,255,${a})`; ctx.fillRect(x - 1, y - 1, 2, 2); } }
@@ -1103,6 +1115,11 @@ function frame(t) {
       if (best) { const [bx2, by2] = toScreen(best.x * T, best.y * T - 22); ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(bx2, by2, 70 * z + 20, .7 * (1 - ph), '200,215,255'); ctx.restore(); }
     }
     drawOverlay(t, asleep, order);
+    busy = !REDUCE || !!selected || hover != null || fx.length > 0 || !!hear.now || cam.follow || drag != null || ptrs.size > 0 || st.agents.some(a => pos[a.name].walking) || Math.abs(cam.x - cam.tx) > .3 || Math.abs(cam.y - cam.ty) > .3 || Math.abs(cam.z - cam.tz) > .002;
+    if (DEBUG.fps) {   // ?fps=1: average JS time per frame over the last 60 frames, top right
+      frameMs.push(performance.now() - t0); if (frameMs.length > 60) frameMs.shift(); const avg = frameMs.reduce((a, b) => a + b, 0) / frameMs.length;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(vw - 148, 8, 140, 22); ctx.fillStyle = '#9f9'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; ctx.fillText(avg.toFixed(2) + ' ms / frame', vw - 140, 23);
+    }
   }
   requestAnimationFrame(frame);
 }
