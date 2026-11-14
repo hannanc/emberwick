@@ -1673,14 +1673,26 @@ def strike():
         return text
     return ""
 
+def night_step(step):
+    """True the first time a night step runs for this day; False if it already ran (the service restarted mid-night)."""
+    done = S.setdefault("night_done", {})
+    if done.get("day") != S["day"]:
+        done.clear(); done.update(day=S["day"], steps=[])
+    if step in done["steps"]:
+        return False
+    done["steps"].append(step)
+    return True
+
 def night():
     global status
     with lock:
+        first = night_step("supper")
         S["phase"] = "night"
         for a in S["agents"].values():
             a.update(place="Cottages", activity="sleeping", say="", pending=None)
-        log_event(kind="night", text="Night falls over Emberwick. The villagers go home to sleep.")
-        for n, a in S["agents"].items():
+        if first:
+            log_event(kind="night", text="Night falls over Emberwick. The villagers go home to sleep.")
+        for n, a in (S["agents"].items() if first else []):
             feeders = [n] + ([p for p in parents(n) if p in S["agents"]] if not acting(n) else [])
             feeders += [p for p in parents(n) if p in S["agents"] and p not in feeders] if age(n) < ADULT else []
             got = next(((p, f) for p in feeders for f in ("bread", "fish") if S["agents"][p]["inv"][f] > 0), None)
@@ -1709,15 +1721,19 @@ def night():
         S["merchant"] = MERCHANT_PURSE
         save()
         day, weather, news = S["day"], S["weather"], S["news"]
+        wish_now = night_step("wish")
 
-    try:
-        grant_wish(day)
-    except Exception as e:
-        print("grant_wish failed:", e, flush=True)
+    if wish_now:
+        try:
+            grant_wish(day)
+        except Exception as e:
+            print("grant_wish failed:", e, flush=True)
 
     for n in [x for x in S["agents"] if acting(x)]:
         status = f"night — {n} is dreaming"
         with lock:
+            if (S["agents"][n]["reflections"] or [""])[-1].startswith(f"Day {day}:"):
+                continue                  # already reflected on this day before a restart
             today = list(S["agents"][n]["today"])
         others = [o for o in S["agents"] if o != n]
         try:
@@ -1750,7 +1766,9 @@ def night():
 
     status = "night — births and deaths"
     try:
-        lives = life_night()
+        with lock:
+            life_now = night_step("life")
+        lives = life_night() if life_now else []
     except Exception as e:
         lives = []
         print("life_night failed:", e, flush=True)
