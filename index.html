@@ -826,6 +826,13 @@ function drawOverlay(t, asleep, order) {
 }
 
 // ================================================================ frame
+let mistTex = null, vigKey = '', vigGr = null;
+function mistSprite() {   // one soft, wide, flat blob drawn once; the mist bands are scaled copies of it
+  if (mistTex) return mistTex;
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128; const g = c.getContext('2d'); g.scale(1, .25);
+  for (const [cx, cy, r] of [[256, 256, 250], [130, 240, 150], [390, 270, 160]]) { const gr = g.createRadialGradient(cx, cy, 0, cx, cy, r); gr.addColorStop(0, 'rgba(228,234,240,.75)'); gr.addColorStop(.55, 'rgba(228,234,240,.32)'); gr.addColorStop(1, 'rgba(228,234,240,0)'); g.fillStyle = gr; g.fillRect(cx - r, cy - r, r * 2, r * 2); }
+  return mistTex = c;
+}
 let prev = performance.now();
 function frame(t) {
   const dt = Math.min(0.1, (t - prev) / 1000); prev = t; if (FROZEN != null) t = FROZEN;
@@ -891,13 +898,28 @@ function frame(t) {
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);                                                   // time of day and weather grade
     if (S.c.some(v => v < 254)) { ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = `rgb(${S.c})`; ctx.fillRect(0, 0, cv.width, cv.height); }
     ctx.globalCompositeOperation = 'source-over';
-    if (/mist/.test(w)) { ctx.fillStyle = 'rgba(226,232,238,.2)'; ctx.fillRect(0, 0, cv.width, cv.height); }
+    if (/mist/.test(w)) {                                                                              // mist: a thin veil plus slow drifting bands, thickest over the lake
+      ctx.fillStyle = 'rgba(226,232,238,.06)'; ctx.fillRect(0, 0, cv.width, cv.height); const spr = mistSprite();
+      for (let i = 0; i < 4; i++) {
+        const bw = (1500 + i * 260) * z, bh = (320 + (i % 2) * 130) * z, wx = ((REDUCE ? i * 650 : t / (110 + i * 35) + i * 830) % (WW + 2 * M + 1600)) - M - 800, wy = [5, 11.5, 20.5, 23][i] * T;
+        ctx.globalAlpha = i > 1 ? .7 : .55; ctx.drawImage(spr, ((wx - cam.x) * z + vw / 2 - bw / 2) * dpr, ((wy - cam.y) * z + vh / 2 - bh / 2) * dpr, bw * dpr, bh * dpr);
+      }
+      ctx.globalAlpha = 1;
+    }
+    const hr = st.minute / 60, gk = hr >= 5.5 && hr <= 8 ? Math.sin((hr - 5.5) / 2.5 * Math.PI) : hr >= 17.5 && hr <= 20.5 ? Math.sin((hr - 17.5) / 3 * Math.PI) : 0;
+    if (gk > 0.02 && !/storm|steady|overcast/.test(w)) {                                               // sunrise from the east edge, sunset from the west
+      const east = hr < 12, cx = east ? cv.width : 0, cy = cv.height * .38, R = Math.max(cv.width, cv.height) * .95, gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+      gr.addColorStop(0, `rgba(255,${east ? 196 : 130},${east ? 120 : 70},${.9 * gk})`); gr.addColorStop(.5, `rgba(255,${east ? 170 : 110},${east ? 100 : 80},${.4 * gk})`); gr.addColorStop(1, 'rgba(255,150,90,0)');
+      ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = gr; ctx.fillRect(0, 0, cv.width, cv.height); ctx.fillRect(0, 0, cv.width, cv.height);   // twice: soft-light is gentle
+      ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = .22; ctx.fillRect(0, 0, cv.width, cv.height); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    }
     if (/haze/.test(w)) { ctx.fillStyle = 'rgba(255,200,120,.1)'; ctx.fillRect(0, 0, cv.width, cv.height); }
     ctx.restore();
 
     if (S.light > 0.05) {                                                                              // warm lights come on
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      for (const [x, y, s = 1, col] of windows.concat(wins)) { glow(x, y, 46 * s + 8, S.light * 0.55 * s, col); }
+      const fk = i => REDUCE ? 1 : .92 + .08 * Math.sin(t / 170 + i * 1.7);                                // lamps and windows flicker a little
+      windows.concat(wins).forEach(([x, y, s = 1, col], i) => glow(x, y, 46 * s + 8, S.light * 0.55 * s * fk(i), col));
       for (const [x, y, s, col] of candles) glow(x, y, 26, Math.max(.15, S.light) * s, col);
       if (O.state === 'ready') glow(fx, fy - 10, 70, S.light * 0.5, '190,160,255');
       if (S.light > 0.55 && !rain) {                                                                   // fireflies
@@ -906,11 +928,19 @@ function frame(t) {
       }
       ctx.restore();
       ctx.save(); ctx.globalAlpha = Math.min(1, S.light * 1.3);
-      for (const [x, y, s = 1, col] of windows.concat(wins)) if (s >= 1) { ctx.fillStyle = 'rgb(255,222,150)'; ctx.fillRect(x - 7, y - 6.5, 14, 13); }
+      windows.concat(wins).forEach(([x, y, s = 1, col], i) => { if (s >= 1) { ctx.globalAlpha = Math.min(1, S.light * 1.3) * fk(i); ctx.fillStyle = 'rgb(255,222,150)'; ctx.fillRect(x - 7, y - 6.5, 14, 13); } });
       ctx.restore();
+      if (S.light > 0.6) {                                                                             // the lake is the night sky: a moon streak and a few stars
+        const m = clamp((S.light - 0.6) / 0.3, 0, 1); ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+        for (let i = 0; i < 9; i++) { const yy = (20.35 + i * 0.46) * T, ww = (22 - i * 2) * (0.75 + 0.25 * (REDUCE ? 1 : Math.sin(t / 700 + i * 2.1))), xx = 27.5 * T + (REDUCE ? 0 : Math.sin(t / 1300 + i * 1.3) * 5); ctx.strokeStyle = `rgba(200,220,255,${.5 * m * (1 - i * .07)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(xx - ww, yy); ctx.lineTo(xx + ww, yy); ctx.stroke(); }
+        const r2 = rng(1234); for (let i = 0; i < 16; i++) { const x = (6 + r2() * 28) * T, y = (19.8 + r2() * 4.6) * T, a = (REDUCE ? .6 : .5 + .5 * Math.sin(t / 420 + i * 2.7)) * m * .8; if (inLake(x / T, y / T) && inLake(x / T, y / T - .6)) { glow(x, y, 7, a, '200,220,255'); ctx.fillStyle = `rgba(235,245,255,${a})`; ctx.fillRect(x - 1, y - 1, 2, 2); } }
+        ctx.restore();
+      }
     }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    { const key = vw + 'x' + vh; if (key !== vigKey) { vigKey = key; const R = Math.hypot(vw, vh) / 2; vigGr = ctx.createRadialGradient(vw / 2, vh / 2, R * .55, vw / 2, vh / 2, R); vigGr.addColorStop(0, 'rgba(6,10,8,0)'); vigGr.addColorStop(1, 'rgba(6,10,8,1)'); }
+      ctx.globalAlpha = .13 + .14 * S.light; ctx.fillStyle = vigGr; ctx.fillRect(0, 0, vw, vh); ctx.globalAlpha = 1; }   // soft vignette, stronger at night
     if (rain) {                                                                                        // rain streaks
       const n = Math.min(320, Math.round(vw * vh / (/steady|storm/.test(w) ? 5200 : 11000))) * (REDUCE ? .4 : 1), slant = wind ? 9 : 4;
       ctx.strokeStyle = 'rgba(205,222,255,.42)'; ctx.lineWidth = 1.2; ctx.beginPath();
@@ -921,7 +951,15 @@ function frame(t) {
       const x = (i * 211 + t * (0.12 + (i % 4) * 0.03)) % (vw + 60) - 30, y = (i * 137 + Math.sin(t / 600 + i) * 30 + t * 0.02) % vh;
       ctx.save(); ctx.translate(x, y); ctx.rotate(t / 300 + i); ctx.fillStyle = ['#c9963a', '#9cb24a', '#b5643a'][i % 3]; ctx.beginPath(); ctx.ellipse(0, 0, 4, 2, 0, 0, 7); ctx.fill(); ctx.restore();
     }
-    if (/storm/.test(w) && !REDUCE && (t % 9000) < 110) { ctx.fillStyle = 'rgba(235,240,255,.32)'; ctx.fillRect(0, 0, vw, vh); }
+    if (/storm/.test(w) && !REDUCE && (t % 9000) < 150) {                                                // lightning: a jagged bolt for ~150 ms, a flash, and a bright rim on the nearest building
+      const ph = (t % 9000) / 150, r3 = rng(Math.floor(t / 9000) * 7 + 3), tx = (8 + r3() * 24) * T, ty = (20.4 + r3() * 2.4) * T, [ex, ey] = toScreen(tx, ty), sx0 = ex + (r3() - .5) * 300;
+      if (ph < .75) { ctx.fillStyle = `rgba(235,240,255,${.32 * (1 - ph)})`; ctx.fillRect(0, 0, vw, vh); }
+      const pts = [[sx0, -10]]; for (let i = 1; i < 7; i++) pts.push([lerp(sx0, ex, i / 7) + (r3() - .5) * 90 * (1 - i / 8), lerp(-10, ey, i / 7) + (r3() - .5) * 22]); pts.push([ex, ey]);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+      ctx.strokeStyle = `rgba(170,190,255,${.35 * (1 - ph)})`; ctx.lineWidth = 9; ctx.stroke(); ctx.strokeStyle = `rgba(250,252,255,${1 - ph * .7})`; ctx.lineWidth = 2.6; ctx.stroke();
+      let best = null, bd = 1e9; for (const s of st.structures) { const d = Math.hypot(s.x * T - tx, s.y * T - ty); if (s.done && d < bd) { bd = d; best = s; } }
+      if (best) { const [bx2, by2] = toScreen(best.x * T, best.y * T - 22); ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(bx2, by2, 70 * z + 20, .7 * (1 - ph), '200,215,255'); ctx.restore(); }
+    }
     drawOverlay(t, asleep, order);
   }
   requestAnimationFrame(frame);
