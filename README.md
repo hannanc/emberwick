@@ -59,12 +59,13 @@ voices are natural; without it the browser's own speech is used.
 ```sh
 .venv/bin/pip install kokoro-onnx
 mkdir -p ~/.local/share/emberwick/kokoro && cd ~/.local/share/emberwick/kokoro
-curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx
+curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx   # or the smaller, more metallic kokoro-v1.0.int8.onnx
 curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
 ```
 
-Speech is only made when someone is listening (about 0.5 GB of RAM once loaded,
-and roughly half a line's length of CPU time per line), and each line is cached.
+Speech is only made when someone is listening (under 1 GB of RAM once loaded,
+and roughly a line's length of CPU time per line), and each line is cached.
+`EMBERWICK_TTS_MODEL` picks the model file in that folder.
 
 ## The Oracle (optional)
 

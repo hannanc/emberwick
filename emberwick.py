@@ -1896,17 +1896,29 @@ def run():
         time.sleep(max(1.0, TURN_SECONDS - (time.time() - t0)))
 
 # ---------------------------------------------------------------- voices: Kokoro speaks the villagers' lines
-VOICES = {"Mira": ("bf_emma", 1.0), "Tobias": ("bm_george", 0.9), "Isolde": ("bf_isabella", 1.05),
-          "Bram": ("am_michael", 1.0), "Wren": ("am_puck", 1.08), "Hesper": ("bf_alice", 0.86),
-          "Oracle": ("am_onyx", 0.82)}
-BORN_VOICES = {"f": ["af_sky", "bf_lily", "af_nova", "af_kore", "af_river", "af_jessica"],
-               "m": ["am_echo", "am_liam", "bm_daniel", "am_eric", "bm_lewis", "am_adam"]}
+# (blend of Kokoro voices, speed, accent). Built from the best-rated voices (af_heart A, af_bella A-, bf_emma B-,
+# af_nicole B-, ...): blending keeps each villager distinct without falling back to the weaker, more robotic ones.
+VOICES = {"Mira":   ({"af_heart": .65, "bf_emma": .35}, 1.0, "en-gb"),
+          "Isolde": ({"bf_emma": .7, "af_nicole": .3}, 1.02, "en-gb"),
+          "Hesper": ({"af_nicole": .55, "bf_emma": .45}, 0.93, "en-gb"),
+          "Tobias": ({"bm_george": .7, "am_fenrir": .3}, 0.95, "en-gb"),
+          "Bram":   ({"am_michael": .6, "am_fenrir": .4}, 1.0, "en-us"),
+          "Wren":   ({"am_puck": .7, "am_michael": .3}, 1.05, "en-us"),
+          "Oracle": ({"bm_fable": .5, "am_fenrir": .5}, 0.9, "en-gb")}
+BORN_VOICES = {"f": [({"af_bella": .7, "af_heart": .3}, "en-us"), ({"af_heart": .5, "af_kore": .5}, "en-us"),
+                     ({"bf_emma": .5, "af_bella": .5}, "en-gb"), ({"af_bella": .6, "af_aoede": .4}, "en-us")],
+               "m": [({"am_puck": .6, "am_fenrir": .4}, "en-us"), ({"am_michael": .7, "am_puck": .3}, "en-us"),
+                     ({"bm_george": .5, "am_puck": .5}, "en-gb"), ({"am_fenrir": .6, "bm_fable": .4}, "en-gb")]}
+TTS_MODEL = os.environ.get("EMBERWICK_TTS_MODEL", "kokoro-v1.0.onnx")   # full precision; the int8 one sounds metallic
 FAST_MOODS = {"excited", "restless", "angry", "furious", "eager", "urgent", "nervous", "anxious", "frantic", "agitated"}
 SLOW_MOODS = {"sad", "tired", "pensive", "weary", "melancholy", "somber", "sombre", "grieving", "sleepy", "calm", "wistful"}
 _tts, _tts_lock, _tts_cache = [None, None], threading.Lock(), {}
 
 def tts_files():
-    return os.path.join(TTS_DIR, "kokoro-v1.0.int8.onnx"), os.path.join(TTS_DIR, "voices-v1.0.bin")
+    model = os.path.join(TTS_DIR, TTS_MODEL)
+    if not os.path.exists(model):
+        model = os.path.join(TTS_DIR, "kokoro-v1.0.int8.onnx")      # the small model, if that is all there is
+    return model, os.path.join(TTS_DIR, "voices-v1.0.bin")
 
 def tts_available():
     if not TTS_ON or _tts[1] is not None and not _tts[1]:
@@ -1931,16 +1943,18 @@ def tts_engine():
     return _tts[0]
 
 def voice_of(n):
+    """(voice blend, speed, accent) for a speaker."""
     if n in VOICES:
         return VOICES[n]
     b = S.get("born", {}).get(n)
     if not b:
-        return ("am_adam", 1.0)
-    if not b.get("voice"):
-        pool = BORN_VOICES[b["sex"]]
-        taken = {S["born"][o].get("voice") for o in S["born"] if o in S["agents"]}
-        b["voice"] = next((v for v in pool if v not in taken), pool[sum(map(ord, n)) % len(pool)])
-    return b["voice"], 1.08 if n in S["agents"] and age(n) < ADULT else 1.0
+        return VOICES["Bram"]
+    pool = BORN_VOICES[b["sex"]]
+    if not isinstance(b.get("voice"), int):
+        taken = {S["born"][o].get("voice") for o in S["born"] if o in S["agents"] and S["born"][o]["sex"] == b["sex"]}
+        b["voice"] = next((i for i in range(len(pool)) if i not in taken), sum(map(ord, n)) % len(pool))
+    blend, lang = pool[b["voice"] % len(pool)]
+    return blend, 1.06 if n in S["agents"] and age(n) < ADULT else 1.0, lang
 
 def spoken(event_id):
     """(speaker, text, mood) for an event that has speech in it, or None."""
@@ -1968,8 +1982,8 @@ def tts_wav(event_id):
     if not text:
         return None
     with lock:
-        voice, speed = voice_of(who_)
-    speed *= 1.07 if mood in FAST_MOODS else 0.93 if mood in SLOW_MOODS else 1.0
+        blend, speed, lang = voice_of(who_)
+    speed *= 1.04 if mood in FAST_MOODS else 0.97 if mood in SLOW_MOODS else 1.0
     with _tts_lock:                                               # one line at a time; viewers share the cache
         if event_id in _tts_cache:
             return _tts_cache[event_id]
@@ -1978,7 +1992,8 @@ def tts_wav(event_id):
             return None
         import io, wave
         import numpy as np                                        # comes with kokoro-onnx
-        samples, rate = eng.create(text, voice=voice, speed=max(0.6, min(1.4, speed)), lang="en-gb" if voice[0] == "b" else "en-us")
+        style = sum(w * eng.get_voice_style(v) for v, w in blend.items()) / sum(blend.values())
+        samples, rate = eng.create(text, voice=style, speed=max(0.88, min(1.15, speed)), lang=lang)
         pcm = (np.clip(samples, -1, 1) * 32767).astype("<i2").tobytes()
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:
