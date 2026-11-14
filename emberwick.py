@@ -5,7 +5,7 @@ Six villagers, each driven by a local Ollama model, walk around, talk, remember
 and reflect. Every night a larger model writes the day's chronicle and invents
 tomorrow's twist. Standard library only.  Open http://<server>:8377/
 """
-import contextlib, json, os, random, re, sqlite3, threading, time, urllib.error, urllib.request
+import contextlib, json, math, os, random, re, sqlite3, threading, time, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 try:                      # optional: only the Oracle needs the Anthropic SDK (pip install anthropic)
@@ -135,6 +135,16 @@ DISASTERS = [
     dict(name="tremor", weather=None, chance=0.03, hits=3, wreck=0.0,
          text="The ground shook before dawn, as if something stirred beneath the lake, and cracked {what}"),
 ]
+# hoarding has a cost: a carrying limit per good (a shed adds room), food spoils, and goods over the limit get lost
+CARRY = int(os.environ.get("EMBERWICK_CARRY", 80))      # most of each good a villager can carry; coins are unlimited
+SHED_CARRY = 80                                          # extra room per finished shed owned
+SPOIL = {"fish": 0.10, "bread": 0.05}                    # share that rots each night
+OVERFLOW_LOSS = 0.25                                     # share of goods above the limit lost each night
+OWN_LIMIT = int(os.environ.get("EMBERWICK_OWN_LIMIT", 2))  # most buildings of one type a villager may own
+# a travelling merchant at the Square buys goods for coins, with a daily purse so coins stay scarce
+SELL_RATE = {"wood": 4, "stone": 4, "fish": 5, "bread": 3, "herbs": 4, "ale": 3}   # goods per coin
+MERCHANT_PURSE = int(os.environ.get("EMBERWICK_MERCHANT_PURSE", 40))             # coins the merchant spends a day
+MERCHANT_SALE = 15                                                                 # most coins paid for one sale
 
 lock = threading.RLock()
 S = {}            # world state, persisted as JSON
@@ -184,6 +194,7 @@ def migrate():
     S.setdefault("oracle", {"last": 0, "speech": "", "at": 0})
     S.setdefault("prayers", [])
     S.setdefault("wishes", [])
+    S.setdefault("merchant", MERCHANT_PURSE)
     S["news"] = S["news"].split(" Also: ")[0]
     for n, a in S["agents"].items():
         a.setdefault("inv", new_inv(n))
@@ -324,6 +335,17 @@ def work_yield(n, place):
     if q and place == "Bakery" and has(None, "mill"): q += 1
     return item, q
 
+def carry_limit(n):
+    return CARRY + SHED_CARRY * sum(s["done"] and s["type"] == "shed" and s["owner"] == n for s in S["structures"])
+
+def owned(n, typ):
+    return sum(s["type"] == typ and s["owner"] == n for s in S["structures"])
+
+def can_build(n, typ):
+    """Can n use build_<typ>: help an unfinished one, or start a new one (free slot and under the ownership limit)?"""
+    return any(s["type"] == typ and not s["done"] for s in S["structures"]) or \
+        (has_room(typ) and owned(n, typ) < OWN_LIMIT)
+
 def has_room(typ):
     """Can a build_<typ> still go somewhere: an unfinished one to work on, or a free slot?"""
     return any(s["type"] == typ and not s["done"] for s in S["structures"]) or \
@@ -338,13 +360,15 @@ def village_minutes():
 def set_plan(a, plan):
     a["plan"], a["plan_new"], a["plan_at"], a["plan_work"] = plan, True, village_minutes(), 0
 
-def step_done(a, step, act, did):
+def step_done(n, a, step, act, did):
     """Is this plan step carried out (or impossible), judging by where the villager is and what they just did?"""
     low = step.lower()
     m = re.search(r"build_(\w+)", low)
     if m:
         typ = m.group(1)
-        return did.startswith(("finished building", "finished repairing")) or typ not in BLUEPRINTS or not has_room(typ)
+        return did.startswith(("finished building", "finished repairing")) or typ not in BLUEPRINTS or not can_build(n, typ)
+    if re.search(r"\bsell\b", low):
+        return did.startswith("sold")
     if re.search(r"\boffer\b", low):
         return did.startswith(("offered", "traded", "gave"))
     m = re.search(r"\bwork\b(?:\s+(\d+|once|twice))?", low)
@@ -369,7 +393,7 @@ def advance_plan(n, act, did):
         a["plan"] = []
         remember(n, "The Oracle's old counsel has faded from my mind; I will decide for myself.")
         return
-    while a["plan"] and step_done(a, a["plan"][0], act, did):
+    while a["plan"] and step_done(n, a, a["plan"][0], act, did):
         step = a["plan"].pop(0)
         if not re.match(r"walk to", step, re.I):
             act, did = "", ""             # one action satisfies at most one doing-step; walks can chain
@@ -400,6 +424,10 @@ def do_build(n, typ, place):
         free = [p for p in bp["slots"] if tuple(p) not in [tuple(u) for u in used]]
         if not free:
             remember(n, f"There is no room left for another {typ}.")
+            return ""
+        if owned(n, typ) >= OWN_LIMIT:
+            remember(n, f"I already own {owned(n, typ)} {typ}s; that is as many as one person may have. "
+                        "I should build something else or help someone.")
             return ""
         s = dict(id=max([x["id"] for x in S["structures"]], default=0) + 1, type=typ, owner=n, site=place, x=free[0][0], y=free[0][1],
                  have={}, labour=0, done=False, helpers=[], day=S["day"])
@@ -483,6 +511,28 @@ def do_accept(n, o):
     remember(o["from"], f"{n} accepted: I got {o['want_qty']} {o['want']} for {o['give_qty']} {o['give']}.")
     return f"traded {o['want_qty']} {o['want']} to {o['from']} for {o['give_qty']} {o['give']}"
 
+def do_sell(n, r):
+    a = S["agents"][n]
+    gi = r.get("give")
+    try:
+        gq = max(0, min(400, int(r.get("give_qty") or 0)))
+    except (TypeError, ValueError):
+        return ""
+    if gi not in SELL_RATE or gq < 1:
+        return ""
+    gq = min(gq, a["inv"][gi])
+    rate, purse = SELL_RATE[gi], S.get("merchant", 0)
+    coins = min(gq // rate, purse, MERCHANT_SALE)
+    if coins < 1:
+        remember(n, "The merchant would not buy: " + ("she has spent her purse for today." if purse < 1 else
+                    f"she pays 1 coin for {rate} {gi} and I offered {gq}."))
+        return ""
+    a["inv"][gi] -= coins * rate
+    a["inv"]["coins"] += coins
+    S["merchant"] = purse - coins
+    remember(n, f"I sold {coins * rate} {gi} to the merchant at the Square for {coins} coins.")
+    return f"sold {coins * rate} {gi} to the merchant for {coins} coins"
+
 # ---------------------------------------------------------------- the Oracle (Claude, once an hour)
 def providers():
     """Usable Oracle backends in the order they are tried."""
@@ -550,10 +600,16 @@ def oracle_world(n, question):
          'Trade: action offer gives N of one item for M of another to a villager standing at the same place; they accept '
          "or decline on their next turn. Gifts are allowed.",
          "Building: go to the site and use the build action; it first delivers the materials you carry, then each use is "
-         "one turn of work. Anyone may contribute to anyone's project.",
+         f"one turn of work. Anyone may contribute to anyone's project. A villager may own at most {OWN_LIMIT} buildings "
+         "of one type. Damaged buildings give nothing until repaired the same way.",
+         f"Selling: at the Square, action sell gives the merchant goods for coins (1 coin per "
+         + ", ".join(f"{r} {i}" for i, r in SELL_RATE.items()) + f"); her purse is {S.get('merchant', 0)} coins today, "
+         f"refilled to {MERCHANT_PURSE} each night.",
+         f"Carrying: at most {CARRY} of each good (+{SHED_CARRY} per shed owned); work gains nothing past it. Each night "
+         "10% of fish and 5% of bread rot and a quarter of anything over the limit is lost.",
          "Blueprints: " + "; ".join(
              f"build_{t} at {bp['site']}: " + " + ".join(f"{c} {i}" for i, c in bp["cost"].items())
-             + f", {bp['labour']} turns of work ({bp['perk']})" + ("" if has_room(t) else " — NO ROOM LEFT, cannot be built")
+             + f", {bp['labour']} turns of work ({bp['perk']})" + ("" if can_build(n, t) else f" — {n.upper()} CANNOT START ONE (no room or already owns {OWN_LIMIT})")
              for t, bp in BLUEPRINTS.items()) + ".",
          "", "STRUCTURES"]
     L += [f"- {sname(s)} at {s['site']}: " + ("finished" if s["done"] else ("damaged by the " + s["repair"] + ", " if s.get("repair") else "") + "needs " + needs_text(s))
@@ -735,6 +791,7 @@ no goods. Every plan step must be exactly one of these, with real names and numb
 - "At <Place>, offer <Villager> N <item> for M <item>"   (the other villager must be standing there and must hold M of that item; \
 the petitioner must hold N of what they give)
 - "Use action build_<type> at <site> until it is finished"
+- "At the Square, sell N <item> to the merchant"
 Prefer trading away things the petitioner holds in surplus. Plans of 2-5 steps are best."""
 
 def holders(n, items):
@@ -756,12 +813,13 @@ def stuck_question(n):
         if s["owner"] == n and not s["done"]:
             mats, _ = needs(s)
             short = {i: q - inv.get(i, 0) for i, q in mats.items() if inv.get(i, 0) < q}
+            hurt = f" was damaged by the {s['repair']} and" if s.get("repair") else ""
             if short:
-                found.append((2, f"My {s['type']} at the {s['site']} still needs {needs_text(s)}, and I am short of "
+                found.append((3 if hurt else 2, f"My {s['type']} at the {s['site']}{hurt} still needs {needs_text(s)}, and I am short of "
                                  + ", ".join(f"{q} {i}" for i, q in short.items())
                                  + f". I carry {inv_text(inv)}. {holders(n, list(short))} What trades get me what I lack?"))
             else:
-                found.append((1, f"I have what my {s['type']} at the {s['site']} needs ({needs_text(s)}). "
+                found.append((2 if hurt else 1, f"I have what my {s['type']} at the {s['site']}{hurt} needs ({needs_text(s)}). "
                                  "What exact steps finish it?"))
     if not a.get("plan"):
         found.append((1, f"I carry {inv_text(inv)} and have no plan. What is the most useful thing I can do next, "
@@ -875,10 +933,17 @@ def agent_turn():
             u.append("How you feel about people: " + "; ".join(f"{k}: {v}" for k, v in a["feelings"].items()) + ".")
         u.append(f"You carry: {inv_text(a['inv'])}." + (f" You own: {', '.join(mine)}." if mine else "")
                  + " You must have bread or fish to eat each night.")
+        lim = carry_limit(n)
+        over = [f"{q} {i}" for i, q in a["inv"].items() if i != "coins" and q > lim]
+        u.append(f"You can carry at most {lim} of each good (a shed of your own adds {SHED_CARRY}). Fish and bread "
+                 "slowly spoil, and a quarter of anything over the limit is lost each night"
+                 + (f": you are over it with {', '.join(over)}, so trade, sell or build with the surplus." if over else "."))
         item, q = work_yield(n, a["place"])
         actions = ["none"]
         if q:
-            u.append(f'Action "work" here gives you {q} {item}.')
+            full = item != "coins" and a["inv"][item] >= lim
+            u.append(f'Action "work" here gives you {q} {item}.' + (f" But you already carry all the {item} you can, "
+                     "so working here gains nothing." if full else ""))
             actions.append("work")
         u.append("Where things come from: wood at the Woods, stone at the Quarry, fish at the Dock, herbs at the "
                  "Garden, bread at the Bakery, ale at the Tavern.")
@@ -889,13 +954,21 @@ def agent_turn():
                 f"still needs {needs_text(s)})" for s in open_) + ". Anyone can help.")
         can = []
         for t, bp in BLUEPRINTS.items():
-            if has_room(t):
+            if can_build(n, t):
                 cost = " + ".join(f"{c} {i}" for i, c in bp["cost"].items())
                 can.append(f"{t} at the {bp['site']} ({cost}; {bp['perk']})")
                 if bp["site"] == a["place"]:
                     actions.append("build_" + t)
         u.append("Things that can be built: " + "; ".join(can) + ". To build, go to the site and use the build action "
                  "there: it first delivers the materials you carry, then each use does one turn of work.")
+        if a["place"] == "Square" and S.get("merchant", 0) > 0:
+            u.append("A travelling merchant at the Square buys goods for coins: 1 coin for every "
+                     + ", ".join(f"{r} {i}" for i, r in SELL_RATE.items())
+                     + f". She has {S['merchant']} coins left to spend today and pays at most {MERCHANT_SALE} for one sale. To sell use action \"sell\" with give and "
+                       "give_qty.")
+            actions.append("sell")
+        elif S.get("merchant", 0) > 0:
+            u.append(f"A travelling merchant at the Square buys surplus goods for coins ({S['merchant']} coins left today).")
         if here:
             u.append('To trade with someone here use action "offer": you give give_qty of give, and ask want_qty of want '
                      '(want "nothing" makes it a gift).')
@@ -937,7 +1010,7 @@ def agent_turn():
         u.append("Decide what you do in the next few minutes. Answer in JSON: "
                  '"thought" = one private sentence; "say" = one or two sentences you say out loud, or "" to stay quiet; '
                  f'"action" = one of: {", ".join(actions)}; '
-                 '"give", "give_qty", "want", "want_qty" = only for action "offer", otherwise "nothing" and 0; '
+                 '"give", "give_qty", "want", "want_qty" = only for action "offer" (give and give_qty also for "sell"), otherwise "nothing" and 0; '
                  '"go_to" = a place to walk to afterwards, or "stay"; '
                  '"activity" = 3 to 8 words for what you are doing, like "kneading rye dough"; "mood" = one word.')
         thing = {"type": "string", "enum": ["nothing"] + ITEMS}
@@ -976,6 +1049,10 @@ def agent_turn():
         act, did, petition, prayer = str(r.get("action") or "none"), "", "", ""
         if act == "work":
             item, q = work_yield(n, old)
+            if q and item != "coins":
+                q = min(q, max(0, carry_limit(n) - a["inv"][item]))
+                if not q:
+                    remember(n, f"I tried to work at the {old}, but I cannot carry any more {item}.")
             if q:
                 a["inv"][item] += q
                 did = f"{'earned' if item == 'coins' else 'got'} {q} {item} working at the {old}"
@@ -984,6 +1061,8 @@ def agent_turn():
             did = do_build(n, act[6:], old)
         elif act == "offer":
             did = do_offer(n, to, r)
+        elif act == "sell" and "sell" in actions:
+            did = do_sell(n, r)
         elif act == "accept":
             did = do_accept(n, offer)
         elif act == "consult" and "consult" in actions and oracle_state() == "ready":
@@ -1103,6 +1182,29 @@ def grant_wish(day):
         save()
 
 # ---------------------------------------------------------------- night: reflection, chronicle, new day
+NUM = {1: "one", 2: "two", 3: "three"}
+
+def group(some, among=None):
+    """'Bram's stall', 'two of Bram's stalls and Wren's boat'; 'one of Bram's stalls' when among holds more."""
+    among, parts = among or some, []
+    for key in dict.fromkeys((s["owner"], s["type"]) for s in some):
+        k, of = sum((s["owner"], s["type"]) == key for s in some), sum((s["owner"], s["type"]) == key for s in among)
+        parts.append(f"{key[0]}'s {key[1]}" if of == 1 else f"{NUM.get(k, k)} of {key[0]}'s {key[1]}s")
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+def nudge(s, how, rebuild=False):
+    """Tell the two villagers best placed to help that a neighbour's building needs them."""
+    mats = BLUEPRINTS[s["type"]]["cost"] if rebuild else needs(s)[0]
+    best = sorted(((sum(min(oa["inv"].get(i, 0), q) for i, q in mats.items()), o) for o, oa in S["agents"].items()
+                   if o != s["owner"]), reverse=True)[:2]
+    for got, o in best:
+        if got:
+            remember(o, f"{sname(s)} at the {s['site']} {how}. It needs "
+                        + ", ".join(f"{q} {i}" for i, q in mats.items())
+                        + ", and I have materials that could help. "
+                        + (f"I could give them to {s['owner']} so they can rebuild it." if rebuild else
+                           f"I could bring them to the {s['site']} and use build_{s['type']} there, or give them to {s['owner']}."))
+
 def strike():
     """Maybe let a disaster hit some finished buildings this morning. Returns a news sentence, or ""."""
     for d in DISASTERS:
@@ -1114,9 +1216,8 @@ def strike():
                 and (not d.get("sites") or s["site"] in d["sites"])]
         if not pool:
             continue
-        hit, names, wrecked = random.sample(pool, min(d["hits"], len(pool))), [], []
+        hit, wrecked = random.sample(pool, min(d["hits"], len(pool))), []
         for s in hit:
-            names.append(sname(s))
             if s["type"] != "house" and random.random() < d["wreck"]:
                 S["structures"].remove(s)
                 wrecked.append(s)
@@ -1127,11 +1228,16 @@ def strike():
             s["have"] = {i: c - max(1, round(c * frac)) for i, c in bp["cost"].items()}
             s.update(labour=bp["labour"] - max(1, round(bp["labour"] * frac)), done=False, repair=d["name"], day=S["day"])
             remember(s["owner"], f"The {d['name']} damaged my {s['type']} at the {s['site']}; it is useless until "
-                                 f"repaired and needs {needs_text(s)}. I repair it with the build action there.")
-        what = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
-        text = d["text"].format(what=what) + "." + (
-            " " + " and ".join(sname(s) for s in wrecked) + (" was" if len(wrecked) == 1 else " were") + " destroyed."
-            if wrecked else "") + (" Repairs are needed." if len(wrecked) < len(hit) else " It must be rebuilt.")
+                                 f"repaired and needs {needs_text(s)}. I repair it with the build action there, and "
+                                 "neighbours, a prayer at the Shrine or the Oracle could help.")
+            nudge(s, f"was damaged by the {d['name']}")
+        for s in wrecked:
+            nudge(s, f"was destroyed by the {d['name']}", rebuild=True)
+        text = d["text"].format(what=group(hit)) + "."
+        if wrecked:
+            w = group(wrecked, hit)
+            text += f" {w[0].upper() + w[1:]} {'was' if len(wrecked) == 1 else 'were'} destroyed."
+        text += " Repairs are needed." if len(wrecked) < len(hit) else " It must be rebuilt."
         log_event(kind="disaster", name=d["name"], text=text, hit=[s["id"] for s in hit],
                   wrecked=[s["id"] for s in wrecked])
         return text
@@ -1151,6 +1257,17 @@ def night():
                 remember(n, f"I ate {food} for supper.")
             else:
                 remember(n, "I had nothing to eat and went to bed hungry. Tomorrow I must get bread or fish.")
+            lim, lost = carry_limit(n), {}
+            for i in ITEMS[1:]:
+                k = int(a["inv"][i] * SPOIL.get(i, 0))
+                k += math.ceil(max(0, a["inv"][i] - k - lim) * OVERFLOW_LOSS)
+                if k:
+                    a["inv"][i] -= k
+                    lost[i] = k
+            if lost:
+                remember(n, "Overnight I lost " + ", ".join(f"{k} {i}" for i, k in lost.items())
+                         + f" to rot and clutter. I can only keep {lim} of each good; I should trade or sell my surplus.")
+        S["merchant"] = MERCHANT_PURSE
         save()
         day, weather, news = S["day"], S["weather"], S["news"]
 
@@ -1291,7 +1408,7 @@ def state_json():
                        traits=CAST[n]["traits"], place=a["place"], activity=a["activity"], say=a["say"],
                        say_to=a["say_to"], say_at=a["say_at"], thought=a["thought"], mood=a["mood"],
                        feelings=a["feelings"], reflection=(a["reflections"] or [""])[-1], inv=a["inv"], growth=a.get("self", ""),
-                       owns=[s["type"] for s in S["structures"] if s["done"] and s["owner"] == n], plan=a.get("plan", []))
+                       owns=[s["type"] for s in S["structures"] if s["done"] and s["owner"] == n], plan=a.get("plan", []), carry=carry_limit(n))
                   for n, a in S["agents"].items()]
         structs = []
         for s in S["structures"]:
@@ -1305,7 +1422,7 @@ def state_json():
         orc = dict(state=ost, model=S["oracle"].get("model") or "/".join(providers()) or ORACLE_MODEL, speech=S["oracle"]["speech"], at=S["oracle"]["at"], log=consults,
                    wait=max(0, int((ORACLE_COOLDOWN - (time.time() - S["oracle"]["last"])) / 60)) if ost == "resting" else 0)
         return json.dumps(dict(now=time.time(), structures=structs, oracle=orc, voice=S.get("voice"), day=S["day"], minute=S["minute"], weather=S["weather"],
-                               news=S["news"], phase=S["phase"], status=status, agents=agents,
+                               news=S["news"], merchant=S.get("merchant", 0), phase=S["phase"], status=status, agents=agents,
                                places={k: v[:2] for k, v in PLACES.items()}, events=ev[::-1], chronicle=chron,
                                prayers=[p for p in S["prayers"] if p["day"] == S["day"]], wishes=S["wishes"][-12:][::-1],
                                models=dict(actor=ACTOR, narrator=NARRATOR)))

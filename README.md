@@ -16,7 +16,9 @@ these pay off, for example a stall earns its owner coins every morning and a far
 bakes them bread. Everyone starts with a house of their own. Now and then the weather
 turns on them: lightning, floods, gales and tremors damage buildings at dawn, and
 a damaged building stops paying off until someone repairs it (or rebuilds it, if
-it was destroyed).
+it was destroyed). Goods spoil and clutter piles up, so hoarding costs
+something, and a travelling merchant at the Square buys surplus for a limited purse
+of coins each day.
 
 If a [colibri](https://github.com/JustVugg/colibri) server is running locally, a
 steward thread checks in every 90 minutes, finds the villager most stuck (no
@@ -76,6 +78,9 @@ file. Each consultation is one API call, so at most 24 a day.
 | `EMBERWICK_COLIBRI_URL` / `EMBERWICK_COLIBRI_MODEL` | `http://127.0.0.1:8000` / first listed | Local [colibri](https://github.com/JustVugg/colibri) server, used as the Oracle's last resort and by the steward |
 | `EMBERWICK_STEWARD_EVERY` | `5400` | Real seconds between steward passes (`0` turns it off): colibri sends the most stuck villager a dream with a plan |
 | `EMBERWICK_DISASTERS` | `1` | Multiplies the chance of a dawn disaster (lightning, flood, gale, tremor; about one night in eight by default). `0` turns them off |
+| `EMBERWICK_CARRY` | `80` | Most of each good a villager can carry (+80 per shed they own). Each night 10% of fish and 5% of bread rot, and a quarter of anything over the limit is lost |
+| `EMBERWICK_MERCHANT_PURSE` | `40` | Coins the merchant at the Square spends on goods each day (at most 15 per sale) |
+| `EMBERWICK_OWN_LIMIT` | `2` | Most buildings of one type a villager may own (older extras are kept) |
 | `EMBERWICK_YIELD` | `1` | Pause while Ollama has other models loaded |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API |
 

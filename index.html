@@ -122,6 +122,7 @@
   .inv { display:flex; flex-wrap:wrap; gap:5px; margin-top:9px; }
   .inv span { font-size:12px; padding:2px 8px; border-radius:6px; background:var(--panel3); color:var(--ink2); }
   .inv .own { color:var(--gold); }
+  .inv .over { color:#f08a70; }
   .card ol { margin:6px 0 0; padding-left:20px; }
   .card li { margin:2px 0; }
   details { margin-top:9px; }
@@ -908,7 +909,7 @@ function renderPeople(force) {
     top.append(avatar(a.name), id, el('span', 'mood', a.mood)); top.lastChild.title = 'Mood: ' + a.mood; c.append(top);
     c.append(el('p', '', `At the ${a.place}, ${a.activity}.`));
     const inv = el('div', 'inv'), items = Object.entries(a.inv).filter(([, q]) => q);
-    items.forEach(([k, q]) => inv.append(el('span', '', `${q} ${k}`))); a.owns.forEach(o => inv.append(el('span', 'own', '⌂ ' + o)));
+    items.forEach(([k, q]) => { const o = k !== 'coins' && a.carry && q > a.carry, s = el('span', o ? 'over' : '', `${q} ${k}`); if (o) s.title = `Over the carrying limit of ${a.carry}; a quarter of the surplus is lost each night`; inv.append(s); }); a.owns.forEach(o => inv.append(el('span', 'own', '⌂ ' + o)));
     if (!items.length && !a.owns.length) inv.append(el('span', '', 'empty-handed'));
     c.append(inv);
     if (a.thought) c.append(el('p', 'q', '“' + a.thought + '”'));
