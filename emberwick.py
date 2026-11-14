@@ -88,32 +88,38 @@ BLUEPRINTS = {
 }
 
 CAST = {
-    "Mira": dict(sex="f", age=34, dream="a windmill by the Garden, for finer flour", job="the baker", color="#e0703a", hair="#5a2d1a",
+    "Mira": dict(temp=0.9, speech="chatty and warm: exclamations, a bit of gossip, little superstitions like 'knock on wood', calls people 'love'",
+        sex="f", age=34, dream="a windmill by the Garden, for finer flour", job="the baker", color="#e0703a", hair="#5a2d1a",
         traits="warm, nosy, superstitious, quick to laugh",
         goal="to win the midsummer fair's baking prize and to find out who keeps leaving wildflowers at your door",
         secret="you burned last year's prize loaf and blamed the oven",
         home="Bakery", feel={"Tobias": "reliable but grumpy", "Bram": "best gossip partner"}),
-    "Tobias": dict(sex="m", age=58, dream="the sailboat, at the Dock", job="the carpenter", color="#7b8f4a", hair="#b9b9b0",
+    "Tobias": dict(temp=0.75, speech="few words: short gruff fragments, carpentry comparisons, never says outright what he feels",
+        sex="m", age=58, dream="the sailboat, at the Dock", job="the carpenter", color="#7b8f4a", hair="#b9b9b0",
         traits="gruff, proud, sentimental underneath, few words",
         goal="to finish the sailboat you began with your late brother before the midsummer fair",
         secret="you are the one leaving wildflowers at Mira's door and would die of embarrassment if anyone knew",
         home="Workshop", feel={"Mira": "admires her, tongue-tied", "Wren": "reckless but good hands"}),
-    "Isolde": dict(sex="f", age=27, dream="a house of your own with a quiet writing room", job="the librarian", color="#5b7fd1", hair="#22203a",
+    "Isolde": dict(temp=0.7, speech="precise, wry and a little formal: bookish references and dry understatement, hedges when nervous",
+        sex="f", age=27, dream="a house of your own with a quiet writing room", job="the librarian", color="#5b7fd1", hair="#22203a",
         traits="curious, anxious, bookish, dry wit",
         goal="to get someone to read your adventure manuscript and tell you honestly if it is good",
         secret="you write the anonymous adventure serials that everyone in the village reads",
         home="Library", feel={"Hesper": "fascinating, slightly frightening", "Bram": "too loud, kind"}),
-    "Bram": dict(sex="m", age=41, dream="a market stall on the Square to earn extra coins", job="the tavern keeper", color="#c9a227", hair="#2b1b10",
+    "Bram": dict(temp=1.0, speech="loud and jolly: tavern talk, nicknames, jokes and toasts, laughs off his worries",
+        sex="m", age=41, dream="a market stall on the Square to earn extra coins", job="the tavern keeper", color="#c9a227", hair="#2b1b10",
         traits="jovial, generous, a shameless gossip, worries in private",
         goal="to keep the Gilded Newt open through the season and pay off what you owe",
         secret="you owe a great deal of money to a merchant from the city who is due to visit",
         home="Tavern", feel={"Mira": "dear friend", "Tobias": "owes me a table repair"}),
-    "Wren": dict(sex="m", age=19, dream="a boat of your own", job="the fisher", color="#3aa6a0", hair="#c4572e",
+    "Wren": dict(temp=1.05, speech="fast and eager: runs sentences together, talks about the lake, the sea and adventure, blurts things out",
+        sex="m", age=19, dream="a boat of your own", job="the fisher", color="#3aa6a0", hair="#c4572e",
         traits="restless, daring, kind, speaks before thinking",
         goal="to leave Emberwick and see the sea, though you feel guilty about leaving the village behind",
         secret="you saw something large move under the lake and told no one",
         home="Dock", feel={"Tobias": "like a stern uncle", "Hesper": "knows more than she says"}),
-    "Hesper": dict(sex="f", age=73, dream="a statue of the lake spirit at the Shrine, and beehives in the Garden", job="the herbalist and shrine-keeper", color="#9a5fc0", hair="#e8e4da",
+    "Hesper": dict(temp=0.85, speech="cryptic: riddles, old sayings and omens from nature, often answers a question with a question",
+        sex="f", age=73, dream="a statue of the lake spirit at the Shrine, and beehives in the Garden", job="the herbalist and shrine-keeper", color="#9a5fc0", hair="#e8e4da",
         traits="cryptic, sharp, mischievous, patient",
         goal="to find an apprentice worthy of the old knowledge before you grow too old",
         secret="you believe something ancient sleeps under the lake and that it is waking",
@@ -229,6 +235,8 @@ def migrate():
                      ("sick", None), ("care_until", 0)):
             a.setdefault(k, v)
         a.setdefault("age_seen", age(n))
+        a.setdefault("lines", [l.split('said to ', 1)[1].split(': "', 1)[1].rstrip('"')
+                               for l in a.get("memories", []) if '] At the ' in l and ' I said to ' in l and ': "' in l][-5:])
         if not isinstance(a.get("whisper"), dict):
             a["whisper"] = None
     house_everyone()
@@ -322,7 +330,8 @@ def persona(n):
     return (f"You are {n}, a {age(n)}-year-old {word(n)}, {c['job']} of Emberwick, a small lakeside village. "
             f"Personality: {c['traits']}. Deep down you want {c['goal']}. "
             + (f"Your secret: {c['secret']}. " if c.get("secret") else "") + mortality_text(n)
-            + (f"Family: {fam}. " if fam else "") +
+            + (f"Family: {fam}. " if fam else "")
+            + f"How you talk: {speech_style(n)}. " +
             f"You dream of {'building ' if n in CAST else ''}{c['dream']}. Villagers gather materials, trade with each other and build things. "
             + (f"How living here has changed you so far: {grown} Let that show in how you act and speak. " if grown else "")
             + "Stay in character and speak in first person. Be concrete and specific. Move things forward: "
@@ -349,6 +358,24 @@ def time_hint(m):
 def who(n):
     """A villager's fixed facts: the founders from CAST, the village-born from S["born"]."""
     return CAST.get(n) or S["born"][n]
+
+def speech_style(n):
+    c = who(n)
+    if c.get("speech"):
+        return c["speech"]
+    if age(n) < ADULT:
+        return "like a child: simple words, lots of questions, says exactly what you think"
+    ps = [p for p in parents(n) if p in CAST or p in S.get("born", {})]
+    return ("a mix of how " + " and ".join(ps) + " talk, but in your own young way") if ps else "plainly, in your own way"
+
+def temper(n):
+    """Sampling temperature: how impulsive this villager's choices and words are."""
+    c = who(n)
+    if "temp" in c:
+        return c["temp"]
+    ps = [who(p).get("temp", 0.9) for p in parents(n) if p in CAST or p in S.get("born", {})]
+    base = sum(ps) / len(ps) if ps else 0.9
+    return round(min(1.1, base + (0.1 if age(n) < ADULT else 0)), 2)
 
 def age(n):
     b = S.get("born", {}).get(n)
@@ -1278,6 +1305,9 @@ def agent_turn():
              "Where the others are: " + "; ".join(f"{p}: {', '.join(v)}" for p, v in where.items()) + ".",
              f"Village news today: {S['news']}",
              "Your recent memories:\n" + "\n".join("- " + m for m in a["memories"][-6:])]
+        if a.get("lines"):
+            u.append("Things you said recently (keep sounding like yourself, but never repeat these):\n"
+                     + "\n".join(f'- "{x}"' for x in a["lines"][-5:]))
         if a["reflections"]:
             u.append("What you concluded on earlier nights:\n" + "\n".join("- " + r for r in a["reflections"][-2:]))
         if a["feelings"]:
@@ -1403,9 +1433,9 @@ def agent_turn():
         system, user = persona(n), "\n".join(u)
 
     if deep:
-        r, deep = chat_deep(system, user, schema, num_predict=220)
+        r, deep = chat_deep(system, user, schema, num_predict=220, temperature=temper(n))
     else:
-        r = chat(ACTOR, system, user, schema, keep_alive=-1, num_predict=220)
+        r = chat(ACTOR, system, user, schema, keep_alive=-1, num_predict=220, temperature=temper(n))
 
     with lock:
         a = S["agents"][n]
@@ -1428,6 +1458,8 @@ def agent_turn():
         elif say:
             remember(n, f'Alone at the {old} I said aloud: "{say}"')
         a["say"], a["say_to"], a["say_at"] = say, to, time.time() if say else a["say_at"]
+        if say:
+            a["lines"] = (a.get("lines", []) + [say])[-8:]
 
         act, did, petition, prayer = str(r.get("action") or "none"), "", "", ""
         if act == "work":
