@@ -164,6 +164,12 @@ SICK_CHANCE = 0.03                                       # base chance a village
 TREAT_HERBS, HEALER_HERBS = 3, 1                         # herbs a treatment costs; less when a herbalist is there
 NAMES = {"f": ["Ada", "Elsie", "Maren", "Tilda", "Nell", "Odile", "Rosa", "Ivy", "Lark", "Petra"],
          "m": ["Alder", "Corin", "Fenn", "Hugo", "Jory", "Milo", "Osric", "Pell", "Rafe", "Tam"]}
+# the midsummer fair: contests at the Square, judged at night; Bram's city creditor comes to collect
+FAIR_EVERY = int(os.environ.get("EMBERWICK_FAIR_EVERY", 28))   # village days between fairs
+FAIR_PRIZE = 20                                          # coins (and a ribbon) for each contest winner
+CONTESTS = {"bread": ("the best bread", ("bread",)), "catch": ("the biggest catch", ("fish",)),
+            "craft": ("the finest craft of wood or stone", ("wood", "stone")), "tale": ("the best tale, told aloud", ())}
+BRAM_DEBT = 80                                           # what Bram owes the merchant from the city
 # a travelling merchant at the Square buys goods for coins, with a daily purse so coins stay scarce
 SELL_RATE = {"wood": 4, "stone": 4, "fish": 5, "bread": 3, "herbs": 4, "ale": 3}   # goods per coin
 MERCHANT_PURSE = int(os.environ.get("EMBERWICK_MERCHANT_PURSE", 40))             # coins the merchant spends a day
@@ -220,9 +226,13 @@ def migrate():
     S.setdefault("merchant", MERCHANT_PURSE)
     S.setdefault("born", {})
     S.setdefault("dead", [])
-    S.setdefault("life_start", S["day"])      # founders' ages count from the day the life cycle began
+    S.setdefault("life_start", S["day"])
+    S.setdefault("fair", {"day": S["day"] + 2, "entries": [], "results": []})   # the long-promised fair, at last
+    if "Bram" in S["agents"]:
+        S.setdefault("debt", {"who": "Bram", "owed": BRAM_DEBT, "due": S["fair"]["day"]})      # founders' ages count from the day the life cycle began
     S["news"] = S["news"].split(" Also: ")[0]
     for n, a in S["agents"].items():
+        a.setdefault("ribbons", [])
         a.setdefault("inv", new_inv(n))
         a.setdefault("offer", None)
         a.setdefault("plan", [])
@@ -648,6 +658,152 @@ def life_morning():
                 remember(n, f"Today is my birthday: I am {ag} years old.")
         a["age_seen"] = ag
 
+# ---------------------------------------------------------------- the midsummer fair
+def fair_today():
+    return S.get("fair", {}).get("day") == S["day"]
+
+def fair_text(n):
+    """What a villager knows about the fair (and, for the debtor, the creditor) this turn."""
+    f, out = S.get("fair"), []
+    if not f:
+        return out
+    left = f["day"] - S["day"]
+    contests = "; ".join(f"{d}" for d, _ in CONTESTS.values())
+    if left > 0:
+        out.append(f"The midsummer fair is in {left} day{'s' if left > 1 else ''} (day {f['day']}) at the Square. "
+                   f"Contests: {contests}. Each winner gets {FAIR_PRIZE} coins and a ribbon. Goods you enter are used up "
+                   "in the judging. Prepare for it: bake, fish, make, or think of a tale.")
+    elif left == 0:
+        mine = {e["contest"] for e in f["entries"] if e["who"] == n}
+        open_ = [c for c in CONTESTS if c not in mine]
+        out.append("TODAY IS THE MIDSUMMER FAIR at the Square: bunting, music, the whole village out. "
+                   f"Contests: {contests}. Winners are judged tonight and get {FAIR_PRIZE} coins and a ribbon. "
+                   + (f"You have entered: {', '.join(sorted(mine))}. " if mine else "")
+                   + ('At the Square, enter a contest with action "enter_fair": put the contest in "contest", the goods in '
+                      'give and give_qty (bread for bread, fish for catch, wood or stone for craft, nothing for tale), and '
+                      'your pitch or your whole tale in "say".' if open_ else "You have entered every contest."))
+    d = S.get("debt")
+    if d and d["owed"] > 0 and S["day"] >= d["due"] - 1:
+        if n == d["who"]:
+            out.append(f"The merchant from the city you secretly owe {d['owed']} coins "
+                       + ("is at the fair today, asking for you by name. " if left == 0 else "arrives for the fair tomorrow. ")
+                       + 'At the Square you can pay him with action "pay_debt" and give_qty coins. Whatever is unpaid '
+                         "tonight he will take from your goods, and if that is not enough, one of your stalls.")
+        elif left == 0:
+            out.append(f"A sharp-dressed merchant from the city is at the fair, asking everyone where to find {d['who']}.")
+    return out
+
+def do_enter_fair(n, r, say):
+    a, f = S["agents"][n], S["fair"]
+    c = r.get("contest")
+    if c not in CONTESTS or any(e["who"] == n and e["contest"] == c for e in f["entries"]):
+        return ""
+    items = CONTESTS[c][1]
+    gi, qty = r.get("give"), 0
+    if items:
+        try:
+            qty = max(0, min(200, int(r.get("give_qty") or 0)))
+        except (TypeError, ValueError):
+            qty = 0
+        if gi not in items:
+            gi = max(items, key=lambda i: a["inv"][i])
+        qty = min(qty or 1, a["inv"][gi])
+        if qty < 1:
+            remember(n, f"I wanted to enter {CONTESTS[c][0]}, but I have no {' or '.join(items)} to show.")
+            return ""
+        a["inv"][gi] -= qty
+    pitch = clip(say or a["thought"], 600)
+    f["entries"].append(dict(who=n, contest=c, item=gi if items else "", qty=qty, pitch=pitch))
+    remember(n, f"I entered {CONTESTS[c][0]} at the fair" + (f" with {qty} {gi}" if items else "") + ".")
+    return f"entered {CONTESTS[c][0]}" + (f" with {qty} {gi}" if items else "")
+
+def do_pay_debt(n, r):
+    d, a = S.get("debt"), S["agents"][n]
+    if not d or d["who"] != n or d["owed"] <= 0:
+        return ""
+    try:
+        q = max(0, int(r.get("give_qty") or 0))
+    except (TypeError, ValueError):
+        q = 0
+    q = min(q or d["owed"], d["owed"], a["inv"]["coins"])
+    if q < 1:
+        remember(n, f"I have no coins to pay the city merchant; I still owe him {d['owed']}.")
+        return ""
+    a["inv"]["coins"] -= q
+    d["owed"] -= q
+    remember(n, f"I paid the city merchant {q} coins. " + (f"I still owe him {d['owed']}." if d["owed"] else
+                                                          "My debt is paid in full at last!"))
+    return f"paid the city merchant {q} coins" + ("" if d["owed"] else ", clearing the debt")
+
+def judge_fair(day):
+    """Night of the fair: judge the contests, hand out prizes, settle Bram's debt, schedule the next fair."""
+    with lock:
+        f = S.get("fair")
+        if not f or f["day"] != day:
+            return []
+        entries = [e for e in f["entries"] if e["who"] in S["agents"]]
+    out, winners = [], {}
+    for c, (title, items) in CONTESTS.items():
+        es = [e for e in entries if e["contest"] == c]
+        if not es:
+            continue
+        if c == "catch":
+            w = max(es, key=lambda e: e["qty"])
+            winners[c] = (w["who"], f"the biggest catch, {w['qty']} fish")
+            continue
+        listing = "\n".join(f"- {e['who']}" + (f" brought {e['qty']} {e['item']}" if e["item"] else "")
+                             + f': "{e["pitch"]}"' for e in es)
+        try:
+            r, _ = chat_deep("You are the fair judge of Emberwick: fair, warm, and impossible to bribe.",
+                             f"Contest: {title}. The entries:\n{listing}\nPick one winner on the merits of what they "
+                             'brought and said. Answer in JSON: "winner" = the name; "why" = one sentence.',
+                             obj({"winner": {"type": "string", "enum": [e["who"] for e in es]}, "why": STR}),
+                             num_predict=160, temperature=0.4)
+            who_ = r.get("winner") if r.get("winner") in [e["who"] for e in es] else es[0]["who"]
+            winners[c] = (who_, clip(r.get("why"), 200))
+        except Exception:
+            w = max(es, key=lambda e: (e["qty"], len(e["pitch"])))
+            winners[c] = (w["who"], "the judge could not decide, so the crowd chose")
+    with lock:
+        for c, (w, why) in winners.items():
+            if w not in S["agents"]:
+                continue
+            S["agents"][w]["inv"]["coins"] += FAIR_PRIZE
+            S["agents"][w]["ribbons"].append(f"day {day}: {CONTESTS[c][0]}")
+            for o in S["agents"]:
+                remember(o, f"I won {CONTESTS[c][0]} at the midsummer fair! {why}" if o == w else
+                         f"At the fair, {w} won {CONTESTS[c][0]}: {why}")
+            out.append(f"{w} won {CONTESTS[c][0]} ({why})")
+        f["results"] = [dict(contest=c, title=CONTESTS[c][0], winner=w, why=why) for c, (w, why) in winners.items()]
+        if out:
+            log_event(kind="fair", text="Midsummer fair results: " + "; ".join(out) + ".")
+        d = S.get("debt")
+        if d and d["owed"] > 0 and d["due"] <= day and d["who"] in S["agents"]:
+            a, owed, took = S["agents"][d["who"]], d["owed"], []
+            pay = min(a["inv"]["coins"], owed); a["inv"]["coins"] -= pay; owed -= pay
+            if pay: took.append(f"{pay} coins")
+            for i in sorted(SELL_RATE, key=lambda i: -a["inv"][i] / SELL_RATE[i]):
+                if owed <= 0:
+                    break
+                k = min(a["inv"][i], owed * SELL_RATE[i])
+                if k:
+                    a["inv"][i] -= k; owed -= k // SELL_RATE[i]; took.append(f"{k} {i}")
+            if owed > 0:
+                st_ = next((s for s in S["structures"] if s["owner"] == d["who"] and s["type"] == "stall" and s["done"]), None)
+                if st_:
+                    S["structures"].remove(st_); owed = 0; took.append("a market stall")
+            d["owed"] = max(0, owed)
+            text = (f"The city merchant collected what {d['who']} still owed: {', '.join(took)}."
+                    + (f" {d['owed']} coins remain unpaid." if d["owed"] else " The debt is settled."))
+            remember(d["who"], text.replace(f"what {d['who']} still owed", "what I still owed him"))
+            log_event(kind="debt", who=d["who"], text=text)
+            out.append(text)
+            if d["owed"]:
+                d["due"] = day + FAIR_EVERY                # he will be back at the next fair
+        f.update(day=day + FAIR_EVERY, entries=[])
+        save()
+    return out
+
 # ---------------------------------------------------------------- economy helpers
 def inv_text(inv):
     return ", ".join(f"{q} {i}" for i, q in inv.items() if q) or "nothing"
@@ -714,6 +870,10 @@ def step_done(n, a, step, act, did):
         return "Hospital" in did
     if re.search(r"\bmourn\b", low):
         return did.startswith("laid")
+    if re.search(r"\b(enter|fair|contest)\b", low):
+        return did.startswith("entered")
+    if re.search(r"\b(debt|pay)\b", low) and "merchant" in low:
+        return did.startswith("paid the city merchant")
     if re.search(r"\bsell\b", low):
         return did.startswith("sold")
     if re.search(r"\boffer\b", low):
@@ -984,6 +1144,8 @@ def oracle_world(n, question):
          f"Selling: at the Square, action sell gives the merchant goods for coins (1 coin per "
          + ", ".join(f"{r} {i}" for i, r in SELL_RATE.items()) + f"); her purse is {S.get('merchant', 0)} coins today, "
          f"refilled to {MERCHANT_PURSE} each night; she buys from each villager once a day.",
+         "Fair: " + (" ".join(fair_text(n)) or "none scheduled") + " Action enter_fair and pay_debt work only at the "
+         "Square on the fair day.",
          f"Health: villagers sometimes fall ill; action treat at the Hospital cures them for {TREAT_HERBS} herbs "
          f"({HEALER_HERBS} if a herbalist is there). Untreated illness can kill. The dead lie in the Cemetery.",
          f"Carrying: at most {CARRY} of each good (+{SHED_CARRY} per shed owned); work gains nothing past it. Each night "
@@ -1344,6 +1506,7 @@ def agent_turn():
         u.append("Where things come from: wood at the Woods, stone at the Quarry, fish at the Dock, herbs at the "
                  "Garden, bread at the Bakery, ale at the Tavern. The Hospital treats illness for herbs; the dead rest "
                  "in the Cemetery.")
+        extra_fair = {}
         sick_kids = [c for c in children(n) if not acting(c) and S["agents"][c].get("sick")]
         if a.get("sick") or sick_kids:
             u.append(("You are ill and feverish; " if a.get("sick") else f"Your child {', '.join(sick_kids)} is ill; ")
@@ -1387,6 +1550,16 @@ def agent_turn():
         elif S.get("merchant", 0) > 0:
             u.append(f"A travelling merchant at the Square buys surplus goods for coins ({S['merchant']} coins left today, "
                      "one sale per villager a day).")
+        u += fair_text(n)
+        if fair_today() and a["place"] == "Square":
+            done_c = {e["contest"] for e in S["fair"]["entries"] if e["who"] == n}
+            left_c = [c for c in CONTESTS if c not in done_c]
+            if left_c:
+                actions.append("enter_fair")
+                extra_fair = {"contest": {"type": "string", "enum": left_c}}
+            d = S.get("debt")
+            if d and d["who"] == n and d["owed"] > 0:
+                actions.append("pay_debt")
         if here:
             u.append('To trade with someone here use action "offer": you give give_qty of give, and ask want_qty of want '
                      '(want "nothing" makes it a gift).')
@@ -1395,7 +1568,7 @@ def agent_turn():
             u.append(f'{offer["from"]} offers you {offer["give_qty"]} {offer["give"]} in exchange for '
                      f'{offer["want_qty"]} {offer["want"]}. Use action "accept" or "decline".')
             actions += ["accept", "decline"]
-        extra = dict(extra_grave)
+        extra = {**extra_grave, **extra_fair}
         if proposal:
             u.append(f'{proposal["from"]} has asked you to have a child together with them. This is a big, life-long '
                      'decision: accept only if you truly want a child with them, given how you feel about them. Use '
@@ -1505,6 +1678,10 @@ def agent_turn():
             did = do_offer(n, to, r)
         elif act == "sell" and "sell" in actions:
             did = do_sell(n, r)
+        elif act == "enter_fair" and "enter_fair" in actions:
+            did = do_enter_fair(n, r, say)
+        elif act == "pay_debt" and "pay_debt" in actions:
+            did = do_pay_debt(n, r)
         elif act == "accept":
             did = do_accept(n, offer)
         elif act == "consult" and "consult" in actions and oracle_state() == "ready":
@@ -1806,6 +1983,15 @@ def night():
     except Exception as e:
         lives = []
         print("life_night failed:", e, flush=True)
+    fair_news = []
+    with lock:
+        judge_now = night_step("fair")
+    if judge_now:
+        status = "night — judging the fair"
+        try:
+            fair_news = judge_fair(day)
+        except Exception as e:
+            print("judge_fair failed:", e, flush=True)
     status = "night — the chronicler is writing"
     with db() as c:
         rows = [json.loads(d) for (d,) in c.execute("SELECT data FROM events WHERE day=? ORDER BY id", (day,))]
@@ -1825,7 +2011,8 @@ def night():
     user = (f"Day {day}. Weather: {weather}. News that morning: {news}\n"
             + (f"Disaster that morning: {' '.join(struck)}\n" if struck else "")
             + "".join(f"Family news that day: {e['text']}\n" for e in rows if e.get("kind") == "family")
-            + (f"Tonight, as the day ended: {'; '.join(lives)}.\n" if lives else "") +
+            + (f"Tonight, as the day ended: {'; '.join(lives)}.\n" if lives else "")
+            + (f"It was the day of the midsummer fair. Results: {' '.join(fair_news)}\n" if fair_news else "") +
             "What each villager concluded at day's end:\n" + "\n".join(refl) +
             "\nDeeds of the day (work, trade, building):\n" + ("\n".join(deeds) or "- nothing of note") +
             "\nThings said during the day:\n" + "\n".join(lines) +
@@ -2023,7 +2210,7 @@ def state_json():
     with lock:
         agents = [dict(name=n, job=who(n)["job"], color=who(n)["color"], hair=who(n)["hair"], age=age(n),
                        sex=who(n)["sex"], parents=parents(n), partner=a.get("partner"), family=family_text(n),
-                       expecting=bool(a.get("expecting")), worth=worth(n), hungry=a.get("hungry", 0), sick=bool(a.get("sick")),
+                       expecting=bool(a.get("expecting")), worth=worth(n), ribbons=a.get("ribbons", []), hungry=a.get("hungry", 0), sick=bool(a.get("sick")),
                        traits=who(n)["traits"], place=a["place"], activity=a["activity"], say=a["say"],
                        say_to=a["say_to"], say_at=a["say_at"], thought=a["thought"], mood=a["mood"],
                        feelings=a["feelings"], reflection=(a["reflections"] or [""])[-1], inv=a["inv"], growth=a.get("self", ""),
@@ -2041,7 +2228,8 @@ def state_json():
         orc = dict(state=ost, model=S["oracle"].get("model") or "/".join(providers()) or ORACLE_MODEL, speech=S["oracle"]["speech"], at=S["oracle"]["at"], log=consults,
                    wait=max(0, int((ORACLE_COOLDOWN - (time.time() - S["oracle"]["last"])) / 60)) if ost == "resting" else 0)
         return json.dumps(dict(now=time.time(), structures=structs, oracle=orc, voice=S.get("voice"), day=S["day"], minute=S["minute"], weather=S["weather"],
-                               news=S["news"], tts=tts_available(), merchant=S.get("merchant", 0), dead=S.get("dead", []), phase=S["phase"], status=status, agents=agents,
+                               news=S["news"], tts=tts_available(), fair=dict(day=S.get("fair", {}).get("day"), today=fair_today(),
+                               entries=len(S.get("fair", {}).get("entries", [])), results=S.get("fair", {}).get("results", [])), merchant=S.get("merchant", 0), dead=S.get("dead", []), phase=S["phase"], status=status, agents=agents,
                                places={k: v[:2] for k, v in PLACES.items()}, events=ev[::-1], chronicle=chron,
                                prayers=[p for p in S["prayers"] if p["day"] == S["day"]], wishes=S["wishes"][-12:][::-1],
                                models=dict(actor=ACTOR, narrator=NARRATOR)))

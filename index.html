@@ -152,6 +152,8 @@
   .gone { margin-top:16px; }
   .gone h4 { font:600 10.5px var(--sans); letter-spacing:.08em; text-transform:uppercase; color:var(--dim); margin:0 0 6px; }
   .gone div { font-size:13px; color:var(--ink2); padding:4px 0; border-top:1px solid var(--line2); }
+  .fairnow { color:var(--gold); }
+  .rib { color:#e98bb0; }
   .card .fam { font-size:13px; color:#e9c7d6; margin-top:4px; }
   .ev.sys.lf .av { background:#3a1f30; color:#f2a7c8; }
   .ev.sys.lf .body { color:#f1d9e4; }
@@ -1021,6 +1023,22 @@ function frame(t) {
       }
     }
 
+    if (st.fair && st.fair.today && st.places.Square && !asleep) {                                     // fair day: bunting and lanterns over the Square
+      const [qx, qy] = st.places.Square, cols = ['#d9534a', '#e8bd5f', '#4f9fd8', '#7bc46a', '#c77ad8', '#f2f0e6'];
+      for (let k = 0; k < 6; k++) {
+        const a0 = k / 6 * Math.PI * 2, a1 = (k + 1) / 6 * Math.PI * 2, R = 3.1;
+        const x0 = (qx + Math.cos(a0) * R) * T, y0 = (qy + 0.9 + Math.sin(a0) * R * 0.62) * T - 34, x1 = (qx + Math.cos(a1) * R) * T, y1 = (qy + 0.9 + Math.sin(a1) * R * 0.62) * T - 34;
+        ctx.fillStyle = '#5a4030'; ctx.fillRect(x0 - 1.5, y0, 3, 34);
+        const sag = 12, sway = REDUCE ? 0 : Math.sin(t / 700 + k) * 1.5;
+        ctx.strokeStyle = 'rgba(60,45,30,.8)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo((x0 + x1) / 2, (y0 + y1) / 2 + sag, x1, y1); ctx.stroke();
+        for (let i = 1; i < 8; i++) {
+          const u = i / 8, x = (1 - u) * (1 - u) * x0 + 2 * u * (1 - u) * (x0 + x1) / 2 + u * u * x1, y = (1 - u) * (1 - u) * y0 + 2 * u * (1 - u) * ((y0 + y1) / 2 + sag) + u * u * y1;
+          ctx.fillStyle = cols[(i + k) % cols.length]; ctx.beginPath(); ctx.moveTo(x - 4, y); ctx.lineTo(x + 4, y); ctx.lineTo(x + sway, y + 9); ctx.closePath(); ctx.fill();
+        }
+        wins.push([x0, y0 - 3, .5, '255,190,110']);                                            // lanterns glow at dusk
+        ctx.fillStyle = '#f3b65a'; ctx.beginPath(); ctx.arc(x0, y0 - 3, 3.2, 0, 7); ctx.fill();
+      }
+    }
     if (st.places.Cemetery) {                                                                          // a headstone per grave
       const [cx, cy] = st.places.Cemetery;
       (st.dead || []).slice(0, 24).forEach((d, i) => {
@@ -1205,6 +1223,8 @@ const SYS = {
   wish: e => ['✦', 'pr', `A wish is granted to ${e.who}`, e.text + (e.gifts && e.gifts.length ? ` (${e.gifts.join(', ')})` : ''), true],
   wish_none: e => ['✧', 'pr', 'The heavens stay silent', e.text, true],
   sick: e => ['✚', 'lf', `${e.who} falls ill`, e.text, true],
+  fair: e => ['🎪', 'pr', 'The midsummer fair', e.text, true],
+  debt: e => ['⚖', 'you', `The city merchant and ${e.who}`, e.text, true],
   family: e => ['♥', 'lf', 'A family begins', e.text, true],
   birth: e => ['✿', 'lf', `${e.who} is born`, e.text, true],
   death: e => ['✝', 'lf', `${e.who} has died`, e.text, true],
@@ -1268,7 +1288,8 @@ function renderPeople(force) {
   const box = $('people'), keep = box.scrollTop; box.replaceChildren();
   for (const a of st.agents) {
     const c = el('div', 'card' + (selected === a.name ? ' sel' : '')); c.style.borderLeftColor = a.color; c.id = 'card-' + a.name;
-    const top = el('div', 'top'), id = el('div'); id.append(el('h3', '', a.name), el('div', 'sub', `${a.sex === 'f' ? '♀' : '♂'} ${a.age}, ${a.job}${a.expecting ? ' · expecting' : ''}`));
+    const top = el('div', 'top'), id = el('div'); id.append(el('h3', '', a.name), el('div', 'sub', `${a.sex === 'f' ? '♀' : '♂'} ${a.age}, ${a.job}${a.expecting ? ' · expecting' : ''}${a.ribbons && a.ribbons.length ? ' · 🎀 ' + a.ribbons.length : ''}`));
+    if (a.ribbons && a.ribbons.length) id.lastChild.title = 'Fair ribbons: ' + a.ribbons.join('; ');
     top.append(avatar(a.name), id, el('span', 'mood', a.mood)); top.lastChild.title = 'Mood: ' + a.mood; c.append(top);
     c.append(el('p', '', `At the ${a.place}, ${a.activity}.`));
     if (a.family) c.append(el('p', 'fam', cap(a.family.replace(/\byour\b/g, 'their').replace(/\byou are\b/g, 'is').replace(/\byou have\b/g, 'has')) + '.'));
@@ -1295,7 +1316,7 @@ let builtKey = '';
 const WCOL = { coins: '#e8bd5f', goods: '#7bb0d8', buildings: '#9fc98a' };
 let popKey = '', popSort = { k: 'worth', d: -1 };
 function renderPop() {
-  const key = JSON.stringify([st.agents.map(a => [a.name, a.age, a.worth, a.expecting, a.hungry, a.sick, a.job]), st.dead, popSort]);
+  const key = JSON.stringify([st.agents.map(a => [a.name, a.age, a.worth, a.expecting, a.hungry, a.sick, a.job, (a.ribbons || []).length]), st.dead, popSort]);
   if (key === popKey) return; popKey = key;
   const box = $('pop'), keep = box.scrollTop; box.replaceChildren();
   const A = st.agents, n = A.length, kids = A.filter(a => a.age < 18).length, dead = st.dead || [];
@@ -1326,6 +1347,7 @@ function renderPop() {
     if (a.expecting) nm.append(el('span', 'tag', 'expecting'));
     if (a.hungry >= 2) nm.append(el('span', 'tag warn', `hungry ${a.hungry} nights`));
     if (a.sick) nm.append(el('span', 'tag warn', 'sick'));
+    if (a.ribbons && a.ribbons.length) { const r = el('span', 'tag rib', '🎀 ' + a.ribbons.length); r.title = a.ribbons.join('; '); nm.append(r); }
     txt.append(nm, el('div', 'jb', a.job + (a.parents && a.parents.length ? ` · child of ${a.parents.join(' & ')}` : '')));
     who.append(avatar(a.name), txt); c1.append(who);
     const c3 = el('td', 'num'), w = a.worth, bar = el('div', 'wbar');
@@ -1527,7 +1549,10 @@ function weatherIcon(w, m) {
 }
 function renderHeader() {
   const c = $('clock'); c.firstChild.textContent = weatherIcon(st.weather, st.minute);
-  const span = c.lastChild; span.replaceChildren(el('b', '', `Day ${st.day}`), ` · ${hhmm(st.minute)} · ${cap(st.weather)}`);
+  const span = c.lastChild, fd = st.fair && st.fair.day ? st.fair.day - st.day : null;
+  span.replaceChildren(el('b', '', `Day ${st.day}`), ` · ${hhmm(st.minute)} · ${cap(st.weather)}`);
+  if (fd === 0) span.append(' · ', el('b', 'fairnow', '🎪 Fair today'));
+  else if (fd > 0 && fd <= 7) span.append(` · 🎪 Fair in ${fd} day${fd > 1 ? 's' : ''}`);
   const s = $('status'); s.className = st.status === 'running' ? '' : 'off';
   s.lastChild.textContent = st.status === 'running' ? 'Live' : cap(st.status);
   s.title = `Villagers: ${st.models.actor} · Narrator: ${st.models.narrator}`;

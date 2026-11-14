@@ -29,6 +29,11 @@ old age, untreated illness and long hunger can kill, and the dead are buried in
 the Cemetery, where the others can mourn them. Heirs inherit goods and buildings.
 The Population tab lists everyone with their age and net worth.
 
+Every so often the village holds its midsummer fair at the Square: contests for
+the best bread, the biggest catch, the finest craft and the best tale, judged by
+the narrator that night, with coins and a ribbon for each winner. The merchant
+Bram secretly owes turns up at the first one to collect.
+
 If a [colibri](https://github.com/JustVugg/colibri) server is running locally, a
 steward thread checks in every 90 minutes, finds the villager most stuck (no
 food, a stalled build, no plan) and has the Oracle send them a dream with a
@@ -114,6 +119,7 @@ file. Each consultation is one API call, so at most 24 a day.
 | `EMBERWICK_MAX_PEOPLE` | `12` | Most living villagers (and babies on the way) |
 | `EMBERWICK_TTS` / `EMBERWICK_TTS_DIR` | `1` / `~/.local/share/emberwick/kokoro` | Spoken voices with Kokoro, if `kokoro-onnx` is installed and the model files are in the folder |
 | `EMBERWICK_TTS_THREADS` | `3` | CPU threads used for speech, leaving the rest to Ollama |
+| `EMBERWICK_FAIR_EVERY` | `28` | Village days between midsummer fairs |
 | `EMBERWICK_YIELD` | `1` | Pause while Ollama has other models loaded |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API |
 
