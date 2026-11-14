@@ -20,6 +20,15 @@ it was destroyed). Goods spoil and clutter piles up, so hoarding costs
 something, and a travelling merchant at the Square buys surplus for a limited purse
 of coins each day.
 
+They also live and die. Three women and three men grow a year older every four
+village days and know it. A woman and a man who both want it can have a child,
+born two nights later and named by the mother; toddlers go everywhere with her
+and are fed from their parents' food, take their own turns from 6 and grow up at
+18. Villagers fall ill now and then and can be cured with herbs at the Hospital;
+old age, untreated illness and long hunger can kill, and the dead are buried in
+the Cemetery, where the others can mourn them. Heirs inherit goods and buildings.
+The Population tab lists everyone with their age and net worth.
+
 If a [colibri](https://github.com/JustVugg/colibri) server is running locally, a
 steward thread checks in every 90 minutes, finds the villager most stuck (no
 food, a stalled build, no plan) and has the Oracle send them a dream with a
@@ -81,6 +90,9 @@ file. Each consultation is one API call, so at most 24 a day.
 | `EMBERWICK_CARRY` | `80` | Most of each good a villager can carry (+80 per shed they own). Each night 10% of fish and 5% of bread rot, and a quarter of anything over the limit is lost |
 | `EMBERWICK_MERCHANT_PURSE` | `40` | Coins the merchant at the Square spends on goods each day (at most 15 per sale) |
 | `EMBERWICK_OWN_LIMIT` | `2` | Most buildings of one type a villager may own (older extras are kept) |
+| `EMBERWICK_LIFE` | `1` | Ageing, children, illness and death (`0` turns the life cycle off) |
+| `EMBERWICK_YEAR_DAYS` | `4` | Village days per year of age |
+| `EMBERWICK_MAX_PEOPLE` | `12` | Most living villagers (and babies on the way) |
 | `EMBERWICK_YIELD` | `1` | Pause while Ollama has other models loaded |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API |
 

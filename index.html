@@ -123,6 +123,33 @@
   .inv span { font-size:12px; padding:2px 8px; border-radius:6px; background:var(--panel3); color:var(--ink2); }
   .inv .own { color:var(--gold); }
   .inv .over { color:#f08a70; }
+  .tiles { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:14px; }
+  .tile { background:var(--panel2); border-radius:10px; padding:9px 11px; }
+  .tile b { display:block; font:600 21px/1.2 var(--sans); color:var(--ink); font-variant-numeric:tabular-nums; }
+  .tile span { font-size:11.5px; color:var(--dim); }
+  .ptab { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  .ptab th { text-align:left; font:600 10.5px var(--sans); letter-spacing:.08em; text-transform:uppercase; color:var(--dim); padding:4px 6px 6px; cursor:pointer; user-select:none; white-space:nowrap; }
+  .ptab th.num, .ptab td.num { text-align:right; }
+  .ptab th[aria-sort] { color:var(--gold); }
+  .ptab td { padding:7px 6px; border-top:1px solid var(--line2); vertical-align:middle; }
+  .ptab tr.row { cursor:pointer; }
+  .ptab tr.row:hover td { background:var(--panel3); }
+  .ptab .who { display:flex; align-items:center; gap:8px; }
+  .ptab .who .av { flex:none; }
+  .ptab .nm { font-weight:600; }
+  .ptab .jb { font-size:12px; color:var(--dim); line-height:1.3; }
+  .ptab .tag { font-size:11px; margin-left:5px; padding:0 6px; border-radius:6px; background:var(--panel3); color:#f2a7c8; }
+  .ptab .tag.warn { color:var(--warn); }
+  .wbar { display:flex; height:5px; border-radius:3px; overflow:hidden; background:var(--panel3); margin-top:4px; min-width:70px; }
+  .wbar i { display:block; height:100%; }
+  .wkey { display:flex; gap:12px; font-size:11.5px; color:var(--dim); margin:8px 2px 0; flex-wrap:wrap; }
+  .wkey i { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:5px; vertical-align:0; }
+  .gone { margin-top:16px; }
+  .gone h4 { font:600 10.5px var(--sans); letter-spacing:.08em; text-transform:uppercase; color:var(--dim); margin:0 0 6px; }
+  .gone div { font-size:13px; color:var(--ink2); padding:4px 0; border-top:1px solid var(--line2); }
+  .card .fam { font-size:13px; color:#e9c7d6; margin-top:4px; }
+  .ev.sys.lf .av { background:#3a1f30; color:#f2a7c8; }
+  .ev.sys.lf .body { color:#f1d9e4; }
   .card ol { margin:6px 0 0; padding-left:20px; }
   .card li { margin:2px 0; }
   details { margin-top:9px; }
@@ -196,6 +223,7 @@
     <nav role="tablist" aria-label="Village views">
       <button role="tab" aria-selected="true" aria-controls="feed" data-tab="feed">Live</button>
       <button role="tab" aria-selected="false" aria-controls="people" data-tab="people">Villagers</button>
+      <button role="tab" aria-selected="false" aria-controls="pop" data-tab="pop">Population<span class="n" id="npop" hidden></span></button>
       <button role="tab" aria-selected="false" aria-controls="built" data-tab="built">Built<span class="n" id="nbuilt" hidden></span></button>
       <button role="tab" aria-selected="false" aria-controls="oracle" data-tab="oracle">Oracle<span class="dot" id="nor" hidden></span></button>
       <button role="tab" aria-selected="false" aria-controls="prayers" data-tab="prayers">Prayers<span class="n" id="npray" hidden></span></button>
@@ -207,6 +235,7 @@
       <div id="feedlist"></div>
     </div>
     <div id="people" class="tab" role="tabpanel"></div>
+    <div id="pop" class="tab" role="tabpanel"></div>
     <div id="built" class="tab" role="tabpanel"></div>
     <div id="oracle" class="tab" role="tabpanel"></div>
     <div id="prayers" class="tab" role="tabpanel"></div>
@@ -226,8 +255,8 @@ const SERIF = getComputedStyle(document.documentElement).getPropertyValue('--ser
 const $ = id => document.getElementById(id);
 const cv = $('c'), ctx = cv.getContext('2d'), stage = $('stage');
 const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const STAND = { Oracle: 1.7, Dock: 1.2, Square: 1.4, Garden: 1.7, Shrine: 1.6, Cottages: 1.9, Meadow: 1.9 };
-const VIA = { Meadow: 'Shrine' };   // places reached by a branch off another place's path, not straight from the Square
+const STAND = { Oracle: 1.7, Dock: 1.2, Square: 1.4, Garden: 1.7, Shrine: 1.6, Cottages: 1.9, Meadow: 1.9, Hospital: 1.6, Cemetery: 1.9 };
+const VIA = { Meadow: 'Shrine', Cemetery: 'Hospital' };   // places reached by a branch off another place's path, not straight from the Square
 const PLACE_NAME = { Tavern: 'The Gilded Newt', Shrine: 'Old Oak Shrine' };
 let st = null, selected = null, hover = null, skew = 0, filter = 'all', scenery = null, pathPts = {};
 const pos = {};               // name -> {x, y, route:[[x,y]...], place, walking}
@@ -441,6 +470,14 @@ function buildScenery() {
     g.fillStyle = '#55595e'; g.fillRect((qx - 0.5) * T, (qy - 0.1) * T, 30, 29);
     for (const [a, b, w] of [[-2.2, 1.1, 16], [1.6, 1.2, 20], [0.9, 1.5, 12]]) { g.fillStyle = '#a3a7ab'; g.fillRect((qx + a) * T, (qy + b) * T, w, w * 0.7); g.fillStyle = 'rgba(0,0,0,.2)'; g.fillRect((qx + a) * T, (qy + b) * T + w * 0.5, w, w * 0.2); }
   }]);
+  if (P.Hospital) items.push([P.Hospital[1], () => {
+    const [hx, hy] = P.Hospital; house(g, hx, hy, 3.6, 1.8, '#eeeae0', '#8a9aa8', { win: [-0.6, 0, 0.6], pitch: 0.8 });
+    const X = hx * T, Y = (hy - 2.75) * T; g.fillStyle = '#f7f3ea'; g.beginPath(); g.arc(X, Y, 9, 0, 7); g.fill();
+    g.fillStyle = '#c8463c'; g.fillRect(X - 2.5, Y - 6.5, 5, 13); g.fillRect(X - 6.5, Y - 2.5, 13, 5);
+  }]);
+  if (P.Cemetery) items.push([P.Cemetery[1] - 1.3, () => {
+    const [cx, cy] = P.Cemetery; tree(g, cx + 3.4, cy - 0.9, 1.3, rng(77));   // an old yew by the gate
+  }]);
   const lamp = (x, y) => items.push([y, () => { const X = x * T, Y = y * T; shadow(g, X + 2, Y, 5, 2); g.fillStyle = '#3d3a36'; g.fillRect(X - 1.5, Y - 30, 3, 30); g.fillStyle = '#2f2c28'; g.fillRect(X - 5, Y - 38, 10, 9); g.fillStyle = '#f2d48a'; g.fillRect(X - 3, Y - 36, 6, 5); windows.push([X, Y - 33.5, .9]); }]);
   lamp(16.5, 13.6); lamp(23.5, 13.6); lamp(P.Tavern[0] - 2.8, P.Tavern[1] + 0.3); lamp(P.Dock[0] - 2, P.Dock[1] + 0.5);
   items.sort((a, b) => a[0] - b[0]).forEach(i => i[1]());
@@ -461,6 +498,14 @@ function buildScenery() {
     shadow(g, cx, cy + 4, 20, 6); g.fillStyle = '#8a6a44'; g.fillRect(cx - 16, cy - 12, 32, 12);
     g.fillStyle = '#e2c46a'; g.beginPath(); g.ellipse(cx, cy - 14, 15, 8, 0, 0, 7); g.fill();
     g.fillStyle = '#4a3222'; for (const dx of [-10, 10]) { g.beginPath(); g.arc(cx + dx, cy + 1, 5, 0, 7); g.fill(); }
+  }
+  // cemetery ground: mown grass inside a low stone wall, with a gate facing the path
+  if (P.Cemetery) {
+    const [cx, cy] = P.Cemetery, x0 = (cx - 3) * T, y0 = (cy - 1.5) * T, w = 6 * T, h = 2.7 * T;
+    g.fillStyle = 'rgba(120,150,90,.28)'; g.beginPath(); g.roundRect(x0, y0, w, h, 10); g.fill();
+    g.strokeStyle = '#8c8a84'; g.lineWidth = 4; g.beginPath();
+    g.moveTo(x0 + w / 2 - 14, y0 + h); g.lineTo(x0, y0 + h); g.lineTo(x0, y0); g.lineTo(x0 + w, y0); g.lineTo(x0 + w, y0 + h); g.lineTo(x0 + w / 2 + 14, y0 + h); g.stroke();
+    g.fillStyle = '#6d6b66'; for (const dx of [-16, 12]) g.fillRect(x0 + w / 2 + dx, y0 + h - 10, 4, 14);
   }
   // well
   const [wx, wy] = P.Square;
@@ -498,7 +543,7 @@ const glow = (x, y, r, a, col = '255,200,110') => { const gr = ctx.createRadialG
 
 // ================================================================ dynamic world
 function person(a, p, t) {
-  const S = 1.35, x = p.x * T, base = p.y * T, step = p.walking ? Math.sin(t / 95) : 0, y = base - (p.walking ? Math.abs(step) * 2.5 : 0);
+  const S = 1.35 * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1), x = p.x * T, base = p.y * T, step = p.walking ? Math.sin(t / 95) : 0, y = base - (p.walking ? Math.abs(step) * 2.5 : 0);
   shadow(ctx, x - 2, base + 1, 11 * S, 4 * S, .3);
   if (selected === a.name) { const k = 1 + Math.sin(t / 300) * 0.08; ctx.strokeStyle = '#e8bd5f'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(x, base + 1, 17 * S * k, 7.5 * S * k, 0, 0, 7); ctx.stroke(); }
   else if (hover === a.name) { ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, base + 1, 15 * S, 6.5 * S, 0, 0, 7); ctx.stroke(); }
@@ -664,6 +709,10 @@ function drawOverlay(t, asleep, order) {
     const [sx, sy] = toScreen(s.x * T, s.y * T);
     label(s.done ? `${s.owner}'s ${s.type}` : `${s.owner}'s ${s.type} · ${s.repair ? 'damaged · ' : ''}${Math.round(s.progress * 100)}%`, sx, sy + (s.done ? 20 : 29) * z + 8, { size: 11, weight: 500, color: s.done ? '#e2dac6' : '#f3e2b6' });
   }
+  if (st.places.Cemetery && z >= 1.4) {                 // names on the headstones, close up
+    const [cx, cy] = st.places.Cemetery;
+    (st.dead || []).slice(0, 24).forEach((d, i) => { const [sx, sy] = toScreen((cx - 2.5 + (i % 8) * 0.7) * T, (cy - 0.85 + Math.floor(i / 8) * 0.75) * T); label(d.name, sx, sy + 10 * z + 6, { size: 9.5, weight: 500, color: '#d8d4c6' }); });
+  }
   for (const [name, [x, y]] of Object.entries(st.places)) {   // place names last: they give way to everything else
     const off = name === 'Dock' ? 3.5 : name === 'Garden' ? 1.45 : name === 'Square' ? -1.9 : name === 'Cottages' ? 2.95 : 0.75;
     const [sx, sy] = toScreen(x * T, (y + off) * T);
@@ -713,6 +762,15 @@ function frame(t) {
     if (!asleep) for (const a of order) things.push([pos[a.name].y, () => person(a, pos[a.name], t)]);
     things.sort((a, b) => a[0] - b[0]).forEach(d => d[1]());
 
+    if (st.places.Cemetery) {                                                                          // a headstone per grave
+      const [cx, cy] = st.places.Cemetery;
+      (st.dead || []).slice(0, 24).forEach((d, i) => {
+        const X = (cx - 2.5 + (i % 8) * 0.7) * T, Y = (cy - 0.85 + Math.floor(i / 8) * 0.75) * T;
+        shadow(ctx, X, Y + 1, 6, 2, .3); ctx.fillStyle = '#a4a39d'; ctx.beginPath(); ctx.roundRect(X - 5, Y - 12, 10, 13, [5, 5, 1, 1]); ctx.fill();
+        ctx.fillStyle = '#7f7e78'; ctx.fillRect(X - 0.8, Y - 9.5, 1.6, 6); ctx.fillRect(X - 3, Y - 7.8, 6, 1.6);
+        ctx.fillStyle = ['#f4e36b', '#e98bb0', '#f6f2ea'][i % 3]; ctx.beginPath(); ctx.arc(X + 4, Y + 1, 1.7, 0, 7); ctx.fill();
+      });
+    }
     const [shx, shy] = st.places.Shrine, candles = [];                                                 // a candle per prayer today
     (st.prayers || []).slice(0, 8).forEach((p, i) => {
       const X = (shx - 2.25 + (i % 4) * 0.3) * T, Y = (shy + 0.75 + Math.floor(i / 4) * 0.28) * T, fl = REDUCE ? 0 : Math.sin(t / 140 + i * 2) * 0.8;
@@ -845,6 +903,10 @@ const SYS = {
   prayer: e => ['✧', 'pr', `${e.who} prays at the Old Oak Shrine`, e.text],
   wish: e => ['✦', 'pr', `A wish is granted to ${e.who}`, e.text + (e.gifts && e.gifts.length ? ` (${e.gifts.join(', ')})` : ''), true],
   wish_none: e => ['✧', 'pr', 'The heavens stay silent', e.text, true],
+  sick: e => ['✚', 'lf', `${e.who} falls ill`, e.text, true],
+  family: e => ['♥', 'lf', 'A family begins', e.text, true],
+  birth: e => ['✿', 'lf', `${e.who} is born`, e.text, true],
+  death: e => ['✝', 'lf', `${e.who} has died`, e.text, true],
   disaster: e => ['⚠', 'dz', cap(e.name || 'disaster') + ' strikes Emberwick', e.text, true],
 };
 function avatar(name, cls = 'av') {
@@ -905,9 +967,10 @@ function renderPeople(force) {
   const box = $('people'), keep = box.scrollTop; box.replaceChildren();
   for (const a of st.agents) {
     const c = el('div', 'card' + (selected === a.name ? ' sel' : '')); c.style.borderLeftColor = a.color; c.id = 'card-' + a.name;
-    const top = el('div', 'top'), id = el('div'); id.append(el('h3', '', a.name), el('div', 'sub', `${a.age}, ${a.job}`));
+    const top = el('div', 'top'), id = el('div'); id.append(el('h3', '', a.name), el('div', 'sub', `${a.sex === 'f' ? '♀' : '♂'} ${a.age}, ${a.job}${a.expecting ? ' · expecting' : ''}`));
     top.append(avatar(a.name), id, el('span', 'mood', a.mood)); top.lastChild.title = 'Mood: ' + a.mood; c.append(top);
     c.append(el('p', '', `At the ${a.place}, ${a.activity}.`));
+    if (a.family) c.append(el('p', 'fam', cap(a.family.replace(/\byour\b/g, 'their').replace(/\byou are\b/g, 'is').replace(/\byou have\b/g, 'has')) + '.'));
     const inv = el('div', 'inv'), items = Object.entries(a.inv).filter(([, q]) => q);
     items.forEach(([k, q]) => { const o = k !== 'coins' && a.carry && q > a.carry, s = el('span', o ? 'over' : '', `${q} ${k}`); if (o) s.title = `Over the carrying limit of ${a.carry}; a quarter of the surplus is lost each night`; inv.append(s); }); a.owns.forEach(o => inv.append(el('span', 'own', '⌂ ' + o)));
     if (!items.length && !a.owns.length) inv.append(el('span', '', 'empty-handed'));
@@ -928,6 +991,62 @@ function renderPeople(force) {
   box.scrollTop = keep;
 }
 let builtKey = '';
+const WCOL = { coins: '#e8bd5f', goods: '#7bb0d8', buildings: '#9fc98a' };
+let popKey = '', popSort = { k: 'worth', d: -1 };
+function renderPop() {
+  const key = JSON.stringify([st.agents.map(a => [a.name, a.age, a.worth, a.expecting, a.hungry, a.sick, a.job]), st.dead, popSort]);
+  if (key === popKey) return; popKey = key;
+  const box = $('pop'), keep = box.scrollTop; box.replaceChildren();
+  const A = st.agents, n = A.length, kids = A.filter(a => a.age < 18).length, dead = st.dead || [];
+  $('npop').hidden = !n; $('npop').textContent = n;
+  const avg = n ? Math.round(A.reduce((s, a) => s + a.age, 0) / n) : 0, total = A.reduce((s, a) => s + a.worth.total, 0);
+  const tiles = el('div', 'tiles');
+  for (const [v, l] of [[n, 'living'], [`${A.filter(a => a.sex === 'f').length} / ${A.filter(a => a.sex === 'm').length}`, 'women / men'],
+                        [kids, kids === 1 ? 'child' : 'children'], [A.filter(a => a.expecting).length, 'expecting'],
+                        [avg, 'average age'], [total.toLocaleString(), 'village worth']]) {
+    const t = el('div', 'tile'); t.append(el('b', '', String(v)), el('span', '', l)); tiles.append(t);
+  }
+  box.append(tiles);
+  const val = { name: a => a.name, age: a => a.age, worth: a => a.worth.total };
+  const rows = A.slice().sort((x, y) => { const a = val[popSort.k](x), b = val[popSort.k](y); return (a < b ? -1 : a > b ? 1 : 0) * popSort.d; });
+  const max = Math.max(1, ...A.map(a => a.worth.total));
+  const tb = el('table', 'ptab'), head = el('tr');
+  for (const [k, l, num] of [['name', 'Villager'], ['age', 'Age', 1], ['worth', 'Net worth', 1]]) {
+    const th = el('th', num ? 'num' : '', l + (popSort.k === k ? (popSort.d < 0 ? ' ↓' : ' ↑') : ''));
+    if (popSort.k === k) th.setAttribute('aria-sort', popSort.d < 0 ? 'descending' : 'ascending');
+    th.onclick = () => { popSort = popSort.k === k ? { k, d: -popSort.d } : { k, d: k === 'name' ? 1 : -1 }; renderPop(); };
+    head.append(th);
+  }
+  const th = el('thead'); th.append(head); tb.append(th);
+  const body = el('tbody');
+  for (const a of rows) {
+    const tr = el('tr', 'row'), c1 = el('td'), who = el('div', 'who'), txt = el('div'), nm = el('div');
+    nm.append(el('span', 'nm', a.name), document.createTextNode(' ' + (a.sex === 'f' ? '♀' : '♂')));
+    if (a.expecting) nm.append(el('span', 'tag', 'expecting'));
+    if (a.hungry >= 2) nm.append(el('span', 'tag warn', `hungry ${a.hungry} nights`));
+    if (a.sick) nm.append(el('span', 'tag warn', 'sick'));
+    txt.append(nm, el('div', 'jb', a.job + (a.parents && a.parents.length ? ` · child of ${a.parents.join(' & ')}` : '')));
+    who.append(avatar(a.name), txt); c1.append(who);
+    const c3 = el('td', 'num'), w = a.worth, bar = el('div', 'wbar');
+    c3.append(el('div', '', w.total.toLocaleString()));
+    bar.style.width = Math.max(8, Math.round(100 * w.total / max)) + '%'; bar.style.marginLeft = 'auto';
+    for (const k of ['coins', 'goods', 'buildings']) { const i = el('i'); i.style.width = (w.total ? 100 * w[k] / w.total : 0) + '%'; i.style.background = WCOL[k]; bar.append(i); }
+    bar.title = `${w.coins} coins · ${w.goods} in goods · ${w.buildings} in buildings`; c3.append(bar); c3.title = bar.title;
+    tr.append(c1, el('td', 'num', String(a.age)), c3);
+    tr.onclick = () => select(a.name, true);
+    body.append(tr);
+  }
+  tb.append(body); box.append(tb);
+  const key2 = el('div', 'wkey');
+  for (const k of ['coins', 'goods', 'buildings']) { const s = el('span'), i = el('i'); i.style.background = WCOL[k]; s.append(i, document.createTextNode(k)); key2.append(s); }
+  box.append(key2, el('div', 'wkey', 'Net worth is in coins: goods at the merchant\'s prices, buildings at their materials plus 1 coin per turn of work.'));
+  if (dead.length) {
+    const g = el('div', 'gone'); g.append(el('h4', '', 'Remembered'));
+    for (const d of dead.slice().reverse()) g.append(el('div', '', `${d.name} ${d.sex === 'f' ? '♀' : '♂'}, ${d.job}, died on day ${d.day} aged ${d.age} (${d.cause})`));
+    box.append(g);
+  }
+  box.scrollTop = keep;
+}
 function renderBuilt() {
   const key = JSON.stringify(st.structures); if (key === builtKey) return; builtKey = key;
   const box = $('built'); box.replaceChildren();
@@ -1028,8 +1147,13 @@ async function poll() {
     const r = await fetch('/api/state'); st = await r.json(); skew = st.now - Date.now() / 1000;
     if (!scenery) { buildPaths(); buildScenery(); $('loading').classList.add('gone'); setTimeout(() => $('loading').remove(), 700); }
     syncPositions();
-    if ($('to').options.length === 1) for (const a of st.agents) $('to').add(new Option('Whisper to ' + a.name, a.name));
-    renderHeader(); renderFeed(); renderPeople(); renderBuilt(); renderOracle(); renderPrayers(); renderChron(); syncFocus();
+    const able = st.agents.filter(a => a.age >= 6).map(a => a.name);
+    if ($('to').options.length - 1 !== able.length || able.some((n, i) => $('to').options[i + 1].value !== n)) {
+      const cur = $('to').value; while ($('to').options.length > 1) $('to').remove(1);
+      for (const n of able) $('to').add(new Option('Whisper to ' + n, n));
+      $('to').value = able.includes(cur) ? cur : $('to').options[0].value;
+    }
+    renderHeader(); renderFeed(); renderPeople(); renderPop(); renderBuilt(); renderOracle(); renderPrayers(); renderChron(); syncFocus();
   } catch (e) { const s = $('status'); s.className = 'off'; s.lastChild.textContent = 'Connection lost'; }
   setTimeout(poll, 2500);
 }

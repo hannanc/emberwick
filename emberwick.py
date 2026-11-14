@@ -49,6 +49,8 @@ PLACES = {  # name: (x, y, description) — tile coordinates on a 58x24 map
     "Quarry":   (37.5, 2.6, "the stone Quarry"),
     "Oracle":   (3, 3.2, "the ring of standing stones where the Oracle dwells"),
     "Meadow":   (49, 12, "the open Meadow east of the Shrine, new ground for farms and building"),
+    "Hospital": (41, 20, "the little whitewashed Hospital, where the sick are treated with herbs"),
+    "Cemetery": (51, 21.2, "the quiet Cemetery by the lake, where the village buries its dead"),
 }
 
 ITEMS = ["coins", "wood", "stone", "fish", "bread", "herbs", "ale"]
@@ -82,32 +84,32 @@ BLUEPRINTS = {
 }
 
 CAST = {
-    "Mira": dict(age=34, dream="a windmill by the Garden, for finer flour", job="the baker", color="#e0703a", hair="#5a2d1a",
+    "Mira": dict(sex="f", age=34, dream="a windmill by the Garden, for finer flour", job="the baker", color="#e0703a", hair="#5a2d1a",
         traits="warm, nosy, superstitious, quick to laugh",
         goal="to win the midsummer fair's baking prize and to find out who keeps leaving wildflowers at your door",
         secret="you burned last year's prize loaf and blamed the oven",
         home="Bakery", feel={"Tobias": "reliable but grumpy", "Bram": "best gossip partner"}),
-    "Tobias": dict(age=58, dream="the sailboat, at the Dock", job="the carpenter", color="#7b8f4a", hair="#b9b9b0",
+    "Tobias": dict(sex="m", age=58, dream="the sailboat, at the Dock", job="the carpenter", color="#7b8f4a", hair="#b9b9b0",
         traits="gruff, proud, sentimental underneath, few words",
         goal="to finish the sailboat you began with your late brother before the midsummer fair",
         secret="you are the one leaving wildflowers at Mira's door and would die of embarrassment if anyone knew",
         home="Workshop", feel={"Mira": "admires her, tongue-tied", "Wren": "reckless but good hands"}),
-    "Isolde": dict(age=27, dream="a house of your own with a quiet writing room", job="the librarian", color="#5b7fd1", hair="#22203a",
+    "Isolde": dict(sex="f", age=27, dream="a house of your own with a quiet writing room", job="the librarian", color="#5b7fd1", hair="#22203a",
         traits="curious, anxious, bookish, dry wit",
         goal="to get someone to read your adventure manuscript and tell you honestly if it is good",
         secret="you write the anonymous adventure serials that everyone in the village reads",
         home="Library", feel={"Hesper": "fascinating, slightly frightening", "Bram": "too loud, kind"}),
-    "Bram": dict(age=41, dream="a market stall on the Square to earn extra coins", job="the tavern keeper", color="#c9a227", hair="#2b1b10",
+    "Bram": dict(sex="m", age=41, dream="a market stall on the Square to earn extra coins", job="the tavern keeper", color="#c9a227", hair="#2b1b10",
         traits="jovial, generous, a shameless gossip, worries in private",
         goal="to keep the Gilded Newt open through the season and pay off what you owe",
         secret="you owe a great deal of money to a merchant from the city who is due to visit",
         home="Tavern", feel={"Mira": "dear friend", "Tobias": "owes me a table repair"}),
-    "Wren": dict(age=19, dream="a boat of your own", job="the fisher", color="#3aa6a0", hair="#c4572e",
+    "Wren": dict(sex="m", age=19, dream="a boat of your own", job="the fisher", color="#3aa6a0", hair="#c4572e",
         traits="restless, daring, kind, speaks before thinking",
         goal="to leave Emberwick and see the sea, though you feel guilty about leaving the village behind",
         secret="you saw something large move under the lake and told no one",
         home="Dock", feel={"Tobias": "like a stern uncle", "Hesper": "knows more than she says"}),
-    "Hesper": dict(age=73, dream="a statue of the lake spirit at the Shrine, and beehives in the Garden", job="the herbalist and shrine-keeper", color="#9a5fc0", hair="#e8e4da",
+    "Hesper": dict(sex="f", age=73, dream="a statue of the lake spirit at the Shrine, and beehives in the Garden", job="the herbalist and shrine-keeper", color="#9a5fc0", hair="#e8e4da",
         traits="cryptic, sharp, mischievous, patient",
         goal="to find an apprentice worthy of the old knowledge before you grow too old",
         secret="you believe something ancient sleeps under the lake and that it is waking",
@@ -141,6 +143,17 @@ SHED_CARRY = 80                                          # extra room per finish
 SPOIL = {"fish": 0.10, "bread": 0.05}                    # share that rots each night
 OVERFLOW_LOSS = 0.25                                     # share of goods above the limit lost each night
 OWN_LIMIT = int(os.environ.get("EMBERWICK_OWN_LIMIT", 2))  # most buildings of one type a villager may own
+# life: everyone ages, a woman and a man who both want it may have a child, and old age (or hunger) ends a life
+LIFE = os.environ.get("EMBERWICK_LIFE", "1") == "1"
+YEAR_DAYS = float(os.environ.get("EMBERWICK_YEAR_DAYS", 4))     # village days per year of age
+CHILD_ACTS, ADULT, FERTILE_UNTIL = 6, 18, 45             # takes own turns from 6, adult at 18, can bear children to 45
+GESTATION_DAYS = 2                                       # nights from deciding to have a child to the birth
+MAX_PEOPLE = int(os.environ.get("EMBERWICK_MAX_PEOPLE", 12))  # living villagers (and babies on the way) at most
+HUNGER_DEADLY = 4                                        # hungry nights in a row after which hunger can kill
+SICK_CHANCE = 0.03                                       # base chance a villager wakes up ill
+TREAT_HERBS, HEALER_HERBS = 3, 1                         # herbs a treatment costs; less when a herbalist is there
+NAMES = {"f": ["Ada", "Elsie", "Maren", "Tilda", "Nell", "Odile", "Rosa", "Ivy", "Lark", "Petra"],
+         "m": ["Alder", "Corin", "Fenn", "Hugo", "Jory", "Milo", "Osric", "Pell", "Rafe", "Tam"]}
 # a travelling merchant at the Square buys goods for coins, with a daily purse so coins stay scarce
 SELL_RATE = {"wood": 4, "stone": 4, "fish": 5, "bread": 3, "herbs": 4, "ale": 3}   # goods per coin
 MERCHANT_PURSE = int(os.environ.get("EMBERWICK_MERCHANT_PURSE", 40))             # coins the merchant spends a day
@@ -182,8 +195,8 @@ def log_event(**e):
 
 def new_inv(n):
     inv = dict.fromkeys(ITEMS, 0)
-    inv["coins"] = 10
-    for k, v in START[n].items():
+    inv["coins"] = 10 if n in START else 0
+    for k, v in START.get(n, {}).items():
         inv[k] += v
     return inv
 
@@ -195,6 +208,9 @@ def migrate():
     S.setdefault("prayers", [])
     S.setdefault("wishes", [])
     S.setdefault("merchant", MERCHANT_PURSE)
+    S.setdefault("born", {})
+    S.setdefault("dead", [])
+    S.setdefault("life_start", S["day"])      # founders' ages count from the day the life cycle began
     S["news"] = S["news"].split(" Also: ")[0]
     for n, a in S["agents"].items():
         a.setdefault("inv", new_inv(n))
@@ -205,6 +221,10 @@ def migrate():
         a.setdefault("plan_at", 0)
         a.setdefault("plan_work", 0)
         a.setdefault("self", "")
+        for k, v in (("expecting", None), ("proposal", None), ("partner", None), ("hungry", 0), ("rest_until", 0),
+                     ("sick", None), ("care_until", 0)):
+            a.setdefault(k, v)
+        a.setdefault("age_seen", age(n))
         if not isinstance(a.get("whisper"), dict):
             a["whisper"] = None
     house_everyone()
@@ -231,12 +251,14 @@ def house_everyone():
 def new_world():
     first = "Last night several people saw a green light glowing under the lake. The midsummer fair is nine days away."
     S.update(day=1, minute=WAKE, weather="morning mist", news=first, phase="day", chain=0, queue=[], agents={},
-             structures=[], voice=None, oracle={"last": 0, "speech": "", "at": 0}, prayers=[], wishes=[])
+             structures=[], voice=None, oracle={"last": 0, "speech": "", "at": 0}, prayers=[], wishes=[],
+             born={}, dead=[], life_start=1)
     for n, c in CAST.items():
         S["agents"][n] = dict(place=c["home"], activity="starting the day", say="", say_to="", say_at=0,
                               thought="", mood="calm", memories=[f"News this morning: {first}"],
                               today=[], reflections=[], feelings=dict(c["feel"]), pending=None, whisper=None,
-                              offer=None, inv=new_inv(n), plan=[], self="")
+                              offer=None, inv=new_inv(n), plan=[], self="", expecting=None, proposal=None,
+                              partner=None, hungry=0, rest_until=0, age_seen=c["age"], sick=None, care_until=0)
     house_everyone()
 
 def load():
@@ -290,11 +312,14 @@ def hhmm(m):
     return f"{m // 60:02d}:{m % 60:02d}"
 
 def persona(n):
-    c = CAST[n]
+    c = who(n)
     grown = S["agents"][n].get("self", "") if S.get("agents") else ""
-    return (f"You are {n}, {c['age']}, {c['job']} of Emberwick, a small lakeside village. "
-            f"Personality: {c['traits']}. Deep down you want {c['goal']}. Your secret: {c['secret']}. "
-            f"You dream of building {c['dream']}. Villagers gather materials, trade with each other and build things. "
+    fam = family_text(n) if n in S.get("agents", {}) else ""
+    return (f"You are {n}, a {age(n)}-year-old {word(n)}, {c['job']} of Emberwick, a small lakeside village. "
+            f"Personality: {c['traits']}. Deep down you want {c['goal']}. "
+            + (f"Your secret: {c['secret']}. " if c.get("secret") else "") + mortality_text(n)
+            + (f"Family: {fam}. " if fam else "") +
+            f"You dream of {'building ' if n in CAST else ''}{c['dream']}. Villagers gather materials, trade with each other and build things. "
             + (f"How living here has changed you so far: {grown} Let that show in how you act and speak. " if grown else "")
             + "Stay in character and speak in first person. Be concrete and specific. Move things forward: "
             "pursue what you want, react to news, seek people out; do not repeat what you already said or did. "
@@ -315,6 +340,273 @@ def time_hint(m):
     if h < 18: return "It is the afternoon; time for work and errands."
     if h < 21: return "It is evening; people gather at the Tavern or the Square."
     return "It is late; time to head to the Cottages to sleep."
+
+# ---------------------------------------------------------------- life: age, family, birth and death
+def who(n):
+    """A villager's fixed facts: the founders from CAST, the village-born from S["born"]."""
+    return CAST.get(n) or S["born"][n]
+
+def age(n):
+    b = S.get("born", {}).get(n)
+    if b:
+        return int((S["day"] - b["day"]) / YEAR_DAYS)
+    return CAST[n]["age"] + (int((S["day"] - S.get("life_start", S["day"])) / YEAR_DAYS) if LIFE else 0)
+
+def acting(n):
+    return age(n) >= CHILD_ACTS
+
+def actors():
+    return [n for n in S["agents"] if acting(n)]
+
+def parents(n):
+    return list(S.get("born", {}).get(n, {}).get("parents", []))
+
+def children(n, living=True):
+    return [c for c, b in S.get("born", {}).items() if n in b["parents"] and (c in S["agents"] or not living)]
+
+def kin(x, y):
+    up = lambda n: set(parents(n)) | {g for p in parents(n) for g in parents(p)}
+    return x in up(y) or y in up(x) or bool(set(parents(x)) & set(parents(y)))
+
+def expecting_count():
+    return sum(1 for a in S["agents"].values() if a.get("expecting"))
+
+def can_have_child(n, o):
+    if not LIFE or n == o or n not in S["agents"] or o not in S["agents"]:
+        return False
+    if who(n)["sex"] == who(o)["sex"] or min(age(n), age(o)) < ADULT or kin(n, o):
+        return False
+    f = n if who(n)["sex"] == "f" else o
+    fa = S["agents"][f]
+    return age(f) <= FERTILE_UNTIL and not fa.get("expecting") and S["day"] >= fa.get("rest_until", 0) \
+        and len(S["agents"]) + expecting_count() < MAX_PEOPLE
+
+def word(n):
+    child = age(n) < ADULT
+    return ("girl" if child else "woman") if who(n)["sex"] == "f" else ("boy" if child else "man")
+
+def family_text(n):
+    a, bits = S["agents"][n], []
+    if a.get("partner"):
+        bits.append(f"you have a child or a child on the way with {a['partner']}"
+                    + ("" if a["partner"] in S["agents"] else " (who has died)"))
+    kids = children(n)
+    if kids:
+        bits.append("your children: " + ", ".join(f"{c} ({age(c)})" for c in kids))
+    ps = parents(n)
+    if ps:
+        bits.append("your parents: " + ", ".join(p if p in S["agents"] else p + " (died)" for p in ps))
+    if a.get("expecting"):
+        bits.append(f"you are expecting a baby with {a['expecting']['with']}, due in "
+                    f"{max(0, a['expecting']['due'] - S['day'])} days")
+    for o, oa in S["agents"].items():
+        if o != n and (oa.get("expecting") or {}).get("with") == n:
+            bits.append(f"{o} is expecting your baby")
+    return "; ".join(bits)
+
+def mortality_text(n):
+    ag = age(n)
+    if ag < CHILD_ACTS:
+        return ""
+    s = (f"You are {ag} years old. In Emberwick a year passes every {YEAR_DAYS:g} days and everyone grows older. "
+         "People usually die of old age somewhere between 70 and 90, and you know that one day you will die too; "
+         "nobody comes back. ")
+    if ag < ADULT:
+        s += "You are still a child: you play, help, learn from the grown-ups and stay close to your family. "
+    elif ag >= 65:
+        s += "You feel your years in your body now, and your time may be short: think about what you will leave behind. "
+    if ag >= ADULT and LIFE:
+        s += ("A woman and a man who both truly want it can decide to have a child together; the child is born a few "
+              "days later and grows up here. ")
+    return s
+
+def nearest_heirs(n):
+    kids = children(n)
+    if kids:
+        return kids
+    p = S["agents"][n].get("partner")
+    if p in S["agents"]:
+        return [p]
+    return [o for o in S["agents"] if o != n and acting(o)]
+
+def die(n, cause):
+    """Remove n from the living: heirs get the goods and buildings, everyone remembers."""
+    a, ag = S["agents"][n], age(n)
+    S["dead"].append(dict(name=n, age=ag, day=S["day"], cause=cause, sex=who(n)["sex"], job=who(n)["job"],
+                          parents=parents(n), grave=len(S["dead"])))
+    heirs = [h for h in nearest_heirs(n) if h in S["agents"] and h != n]
+    del S["agents"][n]
+    if heirs:
+        for i in ITEMS:
+            share, rest = divmod(a["inv"][i], len(heirs))
+            for k, h in enumerate(heirs):
+                S["agents"][h]["inv"][i] += share + (1 if k < rest else 0)
+        for s in S["structures"]:
+            if s["owner"] == n:
+                s["owner"] = heirs[0] if len(heirs) == 1 or children(n) == heirs and s["type"] == "house" \
+                    else random.choice(heirs)
+    else:
+        S["structures"] = [s for s in S["structures"] if s["owner"] != n]
+    S["queue"] = [q for q in S["queue"] if q != n]
+    S["prayers"] = [p for p in S["prayers"] if p["who"] != n]
+    for o, oa in S["agents"].items():
+        oa["feelings"].pop(n, None)
+        for k in ("pending", "offer", "proposal"):
+            if (oa.get(k) or {}).get("from") == n:
+                oa[k] = None
+        got = " Their goods and buildings passed to " + ", ".join(heirs) + "." if heirs else ""
+        mine = " Everything they owned is now mine." if heirs == [o] else " I received a share of what they owned." if o in heirs else ""
+        remember(o, f"{n} died in the night, aged {ag} ({cause}), and was buried in the Cemetery."
+                    f"{mine if o in heirs else got}")
+    log_event(kind="death", who=n, age=ag, text=f"{n}, {who(n)['job']}, died in the night aged {ag} ({cause}) and "
+                                                f"was buried in the Cemetery."
+              + (f" Heirs: {', '.join(heirs)}." if heirs else ""))
+    return f"{n} died aged {ag} ({cause})"
+
+def healer_here(n):
+    return any("herbalist" in who(o)["job"] and S["agents"][o]["place"] == "Hospital" and o != n for o in S["agents"])
+
+def do_treat(n):
+    a = S["agents"][n]
+    patients = [x for x in [n] + children(n) if S["agents"][x].get("sick") and S["agents"][x]["place"] == a["place"]]
+    tonic = not patients and age(n) >= 60 and a.get("care_until", 0) <= S["day"]
+    if not patients and not tonic:
+        remember(n, "The Hospital had nothing for me; I am not ill.")
+        return ""
+    cost = HEALER_HERBS if healer_here(n) else TREAT_HERBS
+    if a["inv"]["herbs"] < cost:
+        remember(n, f"Treatment at the Hospital needs {cost} herbs and I have only {a['inv']['herbs']}. "
+                    "The Garden grows herbs, or someone could give me some.")
+        return ""
+    a["inv"]["herbs"] -= cost
+    if tonic:
+        a["care_until"] = S["day"] + YEAR_DAYS
+        remember(n, f"At the Hospital I took a strengthening tonic for {cost} herbs; my old bones feel safer this year.")
+        return f"took a tonic at the Hospital for {cost} herbs"
+    for x in patients:
+        S["agents"][x]["sick"] = None
+        remember(x, "I was treated at the Hospital and the illness is gone.")
+    who_ = " and ".join("myself" if x == n else x for x in patients)
+    remember(n, f"I paid {cost} herb{'' if cost == 1 else 's'} at the Hospital to cure {who_}.")
+    return f"was treated at the Hospital ({cost} herb{'' if cost == 1 else 's'})" if patients == [n] else f"had {', '.join(patients)} treated at the Hospital"
+
+def do_mourn(n, grave):
+    d = next((x for x in S["dead"] if x["name"] == grave), None)
+    if not d:
+        return ""
+    close = d["name"] in parents(n) or n in d.get("parents", []) or S["agents"][n].get("partner") == d["name"]
+    remember(n, f"I stood at {d['name']}'s grave in the Cemetery and remembered them"
+                + (", and my grief for them is deep." if close else "."))
+    return f"laid wildflowers on {d['name']}'s grave"
+
+def name_baby(mother, father, sex):
+    taken = set(CAST) | set(S["born"]) | {d["name"] for d in S["dead"]}
+    try:
+        r, _ = chat_deep(persona(mother), f"Tonight you gave birth to a baby {'girl' if sex == 'f' else 'boy'}, your child "
+                         f"with {father}. What first name do you give the baby? Answer in JSON: \"name\" = one first name.",
+                         obj({"name": STR}), num_predict=40, temperature=0.9)
+        nm = str(r.get("name") or "").strip().split()[0].strip(".,!\"'").capitalize() if r.get("name") else ""
+    except Exception:
+        nm = ""
+    if not re.fullmatch(r"[A-Z][a-z]{1,11}", nm) or nm in taken:
+        free = [x for x in NAMES[sex] if x not in taken]
+        nm = random.choice(free) if free else f"{random.choice(NAMES[sex])} of {mother}"
+    return nm
+
+def mix(c1, c2):
+    a, b = int(c1[1:], 16), int(c2[1:], 16)
+    return "#" + "".join(f"{((a >> s & 255) + (b >> s & 255)) // 2:02x}" for s in (16, 8, 0))
+
+def birth(mother):
+    """The baby arrives: a new villager who will grow up."""
+    ma = S["agents"][mother]
+    father = ma["expecting"]["with"]
+    sex = random.choice("fm")
+    nm = name_baby(mother, father, sex)
+    fat = who(father)                     # S["born"] keeps the village-born even after they die
+    traits = [x.strip() for x in who(mother)["traits"].split(",")][:2] + [x.strip() for x in fat["traits"].split(",")][:2]
+    random.shuffle(traits)
+    S["born"][nm] = dict(sex=sex, day=S["day"] + 1, parents=[mother, father], job="a child of the village",
+                         traits=", ".join(dict.fromkeys(traits)), color=mix(who(mother)["color"], fat["color"]),
+                         hair=random.choice([who(mother)["hair"], fat["hair"]]), home=who(mother)["home"],
+                         goal="to grow up, learn from your parents and find your own place in Emberwick",
+                         secret="", dream="a place of your own one day", feel={mother: "my mother", father: "my father"})
+    S["agents"][nm] = dict(place="Cottages", activity="sleeping in a cradle", say="", say_to="", say_at=0, thought="",
+                           mood="sleepy", memories=[], today=[], reflections=[], feelings={mother: "my mother",
+                           father: "my father"}, pending=None, whisper=None, offer=None, inv=new_inv(nm), plan=[],
+                           self="", expecting=None, proposal=None, partner=None, hungry=0, rest_until=0, age_seen=0,
+                           sick=None, care_until=0)
+    ma["expecting"], ma["rest_until"] = None, S["day"] + 1 + YEAR_DAYS
+    for p in (mother, father):
+        if p in S["agents"]:
+            S["agents"][p]["feelings"][nm] = "my newborn child, I love them"
+    for o in S["agents"]:
+        if o != nm:
+            remember(o, f"I became a parent tonight: {mother} gave birth to our {'daughter' if sex == 'f' else 'son'}, {nm}."
+                     if o in (mother, father) else f"{mother} gave birth to a baby {'girl' if sex == 'f' else 'boy'} "
+                     f"tonight, {nm}, the child of {mother} and {father}.")
+    log_event(kind="birth", who=nm, text=f"{mother} gave birth to a baby {'girl' if sex == 'f' else 'boy'}, {nm}, "
+                                         f"the child of {mother} and {father}.")
+    return f"{mother} gave birth to {nm}, a {'daughter' if sex == 'f' else 'son'} for {mother} and {father}"
+
+def life_night():
+    """Deaths and births at the end of a day. Returns sentences for the chronicler. Call without holding the lock."""
+    if not LIFE:
+        return []
+    out = []
+    with lock:
+        for n in list(S["agents"]):
+            ag, a = age(n), S["agents"][n]
+            risk = 0.0001 * math.exp(0.085 * ag) / YEAR_DAYS if ag >= 50 else 0.0
+            if a.get("care_until", 0) > S["day"]:
+                risk /= 2                                  # a Hospital tonic
+            if a.get("sick"):
+                risk += 0.04 + (0.04 if ag >= 65 or ag < CHILD_ACTS else 0)
+            if a.get("hungry", 0) >= HUNGER_DEADLY:
+                risk += 0.15 + 0.05 * (a["hungry"] - HUNGER_DEADLY)
+            if random.random() < risk:
+                out.append(die(n, "of hunger" if a.get("hungry", 0) >= HUNGER_DEADLY and ag < 70 else
+                               "of an illness" if a.get("sick") and ag < 70 else "of old age"))
+            elif a.get("sick") and S["day"] - a["sick"] >= 2 and random.random() < 0.6:
+                a["sick"] = None
+                remember(n, "The fever broke in the night; I am well again.")
+        due = [n for n, a in S["agents"].items() if a.get("expecting") and a["expecting"]["due"] <= S["day"] + 1]
+    for m in due:
+        with lock:
+            if m in S["agents"] and S["agents"][m].get("expecting"):
+                out.append(birth(m))
+    with lock:
+        save()
+    return out
+
+def life_morning():
+    """Birthdays, coming of age and falling ill, once the new day has begun."""
+    if not LIFE:
+        return
+    for n, a in S["agents"].items():
+        ag = age(n)
+        if not a.get("sick"):
+            p = SICK_CHANCE + 0.002 * max(0, ag - 50) + (0.03 if a.get("hungry") else 0) + (0.02 if ag < CHILD_ACTS else 0)
+            if random.random() < p:
+                a["sick"] = S["day"]
+                remember(n, "I woke up ill and feverish. Untreated, an illness can kill; the Hospital can cure me "
+                            f"for {TREAT_HERBS} herbs.")
+                for pa in parents(n):
+                    if pa in S["agents"] and ag < ADULT:
+                        remember(pa, f"My child {n} woke up ill. I should take them to the Hospital.")
+                log_event(kind="sick", who=n, text=f"{n} woke up ill.")
+        if ag > a.get("age_seen", ag):
+            if ag == CHILD_ACTS:
+                remember(n, f"I am {ag} now, old enough to walk the village on my own, talk to everyone and help out.")
+                a["activity"] = "exploring the village"
+            elif ag == ADULT and n in S["born"]:
+                S["born"][n]["job"] = f"a young {word(n)} of Emberwick"
+                S["born"][n]["goal"] = "to make your own way in Emberwick: a trade, a home, perhaps a family"
+                remember(n, f"I turned {ag} today: I am grown up now.")
+                log_event(kind="news", text=f"{n} came of age today, {ag} years old.")
+            else:
+                remember(n, f"Today is my birthday: I am {ag} years old.")
+        a["age_seen"] = ag
 
 # ---------------------------------------------------------------- economy helpers
 def inv_text(inv):
@@ -346,6 +638,17 @@ def can_build(n, typ):
     return any(s["type"] == typ and not s["done"] for s in S["structures"]) or \
         (has_room(typ) and owned(n, typ) < OWN_LIMIT)
 
+def worth(n):
+    """Net worth in coins: coins, goods at the merchant's prices, buildings at materials plus 1 coin per turn of work."""
+    inv = S["agents"][n]["inv"]
+    goods = sum(q / SELL_RATE[i] for i, q in inv.items() if i in SELL_RATE)
+    built = 0.0
+    for s in S["structures"]:
+        if s["owner"] == n:
+            bp = BLUEPRINTS[s["type"]]
+            built += sum(min(s["have"].get(i, 0), c) / SELL_RATE[i] for i, c in bp["cost"].items()) + s["labour"]
+    return dict(coins=inv["coins"], goods=round(goods), buildings=round(built), total=round(inv["coins"] + goods + built))
+
 def has_room(typ):
     """Can a build_<typ> still go somewhere: an unfinished one to work on, or a free slot?"""
     return any(s["type"] == typ and not s["done"] for s in S["structures"]) or \
@@ -367,6 +670,10 @@ def step_done(n, a, step, act, did):
     if m:
         typ = m.group(1)
         return did.startswith(("finished building", "finished repairing")) or typ not in BLUEPRINTS or not can_build(n, typ)
+    if re.search(r"\b(treat|tonic)\b", low):
+        return "Hospital" in did
+    if re.search(r"\bmourn\b", low):
+        return did.startswith("laid")
     if re.search(r"\bsell\b", low):
         return did.startswith("sold")
     if re.search(r"\boffer\b", low):
@@ -533,6 +840,34 @@ def do_sell(n, r):
     remember(n, f"I sold {coins * rate} {gi} to the merchant at the Square for {coins} coins.")
     return f"sold {coins * rate} {gi} to the merchant for {coins} coins"
 
+def do_propose(n, o):
+    a = S["agents"][n]
+    if o not in S["agents"] or S["agents"][o]["place"] != a["place"] or not can_have_child(n, o):
+        return ""
+    b = S["agents"][o]
+    a["proposal_sent"] = S["day"]                  # one question a day, so nobody is badgered
+    b["proposal"] = {"from": n}
+    b["pending"] = {"from": n, "text": "Will you have a child with me?"}
+    remember(n, f"I asked {o} to have a child with me.")
+    remember(o, f"{n} asked me to have a child together with them. I must decide.")
+    return f"asked {o} to have a child together"
+
+def do_accept_child(n, o):
+    if not can_have_child(n, o) or S["agents"][o]["place"] != S["agents"][n]["place"]:
+        remember(n, f"I wanted to say yes to {o}, but the moment had passed.")
+        return ""
+    f, m = (n, o) if who(n)["sex"] == "f" else (o, n)
+    S["agents"][f]["expecting"] = {"with": m, "due": S["day"] + GESTATION_DAYS}
+    S["agents"][n]["partner"], S["agents"][o]["partner"] = o, n
+    remember(n, f"I said yes: {o} and I will have a child together. {f} is expecting; the baby comes in "
+                f"{GESTATION_DAYS} days.")
+    remember(o, f"{n} said yes! We will have a child together. {f} is expecting; the baby comes in {GESTATION_DAYS} days.")
+    for x in S["agents"]:
+        if x not in (n, o):
+            remember(x, f"News: {f} and {m} are going to have a baby.")
+    log_event(kind="family", who=f, text=f"{f} and {m} decided to have a child together. {f} is expecting.")
+    return f"agreed to have a child with {o}"
+
 # ---------------------------------------------------------------- the Oracle (Claude, once an hour)
 def providers():
     """Usable Oracle backends in the order they are tried."""
@@ -605,6 +940,8 @@ def oracle_world(n, question):
          f"Selling: at the Square, action sell gives the merchant goods for coins (1 coin per "
          + ", ".join(f"{r} {i}" for i, r in SELL_RATE.items()) + f"); her purse is {S.get('merchant', 0)} coins today, "
          f"refilled to {MERCHANT_PURSE} each night.",
+         f"Health: villagers sometimes fall ill; action treat at the Hospital cures them for {TREAT_HERBS} herbs "
+         f"({HEALER_HERBS} if a herbalist is there). Untreated illness can kill. The dead lie in the Cemetery.",
          f"Carrying: at most {CARRY} of each good (+{SHED_CARRY} per shed owned); work gains nothing past it. Each night "
          "10% of fish and 5% of bread rot and a quarter of anything over the limit is lost.",
          "Blueprints: " + "; ".join(
@@ -616,9 +953,10 @@ def oracle_world(n, question):
           for s in S["structures"]] or ["- none yet"]
     L += ["", "VILLAGERS"]
     for o, oa in S["agents"].items():
-        c = CAST[o]
-        L.append(f"- {o}, {c['age']}, {c['job']}. At {oa['place']}, {oa['activity']}. Carries {inv_text(oa['inv'])}. "
-                 f"Traits: {c['traits']}. Wants {c['goal']}. Dreams of building {c['dream']}. Secret: {c['secret']}. "
+        c = who(o)
+        fam = family_text(o)
+        L.append(f"- {o}, a {age(o)}-year-old {word(o)}, {c['job']}." + (f" Family: {fam}." if fam else "") + f" At {oa['place']}, {oa['activity']}. Carries {inv_text(oa['inv'])}. "
+                 f"Traits: {c['traits']}. Wants {c['goal']}. Dreams of building {c['dream']}. Secret: {c.get('secret') or 'none'}. "
                  f"Feelings: {'; '.join(f'{k}: {v}' for k, v in oa['feelings'].items()) or 'none recorded'}.")
     L += ["", f"THE PETITIONER: {n}", "Recent memories:"] + ["- " + m for m in a["memories"][-14:]]
     if a["reflections"]:
@@ -792,6 +1130,7 @@ no goods. Every plan step must be exactly one of these, with real names and numb
 the petitioner must hold N of what they give)
 - "Use action build_<type> at <site> until it is finished"
 - "At the Square, sell N <item> to the merchant"
+- "At the Hospital, use action treat"
 Prefer trading away things the petitioner holds in surplus. Plans of 2-5 steps are best."""
 
 def holders(n, items):
@@ -806,6 +1145,9 @@ def stuck_question(n):
     if a.get("plan_new"):
         return None                       # fresh counsel they have not acted on yet
     found = []
+    if a.get("sick"):
+        found.append((4, f"I am ill and an untreated illness can kill. Treatment at the Hospital costs {TREAT_HERBS} herbs "
+                         f"and I carry {inv_text(inv)}. {holders(n, ['herbs'])} How do I get treated today?"))
     if inv.get("bread", 0) + inv.get("fish", 0) == 0:
         found.append((3, f"I have no bread or fish for tonight and I carry {inv_text(inv)}. "
                          f"{holders(n, ['fish', 'bread'])} What fair trade gets me food before night?"))
@@ -844,7 +1186,7 @@ def steward_pass():
         if S["minute"] >= SLEEP:
             return False
         last = S.setdefault("steward", {}).get("who")
-        cands = [(q[0], n, q[1]) for n in S["agents"] if (q := stuck_question(n))]
+        cands = [(q[0], n, q[1]) for n in S["agents"] if acting(n) and (q := stuck_question(n))]
         cands = [c for c in cands if c[1] != last] or cands     # don't counsel the same villager twice running
         if not cands:
             S["steward"].update(at=time.time())
@@ -890,16 +1232,17 @@ def steward():
 
 # ---------------------------------------------------------------- a villager's turn
 def pick_agent():
-    called = [n for n, a in S["agents"].items() if a["whisper"]]
+    called = [n for n, a in S["agents"].items() if a["whisper"] and acting(n)]
     if called:
         return called[0]
-    waiting = [n for n, a in S["agents"].items() if a["pending"]]
+    waiting = [n for n, a in S["agents"].items() if a["pending"] and acting(n)]
     if waiting and S["chain"] < 3:
         S["chain"] += 1
         return waiting[0]
     S["chain"] = 0
+    S["queue"] = [q for q in S["queue"] if q in S["agents"] and acting(q)]
     if not S["queue"]:
-        S["queue"] = random.sample(list(CAST), len(CAST))
+        S["queue"] = random.sample(actors(), len(actors()))
     return S["queue"].pop()
 
 def agent_turn():
@@ -911,10 +1254,13 @@ def agent_turn():
         for o, oa in S["agents"].items():
             if o != n:
                 where.setdefault(oa["place"], []).append(o)
-        pending, whisper, offer = a["pending"], a["whisper"], a["offer"]
+        pending, whisper, offer, proposal = a["pending"], a["whisper"], a["offer"], a.get("proposal")
+        if proposal and not (proposal["from"] in here and can_have_child(n, proposal["from"])):
+            proposal = a["proposal"] = None
+        mates = [o for o in here if can_have_child(n, o)]
         S["since_deep"] = S.get("since_deep", DEEP_EVERY) + 1
         # key moments: whispers and voices, trade offers and a fresh Oracle plan always; a conversation reply now and then
-        deep = bool(whisper or offer or a.get("plan_new")) or \
+        deep = bool(whisper or offer or proposal or a.get("plan_new")) or \
             bool(pending and pending["from"] in here and S["since_deep"] >= DEEP_EVERY)
         if deep:
             S["since_deep"] = 0
@@ -931,6 +1277,9 @@ def agent_turn():
             u.append("What you concluded on earlier nights:\n" + "\n".join("- " + r for r in a["reflections"][-2:]))
         if a["feelings"]:
             u.append("How you feel about people: " + "; ".join(f"{k}: {v}" for k, v in a["feelings"].items()) + ".")
+        if S.get("dead"):
+            u.append("Remembered, gone from this world: " + "; ".join(
+                f"{d['name']} (died aged {d['age']} on day {d['day']}, {d['cause']})" for d in S["dead"][-5:]) + ".")
         u.append(f"You carry: {inv_text(a['inv'])}." + (f" You own: {', '.join(mine)}." if mine else "")
                  + " You must have bread or fish to eat each night.")
         lim = carry_limit(n)
@@ -946,7 +1295,25 @@ def agent_turn():
                      "so working here gains nothing." if full else ""))
             actions.append("work")
         u.append("Where things come from: wood at the Woods, stone at the Quarry, fish at the Dock, herbs at the "
-                 "Garden, bread at the Bakery, ale at the Tavern.")
+                 "Garden, bread at the Bakery, ale at the Tavern. The Hospital treats illness for herbs; the dead rest "
+                 "in the Cemetery.")
+        sick_kids = [c for c in children(n) if not acting(c) and S["agents"][c].get("sick")]
+        if a.get("sick") or sick_kids:
+            u.append(("You are ill and feverish; " if a.get("sick") else f"Your child {', '.join(sick_kids)} is ill; ")
+                     + "untreated illness can kill, especially the old and the very young. Go to the Hospital and use "
+                     f'action "treat" ({TREAT_HERBS} herbs, or {HEALER_HERBS} if a herbalist is there to help).')
+        if a["place"] == "Hospital" and (a.get("sick") or sick_kids or (age(n) >= 60 and a.get("care_until", 0) <= S["day"])):
+            actions.append("treat")
+            if not (a.get("sick") or sick_kids):
+                u.append(f'At the Hospital you can take a strengthening tonic for {TREAT_HERBS} herbs (action "treat"); '
+                         "it halves the danger of dying of old age for a year.")
+        if a["place"] == "Cemetery" and S.get("dead"):
+            u.append("Here lie: " + "; ".join(f"{d['name']} (died aged {d['age']}, day {d['day']})" for d in S["dead"])
+                     + '. To mourn at a grave use action "mourn" and put the name in "grave".')
+            actions.append("mourn")
+            extra_grave = {"grave": {"type": "string", "enum": [d["name"] for d in S["dead"]]}}
+        else:
+            extra_grave = {}
         open_ = [s for s in S["structures"] if not s["done"]]
         if open_:
             u.append("Being built or repaired: " + "; ".join(
@@ -977,10 +1344,21 @@ def agent_turn():
             u.append(f'{offer["from"]} offers you {offer["give_qty"]} {offer["give"]} in exchange for '
                      f'{offer["want_qty"]} {offer["want"]}. Use action "accept" or "decline".')
             actions += ["accept", "decline"]
+        extra = dict(extra_grave)
+        if proposal:
+            u.append(f'{proposal["from"]} has asked you to have a child together with them. This is a big, life-long '
+                     'decision: accept only if you truly want a child with them, given how you feel about them. Use '
+                     'action "accept_child" or "decline_child", and tell them your answer.')
+            actions += ["accept_child", "decline_child"]
+        elif mates and not a.get("proposal_sent") == S["day"]:
+            u.append("You could ask " + " or ".join(mates) + " to have a child with you, if you truly want to start a "
+                     'family with them; they decide whether to agree. To ask, use action "propose_child" and put their '
+                     'name in "partner". Only do this if it fits how you feel.')
+            actions.append("propose_child")
+            extra = {**extra, "partner": {"type": "string", "enum": ["nobody"] + mates}}
         if a.get("plan"):
             u.append("The Oracle's counsel to you; carry it out step by step:\n"
                      + "\n".join(f"{i}. {p}" for i, p in enumerate(a["plan"], 1)))
-        extra = {}
         if oracle_state() == "ready":
             at = a["place"] == "Oracle"
             u.append(("The Oracle is awake before you. " if at else
@@ -989,7 +1367,7 @@ def agent_turn():
                        "is too hard for you: plans, sums, schemes, riddles, things to be written. To ask, use action "
                        '"consult" and put your request in "question"' + ("." if at else "; you will be taken there."))
             actions.append("consult")
-            extra = {"question": STR}
+            extra = {**extra, "question": STR}
         if not any(p["who"] == n for p in S["prayers"]):
             at = a["place"] == "Shrine"
             u.append(("You are at the Old Oak Shrine. " if at else "")
@@ -1026,7 +1404,7 @@ def agent_turn():
 
     with lock:
         a = S["agents"][n]
-        a["pending"], a["whisper"], a["offer"] = None, None, None
+        a["pending"], a["whisper"], a["offer"], a["proposal"] = None, None, None, None
         old = a["place"]
         here = [o for o in S["agents"] if o != n and S["agents"][o]["place"] == old]
         say = clip(r.get("say"), 240)
@@ -1069,6 +1447,18 @@ def agent_turn():
             petition = clip(r.get("question") or say or a["thought"], 300)
             did = "knelt before the Oracle and asked for help" if old == "Oracle" else \
                   "hurried to the Oracle and asked for help"
+        elif act == "treat" and "treat" in actions:
+            did = do_treat(n)
+        elif act == "mourn" and "mourn" in actions:
+            did = do_mourn(n, r.get("grave"))
+        elif act == "propose_child" and "propose_child" in actions:
+            did = do_propose(n, r.get("partner"))
+        elif act == "accept_child" and proposal:
+            did = do_accept_child(n, proposal["from"])
+        elif act == "decline_child" and proposal:
+            remember(proposal["from"], f"{n} said no to having a child with me.")
+            remember(n, f"I told {proposal['from']} I do not want to have a child with them.")
+            did = f"declined to have a child with {proposal['from']}"
         elif act == "decline" and offer:
             remember(offer["from"], f"{n} declined my offer.")
             did = f"declined {offer['from']}'s offer"
@@ -1084,6 +1474,9 @@ def agent_turn():
         if moved:
             a["place"] = go
             remember(n, f"I left the {old} and walked to the {go}.")
+            for c in children(n):
+                if not acting(c) and c in S["agents"] and S["agents"][c]["place"] == old:
+                    S["agents"][c].update(place=go, activity=f"carried along by {n}")
         elif not say and not did:
             remember(n, f"At the {old} I was {a['activity']}.")
         advance_plan(n, act, did)
@@ -1112,7 +1505,7 @@ def grant_wish(day):
         prayers = [p for p in S["prayers"] if p["day"] == day]
         if not prayers:
             return
-        lines = [f'{i}. {p["who"]} ({CAST[p["who"]]["job"]}; carries {inv_text(S["agents"][p["who"]]["inv"])}): "{p["wish"]}"'
+        lines = [f'{i}. {p["who"]} ({who(p["who"])["job"]}; carries {inv_text(S["agents"][p["who"]]["inv"])}): "{p["wish"]}"'
                  for i, p in enumerate(prayers, 1)]
         sites = [f'{s["id"]}: {sname(s)} at the {s["site"]} (still needs {needs_text(s)})' for s in S["structures"] if not s["done"]]
     status = "night — the heavens weigh the prayers"
@@ -1251,12 +1644,21 @@ def night():
             a.update(place="Cottages", activity="sleeping", say="", pending=None)
         log_event(kind="night", text="Night falls over Emberwick. The villagers go home to sleep.")
         for n, a in S["agents"].items():
-            food = next((f for f in ("bread", "fish") if a["inv"][f] > 0), None)
-            if food:
-                a["inv"][food] -= 1
-                remember(n, f"I ate {food} for supper.")
+            feeders = [n] + ([p for p in parents(n) if p in S["agents"]] if not acting(n) else [])
+            feeders += [p for p in parents(n) if p in S["agents"] and p not in feeders] if age(n) < ADULT else []
+            got = next(((p, f) for p in feeders for f in ("bread", "fish") if S["agents"][p]["inv"][f] > 0), None)
+            if got:
+                p, food = got
+                S["agents"][p]["inv"][food] -= 1
+                a["hungry"] = 0
+                remember(n, f"I ate {food} for supper." if p == n else f"{p} fed me {food} for supper.")
+                if p != n:
+                    remember(p, f"I fed my child {n} some {food} for supper.")
             else:
-                remember(n, "I had nothing to eat and went to bed hungry. Tomorrow I must get bread or fish.")
+                a["hungry"] = a.get("hungry", 0) + 1
+                remember(n, "I had nothing to eat and went to bed hungry. Tomorrow I must get bread or fish."
+                         + (f" That is {a['hungry']} hungry nights in a row; I am growing weak and could die of hunger."
+                            if a["hungry"] >= HUNGER_DEADLY - 1 else ""))
             lim, lost = carry_limit(n), {}
             for i in ITEMS[1:]:
                 k = int(a["inv"][i] * SPOIL.get(i, 0))
@@ -1276,11 +1678,11 @@ def night():
     except Exception as e:
         print("grant_wish failed:", e, flush=True)
 
-    for n in CAST:
+    for n in [x for x in S["agents"] if acting(x)]:
         status = f"night — {n} is dreaming"
         with lock:
             today = list(S["agents"][n]["today"])
-        others = [o for o in CAST if o != n]
+        others = [o for o in S["agents"] if o != n]
         try:
             r, _ = chat_deep(persona(n),
                      "The day is over and you are in bed. This is what happened to you today:\n"
@@ -1298,6 +1700,8 @@ def night():
         except Exception:
             continue
         with lock:
+            if n not in S["agents"]:
+                continue
             a = S["agents"][n]
             a["reflections"] = (a["reflections"] + [f"Day {day}: {clip(r.get('reflection'), 300)}"])[-5:]
             if r.get("growth"):
@@ -1307,6 +1711,12 @@ def night():
                     a["feelings"][f["name"]] = clip(f["feeling"], 50)
             save()
 
+    status = "night — births and deaths"
+    try:
+        lives = life_night()
+    except Exception as e:
+        lives = []
+        print("life_night failed:", e, flush=True)
     status = "night — the chronicler is writing"
     with db() as c:
         rows = [json.loads(d) for (d,) in c.execute("SELECT data FROM events WHERE day=? ORDER BY id", (day,))]
@@ -1317,14 +1727,16 @@ def night():
     deeds = [d for d in deeds if "build" in d or "repair" in d or "traded" in d or "gave" in d][-14:] or deeds[-8:]
     struck = [e["text"] for e in rows if e.get("kind") == "disaster"]
     with lock:
-        refl = [f"- {n} ({CAST[n]['job']}): {S['agents'][n]['reflections'][-1] if S['agents'][n]['reflections'] else '…'}"
-                for n in CAST]
+        refl = [f"- {n} ({who(n)['job']}, {age(n)}): {S['agents'][n]['reflections'][-1] if S['agents'][n]['reflections'] else '…'}"
+                for n in S["agents"] if acting(n)]
         wished = next((w for w in S["wishes"] if w["day"] == day), None)
         prayed = [p["who"] for p in S["prayers"] if p["day"] == day]
     system = ("You are the chronicler of Emberwick, a small lakeside village. You write a wry, warm, vivid daily "
               "chronicle in the past tense, like a storybook narrator who knows everyone's business.")
     user = (f"Day {day}. Weather: {weather}. News that morning: {news}\n"
-            + (f"Disaster that morning: {' '.join(struck)}\n" if struck else "") +
+            + (f"Disaster that morning: {' '.join(struck)}\n" if struck else "")
+            + "".join(f"Family news that day: {e['text']}\n" for e in rows if e.get("kind") == "family")
+            + (f"Tonight, as the day ended: {'; '.join(lives)}.\n" if lives else "") +
             "What each villager concluded at day's end:\n" + "\n".join(refl) +
             "\nDeeds of the day (work, trade, building):\n" + ("\n".join(deeds) or "- nothing of note") +
             "\nThings said during the day:\n" + "\n".join(lines) +
@@ -1362,6 +1774,9 @@ def night():
             print("strike failed:", e, flush=True)
         if hit:
             S["news"] = omen = f"{omen} {hit}"
+        if lives:
+            S["news"] = omen = f"{omen} In the night: {'; '.join(lives)}."
+        life_morning()
         for s_ in S["structures"]:
             if s_["done"] and s_["type"] == "stall":
                 S["agents"][s_["owner"]]["inv"]["coins"] += 3
@@ -1386,6 +1801,11 @@ def run():
                 continue
             if S["minute"] >= SLEEP:
                 night()
+            elif not actors():
+                status = "silent — nobody old enough to act is left alive"
+                with lock:
+                    S["minute"] += MINUTES_PER_TURN
+                    save()
             else:
                 status = "running"
                 agent_turn()
@@ -1404,8 +1824,10 @@ def state_json():
         chron = [dict(day=d, title=t, body=b, weather=w) for d, t, b, w in
                  c.execute("SELECT day, title, body, weather FROM chronicle ORDER BY day DESC LIMIT 30")]
     with lock:
-        agents = [dict(name=n, job=CAST[n]["job"], color=CAST[n]["color"], hair=CAST[n]["hair"], age=CAST[n]["age"],
-                       traits=CAST[n]["traits"], place=a["place"], activity=a["activity"], say=a["say"],
+        agents = [dict(name=n, job=who(n)["job"], color=who(n)["color"], hair=who(n)["hair"], age=age(n),
+                       sex=who(n)["sex"], parents=parents(n), partner=a.get("partner"), family=family_text(n),
+                       expecting=bool(a.get("expecting")), worth=worth(n), hungry=a.get("hungry", 0), sick=bool(a.get("sick")),
+                       traits=who(n)["traits"], place=a["place"], activity=a["activity"], say=a["say"],
                        say_to=a["say_to"], say_at=a["say_at"], thought=a["thought"], mood=a["mood"],
                        feelings=a["feelings"], reflection=(a["reflections"] or [""])[-1], inv=a["inv"], growth=a.get("self", ""),
                        owns=[s["type"] for s in S["structures"] if s["done"] and s["owner"] == n], plan=a.get("plan", []), carry=carry_limit(n))
@@ -1422,7 +1844,7 @@ def state_json():
         orc = dict(state=ost, model=S["oracle"].get("model") or "/".join(providers()) or ORACLE_MODEL, speech=S["oracle"]["speech"], at=S["oracle"]["at"], log=consults,
                    wait=max(0, int((ORACLE_COOLDOWN - (time.time() - S["oracle"]["last"])) / 60)) if ost == "resting" else 0)
         return json.dumps(dict(now=time.time(), structures=structs, oracle=orc, voice=S.get("voice"), day=S["day"], minute=S["minute"], weather=S["weather"],
-                               news=S["news"], merchant=S.get("merchant", 0), phase=S["phase"], status=status, agents=agents,
+                               news=S["news"], merchant=S.get("merchant", 0), dead=S.get("dead", []), phase=S["phase"], status=status, agents=agents,
                                places={k: v[:2] for k, v in PLACES.items()}, events=ev[::-1], chronicle=chron,
                                prayers=[p for p in S["prayers"] if p["day"] == S["day"]], wishes=S["wishes"][-12:][::-1],
                                models=dict(actor=ACTOR, narrator=NARRATOR)))
@@ -1463,14 +1885,15 @@ class Handler(BaseHTTPRequestHandler):
         with lock:
             if S["phase"] == "night":
                 return self.send(200, '{"ok":false,"note":"Everyone is asleep. Try again in the morning."}')
-            if to in S["agents"]:
+            if to in S["agents"] and acting(to):
                 S["agents"][to]["whisper"] = {"text": text}
                 remember(to, f'A strange thought came to me as if whispered: "{text}"')
                 log_event(kind="whisper", who=to, text=text)
             else:
                 S["voice"] = {"text": text, "at": time.time()}
                 for name, a in S["agents"].items():
-                    a["whisper"] = {"text": text, "all": True}
+                    if acting(name):
+                        a["whisper"] = {"text": text, "all": True}
                     remember(name, f'A great voice from the sky boomed over the village: "{text}"')
                 log_event(kind="voice", text=text)
             save()
