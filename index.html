@@ -592,6 +592,7 @@ function person(a, p, t) {
   shadow(g, x - 2, base + 1, 11 * S, 4 * S, .3);
   if (selected === a.name) { const k = 1 + Math.sin(t / 300) * 0.08; g.strokeStyle = '#e8bd5f'; g.lineWidth = 2.5; g.beginPath(); g.ellipse(x, base + 1, 17 * S * k, 7.5 * S * k, 0, 0, 7); g.stroke(); }
   else if (hover === a.name) { g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 2; g.beginPath(); g.ellipse(x, base + 1, 15 * S, 6.5 * S, 0, 0, 7); g.stroke(); }
+  if (hurt) { const k = REDUCE ? .6 : .5 + .3 * Math.sin(t / 700 + h % 9); g.fillStyle = `rgba(140,215,120,${.16 * k})`; g.beginPath(); g.ellipse(x, base - 15 * S, 15 * S, 25 * S, 0, 0, 7); g.fill(); g.fillStyle = `rgba(140,215,120,${.2 * k})`; g.beginPath(); g.ellipse(x, base + 1, 13 * S, 5 * S, 0, 0, 7); g.fill(); }   // a faint green aura while ill
   g.lineWidth = 1.3; g.lineJoin = 'round'; g.lineCap = 'round';
   if (old) { const sx = x - (f || p.face || 1) * 10.5 * S; g.strokeStyle = '#6b4a2e'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(sx + (f || 1) * 1.6 * S, y - 12 * S + 0); g.lineTo(sx, y - 11 * S); g.lineTo(sx, base + .5); g.stroke(); g.lineWidth = 1.3; }   // walking stick
   if (L.hair === 'long') { g.fillStyle = hairC; g.strokeStyle = line; g.beginPath(); g.roundRect(hx - r - .9 * S, hy - r * .55, 2 * r + 1.8 * S, 15 * S, [r, r, 3 * S, 3 * S]); g.fill(); g.stroke(); }   // hair falling behind the shoulders
@@ -660,6 +661,13 @@ function person(a, p, t) {
 }
 function drawStruct(s, t, wins) {
   const X = s.x * T, Y = s.y * T, c = colorOf(s.owner), g = ctx;
+  if (!s.done && s.repair) {   // damaged: the finished building, faded, with a hole in the roof and soot, then the scaffolding over it
+    g.save(); g.globalAlpha = .62; drawStruct({ ...s, done: true, damaged: true }, t, []); g.globalAlpha = 1;
+    const H = STRUCT_H[s.type] || 50, r5 = rng(s.id * 5 + 1);
+    g.fillStyle = 'rgba(20,14,10,.85)'; g.beginPath(); g.moveTo(X - 11, Y - H + 4); g.lineTo(X - 6, Y - H + 13); g.lineTo(X - 1, Y - H + 6); g.lineTo(X + 5, Y - H + 15); g.lineTo(X + 11, Y - H + 5); g.lineTo(X + 8, Y - H - 3); g.lineTo(X - 8, Y - H - 3); g.closePath(); g.fill();
+    for (let i = 0; i < 6; i++) { g.fillStyle = `rgba(10,8,6,${.28 + r5() * .2})`; g.beginPath(); g.ellipse(X + (r5() - .5) * 40, Y - 8 - r5() * H * .6, 5 + r5() * 7, 3 + r5() * 5, 0, 0, 7); g.fill(); }
+    g.restore();
+  }
   if (!s.done) {
     const w = s.type === 'beehive' || s.type === 'statue' ? 26 : 46, h = 30 + 50 * s.progress;
     g.fillStyle = 'rgba(120,95,60,.55)'; g.beginPath(); g.ellipse(X, Y, w, 10, 0, 0, 7); g.fill();
@@ -671,7 +679,7 @@ function drawStruct(s, t, wins) {
     g.fillStyle = s.repair ? '#d9604a' : '#e8bd5f'; g.beginPath(); g.roundRect(X - 25, Y + 8, Math.max(4, 50 * s.progress), 7, 3.5); g.fill();
     return;
   }
-  if (s.type === 'house') house(g, s.x, s.y, 2.4, 1.3, '#e6d6b2', c, { win: [0.55], pitch: 0.95, wins, chimney: 1, chim: smokes });
+  if (s.type === 'house') house(g, s.x, s.y, 2.4, 1.3, '#e6d6b2', c, { win: [0.55], pitch: 0.95, wins, chimney: 1, chim: s.damaged ? [] : smokes });
   else if (s.type === 'shed') house(g, s.x, s.y, 2, 1, '#9c7648', '#5a4030', { win: [], pitch: 0.7, wins });
   else if (s.type === 'stall') {
     shadow(g, X, Y + 2, 30, 7);
@@ -834,6 +842,53 @@ function drawOverlay(t, asleep, order) {
 }
 
 // ================================================================ frame
+// ================================================================ event effects
+const fx = [], structPos = {}; let fxUpTo = null, lastT = 0, shake = 0;
+const STRUCT_H = { house: 58, shed: 38, stall: 52, boat: 62, tower: 100, beehive: 22, mill: 90, statue: 56, farm: 26 };
+function fxEvents() {   // turn events that arrive after the page loaded into short-lived effects
+  const evs = st.events || [], real = evs.filter(e => e.id < 9e6), age = +DEBUG.xage || 0, t0 = lastT - age;
+  if (fxUpTo === null) fxUpTo = Math.max(0, ...real.map(e => e.id));
+  const sById = {}; for (const s of st.structures) sById[s.id] = s;
+  for (const e of evs) {
+    if (e.id <= fxUpTo) continue; fxUpTo = Math.max(fxUpTo, e.id); if (e.id >= 9e6) fxUpTo = Math.max(fxUpTo, 0);
+    if (e.kind === 'disaster') { if (e.name === 'tremor') { if (!REDUCE) fx.push({ k: 'tremor', t0 }); } else for (const id of e.hit || []) { const p = sById[id] || structPos[id]; if (p) fx.push({ k: e.name, x: p.x * T, y: p.y * T, t0, id, seed: id }); } }
+    else if (e.kind === 'birth') { const c = st.places.Cottages; fx.push({ k: 'birth', x: c[0] * T, y: (c[1] + 1) * T, t0 }); }
+    else if (e.kind === 'family') { const m = /^(\w+) and (\w+) decided/.exec(e.text || ''); if (m) fx.push({ k: 'family', a: m[1], b: m[2], t0 }); }
+    else if (e.kind === 'turn' && /^finished (building|repairing)/.test(e.did || '')) { const s = st.structures.find(q => e.did.includes(`${q.owner}'s ${q.type}`)); if (s) fx.push({ k: 'dust', x: s.x * T, y: s.y * T, t0 }); }
+  }
+  for (const s of st.structures) structPos[s.id] = { x: s.x, y: s.y };
+}
+function flame(g, x, y, t, sz, seed) {   // one flickering tongue of fire
+  const fl = REDUCE ? 1 : 1 + Math.sin(t / 90 + seed * 2.3) * .22 + Math.sin(t / 47 + seed) * .12;
+  for (const [c, k] of [['#e8541f', 1], ['#f6a12b', .68], ['#ffe27a', .36]]) { g.fillStyle = c; g.beginPath(); g.moveTo(x - 6 * sz * k, y); g.quadraticCurveTo(x - 7 * sz * k, y - 12 * sz * k * fl, x + Math.sin(t / 130 + seed) * 2 * sz, y - 24 * sz * k * fl); g.quadraticCurveTo(x + 7 * sz * k, y - 12 * sz * k * fl, x + 6 * sz * k, y); g.closePath(); g.fill(); }
+}
+function heart(g, x, y, r, col) { g.fillStyle = col; g.beginPath(); g.moveTo(x, y + r); g.bezierCurveTo(x - r * 2, y - r * .2, x - r * .8, y - r * 1.6, x, y - r * .5); g.bezierCurveTo(x + r * .8, y - r * 1.6, x + r * 2, y - r * .2, x, y + r); g.fill(); }
+function drawFx(t, wind, under) {   // under: ground effects (floods) drawn before buildings and people
+  for (let n = fx.length - 1; n >= 0; n--) {
+    const f = fx[n], a = t - f.t0, g = ctx, dur = { lightning: 20000, flood: 30000, gale: 8000, tremor: 400, birth: 6000, family: 5000, dust: 3000 }[f.k];
+    if (a > dur || a < -1000) { fx.splice(n, 1); continue; } if ((f.k === 'flood') !== !!under) continue; const k = a / dur, fade = Math.min(1, a / 1500, (dur - a) / (dur * .2));
+    if (f.k === 'lightning') {   // the building burns for twenty seconds
+      g.save(); g.globalAlpha = Math.min(1, fade * 1.4); const h = (STRUCT_H[(st.structures.find(q => q.id === f.id) || {}).type] || 50) * .55;
+      for (let i = 0; i < 5; i++) flame(g, f.x + (i - 2) * 11 + Math.sin(i * 2.1 + f.seed) * 4, f.y - 8 - (i % 2) * h * .5, t, 1 + (i % 3 === 1 ? .3 : 0), i + f.seed); g.restore();
+      smoke(f.x + 4, f.y - h * 2.1, t, f.seed, wind, 1.5); glow(f.x, f.y - 22, 70, .25 * fade, '255,150,60');
+    } else if (f.k === 'flood') {   // water spreads around the building
+      const r = 1 + Math.min(1, a / 3000) * .35; g.save(); g.globalAlpha = fade * .8; g.fillStyle = 'rgba(70,140,200,.5)'; g.beginPath(); g.ellipse(f.x, f.y + 6, 70 * r, 26 * r, 0, 0, 7); g.fill();
+      g.strokeStyle = 'rgba(230,245,255,.55)'; g.lineWidth = 1.4; for (let i = 0; i < 3; i++) { const q = ((REDUCE ? .3 : t / 2200) + i / 3) % 1; g.globalAlpha = fade * (1 - q) * .8; g.beginPath(); g.ellipse(f.x + (i - 1) * 24, f.y + 6, (10 + q * 28) * r, (4 + q * 10) * r, 0, 0, 7); g.stroke(); } g.restore();
+    } else if (f.k === 'gale') {   // debris tears off and blows away
+      g.save(); for (let i = 0; i < 14; i++) { const q = (k * 1.4 + i * .07) % 1, x = f.x + (i - 7) * 4 + q * (150 + i * 12), y = f.y - 20 - (i % 4) * 9 - Math.sin(q * 6 + i) * 14 + q * 10;
+        g.globalAlpha = Math.min(1, (1 - k) * 2) * (1 - q * .6); g.save(); g.translate(x, y); g.rotate((REDUCE ? 0 : t / 120) + i); g.fillStyle = ['#8a6238', '#c9a56a', '#d8ccb0', '#6b4a30'][i % 4]; g.fillRect(-4, -1.4, 8, 2.8); g.restore(); } g.restore();
+    } else if (f.k === 'birth') {
+      g.save(); for (let i = 0; i < 9; i++) { const q = (k * 1.2 + i / 9) % 1, x = f.x + Math.sin(i * 2.7) * 38, y = f.y - 12 - q * 44 - (i % 3) * 6; g.globalAlpha = Math.sin(q * Math.PI) * fade; g.fillStyle = i % 2 ? '#fff3b0' : '#ffd1e6'; g.fillRect(x - 1, y - 4, 2, 8); g.fillRect(x - 4, y - 1, 8, 2); }
+      g.globalAlpha = fade; heart(g, f.x + 4, f.y - 30 - k * 48, 5 + Math.sin(a / 200), '#f48fb1'); g.restore();
+    } else if (f.k === 'family') {
+      const A = pos[f.a], B = pos[f.b], pa = st.agents.find(q => q.name === f.a), pb = st.agents.find(q => q.name === f.b); if (!A || !B || !pa || !pb || pa.place !== pb.place) continue;
+      g.save(); g.globalAlpha = fade; for (let i = 0; i < 2; i++) { const q = (k * 1.5 + i * .45) % 1; heart(g, (A.x + B.x) / 2 * T + (i ? 8 : -8) + Math.sin(q * 7 + i) * 4, (A.y + B.y) / 2 * T - 44 - q * 30, 3.4, i ? '#f48fb1' : '#ef7f9f'); } g.restore();
+    } else if (f.k === 'dust') {   // a burst of golden dust where something was finished
+      g.save(); for (let i = 0; i < 18; i++) { const an = i * 2.4, sp = 18 + (i % 5) * 9, q = Math.min(1, k * 1.1); g.globalAlpha = (1 - k) * .9; g.fillStyle = i % 3 ? '#f6d36b' : '#fff0b0'; g.beginPath(); g.arc(f.x + Math.cos(an) * sp * q * 1.6, f.y - 20 - Math.abs(Math.sin(an)) * sp * q * 1.8 + q * q * 20, 2.2 - k, 0, 7); g.fill(); } g.restore();
+    }
+  }
+}
+function shakeOffset(t) { const f = fx.find(q => q.k === 'tremor'); if (!f) return [0, 0]; const a = t - f.t0, m = Math.max(0, 1 - a / 400) * 5; return [Math.sin(a / 22) * m, Math.cos(a / 17) * m * .7]; }
 function smoke(x, y, t, seed, wind, k = 1) {   // a curl of chimney smoke: five puffs rising and fading
   for (let i = 0; i < 5; i++) { const q = ((REDUCE ? .4 : t / 2400) + i / 5 + seed * .37) % 1, drift = wind ? q * 40 : Math.sin(q * 5 + i + seed) * 6; ctx.fillStyle = `rgba(232,232,232,${.38 * k * (1 - q)})`; ctx.beginPath(); ctx.arc(x + drift, y - q * 46, 5 + q * 9, 0, 7); ctx.fill(); }
 }
@@ -846,7 +901,7 @@ function mistSprite() {   // one soft, wide, flat blob drawn once; the mist band
 }
 let prev = performance.now();
 function frame(t) {
-  const dt = Math.min(0.1, (t - prev) / 1000); prev = t; if (FROZEN != null) t = FROZEN;
+  const dt = Math.min(0.1, (t - prev) / 1000); prev = t; if (FROZEN != null) t = FROZEN; lastT = t;
   if (st && scenery) {
     const asleep = st.phase === 'night';
     for (const a of st.agents) {                         // walk along routes
@@ -864,7 +919,8 @@ function frame(t) {
     const z = cam.z, w = st.weather, S = sky(st.minute, w), rain = /rain|storm/.test(w), wind = /windy|storm/.test(w);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#16241a'; ctx.fillRect(0, 0, cv.width, cv.height);
-    ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (vw / 2 - cam.x * z), dpr * (vh / 2 - cam.y * z));
+    const [shx0, shy0] = shakeOffset(t);
+    ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (vw / 2 - cam.x * z + shx0), dpr * (vh / 2 - cam.y * z + shy0));
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(scenery, -M, -M, WW + 2 * M, WH + 2 * M);
 
@@ -911,7 +967,8 @@ function frame(t) {
     const order = st.agents.slice().sort((a, b) => pos[a.name].y - pos[b.name].y), wins = [], things = [];
     for (const s of st.structures) things.push([s.y, () => drawStruct(s, t, wins)]);
     if (!asleep) for (const a of order) things.push([pos[a.name].y, () => person(a, pos[a.name], t)]);
-    smokes.length = 0; things.sort((a, b) => a[0] - b[0]).forEach(d => d[1]());
+    drawFx(t, wind, true); smokes.length = 0; things.sort((a, b) => a[0] - b[0]).forEach(d => d[1]());
+    drawFx(t, wind, false);
     const hr0 = st.minute / 60, hearth = hr0 >= 5 && hr0 < 9.5 || hr0 >= 17 && hr0 < 22.5, calm = !/storm|steady/.test(w);   // chimneys: bakery and tavern always, houses at breakfast and supper
     chimneys.forEach(([x, y], i) => smoke(x, y, t, i, wind)); if (hearth && calm) smokes.forEach(([x, y], i) => smoke(x, y, t, i + 3, wind, .8));
     if (S.light < .3 && !rain && hr0 >= 7 && hr0 < 19) {                                               // butterflies over the Garden and Meadow, birds crossing at midday
@@ -942,6 +999,12 @@ function frame(t) {
       ctx.fillStyle = '#efe6cf'; ctx.fillRect(X - 2, Y - 8, 4, 8); ctx.fillStyle = '#ffd36b'; ctx.beginPath(); ctx.ellipse(X + fl * 0.3, Y - 10.5, 1.8, 3 + fl * 0.4, 0, 0, 7); ctx.fill();
       candles.push([X, Y - 10, .55, '255,200,110']);
     });
+    if (st.places.Cemetery) {                                                                          // a candle on each fresh grave until the morning after the death
+      const [cx, cy] = st.places.Cemetery, now = st.day * 1440 + st.minute;
+      for (const e of st.events || []) if (e.kind === 'death') { const ab = e.day * 1440 + e.minute, until = (Math.floor((ab - 360) / 1440) + 1) * 1440 + 360, i = (st.dead || []).slice(0, 24).findIndex(d => d.name === e.who);
+        if (i < 0 || now < ab - 5 || now >= until) continue; const X = (cx - 2.5 + (i % 8) * 0.7) * T - 7, Y = (cy - 0.85 + Math.floor(i / 8) * 0.75) * T + 2, fl = REDUCE ? 0 : Math.sin(t / 140 + i * 2) * 0.8;
+        ctx.fillStyle = '#efe6cf'; ctx.fillRect(X - 1.5, Y - 6, 3, 6); ctx.fillStyle = '#ffd36b'; ctx.beginPath(); ctx.ellipse(X + fl * .3, Y - 8.5, 1.6, 2.8 + fl * .4, 0, 0, 7); ctx.fill(); candles.push([X, Y - 8, .6, '255,200,110']); }
+    }
     const O = st.oracle, [ox, oy] = st.places.Oracle, fx = ox * T, fy = (oy + 0.2) * T;               // the Oracle's flame
     if (O.state !== 'asleep') {
       const kk = O.state === 'ready' ? 1 : 0.35, r = (16 + Math.sin(t / 350) * 4) * kk + 6;
@@ -1439,7 +1502,7 @@ async function poll() {
     const r = await fetch('/api/state'); st = await r.json(); skew = st.now - Date.now() / 1000;
     debugOverride();
     if (!scenery) { buildPaths(); buildScenery(); $('loading').classList.add('gone'); setTimeout(() => $('loading').remove(), 700); }
-    syncPositions();
+    syncPositions(); fxEvents();
     const able = st.agents.filter(a => a.age >= 6).map(a => a.name), sel = $('to');
     if (sel.dataset.names !== able.join()) {            // rebuild when people are born, grow up or die
       const cur = sel.value; sel.dataset.names = able.join();
