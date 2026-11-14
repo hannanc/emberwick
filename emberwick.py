@@ -121,6 +121,20 @@ TWISTS = ["A stranger in a travelling cloak arrived at dawn and is asking questi
           "A sealed letter with no name on it was found nailed to the Old Oak.",
           "The bees have all left the Garden hives.",
           "A wooden chest washed up at the Dock, locked and humming faintly."]
+# natural disasters at dawn, tied to the new day's weather. A hit building stops working until repaired with the
+# normal build action; "wreck" is the chance a hit building (never a house) is destroyed outright and must be rebuilt.
+DISASTER_RATE = float(os.environ.get("EMBERWICK_DISASTERS", 1))   # multiplies every chance below; 0 = off
+DISASTERS = [
+    dict(name="lightning", weather={"thunderstorm"}, chance=0.45, hits=1, wreck=0.35,
+         types={"house", "stall", "boat", "beehive", "shed", "farm", "mill"},
+         text="Before dawn, lightning struck {what} and set it burning"),
+    dict(name="flood", weather={"steady rain", "light rain"}, chance=0.2, hits=2, wreck=0.15,
+         sites={"Dock", "Garden", "Meadow"}, text="The rain swelled the lake overnight and the flood swamped {what}"),
+    dict(name="gale", weather={"windy"}, chance=0.25, hits=2, wreck=0.1,
+         types={"stall", "beehive", "boat", "shed", "farm", "tower"}, text="A gale tore through the village at dawn and battered {what}"),
+    dict(name="tremor", weather=None, chance=0.03, hits=3, wreck=0.0,
+         text="The ground shook before dawn, as if something stirred beneath the lake, and cracked {what}"),
+]
 
 lock = threading.RLock()
 S = {}            # world state, persisted as JSON
@@ -187,7 +201,7 @@ def migrate():
 def house_everyone():
     """Every villager owns a finished house: finish the one they started, or raise one on a free lot."""
     for n in S["agents"]:
-        if any(s["type"] == "house" and s["owner"] == n and s["done"] for s in S["structures"]):
+        if any(s["type"] == "house" and s["owner"] == n and (s["done"] or s.get("repair")) for s in S["structures"]):
             continue
         s = next((x for x in S["structures"] if x["type"] == "house" and x["owner"] == n), None)
         if s is None:
@@ -330,7 +344,7 @@ def step_done(a, step, act, did):
     m = re.search(r"build_(\w+)", low)
     if m:
         typ = m.group(1)
-        return did.startswith("finished building") or typ not in BLUEPRINTS or not has_room(typ)
+        return did.startswith(("finished building", "finished repairing")) or typ not in BLUEPRINTS or not has_room(typ)
     if re.search(r"\boffer\b", low):
         return did.startswith(("offered", "traded", "gave"))
     m = re.search(r"\bwork\b(?:\s+(\d+|once|twice))?", low)
@@ -378,7 +392,8 @@ def do_build(n, typ, place):
     if place != bp["site"]:
         remember(n, f"I wanted to build a {typ}, but that has to be done at the {bp['site']}.")
         return ""
-    s = next((x for x in S["structures"] if x["type"] == typ and not x["done"]), None)
+    open_ = [x for x in S["structures"] if x["type"] == typ and not x["done"]]
+    s = min(open_, key=lambda x: (x["owner"] != n, not x.get("repair")), default=None)  # own first, then repairs
     started = False
     if not s:
         used = [(x["x"], x["y"]) for x in S["structures"] if x["type"] == typ]
@@ -406,6 +421,10 @@ def do_build(n, typ, place):
         work -= 1
         if work <= 0:
             s["done"], s["day"] = True, S["day"]
+            if s.pop("repair", None):
+                for o in S["agents"]:
+                    remember(o, f"{sname(s)} at the {place} is repaired!" if o != n else f"I finished repairing {sname(s)} at the {place}!")
+                return f"finished repairing {sname(s)}"
             for o in S["agents"]:
                 remember(o, f"{sname(s)} at the {place} is finished!" if o != n else f"I finished building {sname(s)} at the {place}!")
             return f"finished building {sname(s)}"
@@ -537,7 +556,7 @@ def oracle_world(n, question):
              + f", {bp['labour']} turns of work ({bp['perk']})" + ("" if has_room(t) else " — NO ROOM LEFT, cannot be built")
              for t, bp in BLUEPRINTS.items()) + ".",
          "", "STRUCTURES"]
-    L += [f"- {sname(s)} at {s['site']}: " + ("finished" if s["done"] else "needs " + needs_text(s))
+    L += [f"- {sname(s)} at {s['site']}: " + ("finished" if s["done"] else ("damaged by the " + s["repair"] + ", " if s.get("repair") else "") + "needs " + needs_text(s))
           for s in S["structures"]] or ["- none yet"]
     L += ["", "VILLAGERS"]
     for o, oa in S["agents"].items():
@@ -865,8 +884,9 @@ def agent_turn():
                  "Garden, bread at the Bakery, ale at the Tavern.")
         open_ = [s for s in S["structures"] if not s["done"]]
         if open_:
-            u.append("Being built: " + "; ".join(f"{sname(s)} at the {s['site']} (still needs {needs_text(s)})" for s in open_)
-                     + ". Anyone can help.")
+            u.append("Being built or repaired: " + "; ".join(
+                f"{sname(s)} at the {s['site']} ({'damaged by the ' + s['repair'] + ', useless until repaired; ' if s.get('repair') else ''}"
+                f"still needs {needs_text(s)})" for s in open_) + ". Anyone can help.")
         can = []
         for t, bp in BLUEPRINTS.items():
             if has_room(t):
@@ -1083,6 +1103,40 @@ def grant_wish(day):
         save()
 
 # ---------------------------------------------------------------- night: reflection, chronicle, new day
+def strike():
+    """Maybe let a disaster hit some finished buildings this morning. Returns a news sentence, or ""."""
+    for d in DISASTERS:
+        if d["weather"] is not None and S["weather"] not in d["weather"]:
+            continue
+        if random.random() >= d["chance"] * DISASTER_RATE:
+            continue
+        pool = [s for s in S["structures"] if s["done"] and (not d.get("types") or s["type"] in d["types"])
+                and (not d.get("sites") or s["site"] in d["sites"])]
+        if not pool:
+            continue
+        hit, names, wrecked = random.sample(pool, min(d["hits"], len(pool))), [], []
+        for s in hit:
+            names.append(sname(s))
+            if s["type"] != "house" and random.random() < d["wreck"]:
+                S["structures"].remove(s)
+                wrecked.append(s)
+                remember(s["owner"], f"The {d['name']} destroyed my {s['type']} at the {s['site']}. Nothing is left; "
+                                     "I would have to build it again from scratch.")
+                continue
+            bp, frac = BLUEPRINTS[s["type"]], random.uniform(0.3, 0.6)
+            s["have"] = {i: c - max(1, round(c * frac)) for i, c in bp["cost"].items()}
+            s.update(labour=bp["labour"] - max(1, round(bp["labour"] * frac)), done=False, repair=d["name"], day=S["day"])
+            remember(s["owner"], f"The {d['name']} damaged my {s['type']} at the {s['site']}; it is useless until "
+                                 f"repaired and needs {needs_text(s)}. I repair it with the build action there.")
+        what = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+        text = d["text"].format(what=what) + "." + (
+            " " + " and ".join(sname(s) for s in wrecked) + (" was" if len(wrecked) == 1 else " were") + " destroyed."
+            if wrecked else "") + (" Repairs are needed." if len(wrecked) < len(hit) else " It must be rebuilt.")
+        log_event(kind="disaster", name=d["name"], text=text, hit=[s["id"] for s in hit],
+                  wrecked=[s["id"] for s in wrecked])
+        return text
+    return ""
+
 def night():
     global status
     with lock:
@@ -1143,7 +1197,8 @@ def night():
     step = max(1, len(said) // 28)
     lines = [f'- {hhmm(e["minute"])} {e["place"]}, {e["who"]} to {e["to"]}: "{clip(e["say"], 150)}"' for e in said[::step]]
     deeds = [f'- {e["who"]} {e["did"]}' for e in rows if e.get("kind") == "turn" and e.get("did")]
-    deeds = [d for d in deeds if "build" in d or "traded" in d or "gave" in d][-14:] or deeds[-8:]
+    deeds = [d for d in deeds if "build" in d or "repair" in d or "traded" in d or "gave" in d][-14:] or deeds[-8:]
+    struck = [e["text"] for e in rows if e.get("kind") == "disaster"]
     with lock:
         refl = [f"- {n} ({CAST[n]['job']}): {S['agents'][n]['reflections'][-1] if S['agents'][n]['reflections'] else '…'}"
                 for n in CAST]
@@ -1152,6 +1207,7 @@ def night():
     system = ("You are the chronicler of Emberwick, a small lakeside village. You write a wry, warm, vivid daily "
               "chronicle in the past tense, like a storybook narrator who knows everyone's business.")
     user = (f"Day {day}. Weather: {weather}. News that morning: {news}\n"
+            + (f"Disaster that morning: {' '.join(struck)}\n" if struck else "") +
             "What each villager concluded at day's end:\n" + "\n".join(refl) +
             "\nDeeds of the day (work, trade, building):\n" + ("\n".join(deeds) or "- nothing of note") +
             "\nThings said during the day:\n" + "\n".join(lines) +
@@ -1182,6 +1238,13 @@ def night():
                  prayers=[p for p in S["prayers"] if p["day"] > day])
         log_event(kind="chronicle", text=f"Day {day}: {title}")
         log_event(kind="news", text=omen)
+        try:
+            hit = strike()
+        except Exception as e:
+            hit = ""
+            print("strike failed:", e, flush=True)
+        if hit:
+            S["news"] = omen = f"{omen} {hit}"
         for s_ in S["structures"]:
             if s_["done"] and s_["type"] == "stall":
                 S["agents"][s_["owner"]]["inv"]["coins"] += 3
@@ -1236,7 +1299,7 @@ def state_json():
             total = sum(bp["cost"].values()) + bp["labour"]
             got = sum(min(s["have"].get(i, 0), c) for i, c in bp["cost"].items()) + s["labour"]
             structs.append(dict(id=s["id"], type=s["type"], owner=s["owner"], site=s["site"], x=s["x"], y=s["y"],
-                                done=s["done"], helpers=s["helpers"], day=s["day"], perk=bp["perk"],
+                                done=s["done"], repair=s.get("repair", ""), helpers=s["helpers"], day=s["day"], perk=bp["perk"],
                                 progress=round(got / total, 3), needs="" if s["done"] else needs_text(s)))
         ost = oracle_state()
         orc = dict(state=ost, model=S["oracle"].get("model") or "/".join(providers()) or ORACLE_MODEL, speech=S["oracle"]["speech"], at=S["oracle"]["at"], log=consults,

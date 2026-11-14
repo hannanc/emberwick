@@ -13,7 +13,10 @@ is standing next to them, and must eat every night. With enough materials and
 work they build things that appear on the map: houses, market stalls, boats,
 beehives, a windmill, statues, sheds, watchtowers and farms on the Meadow. Some of
 these pay off, for example a stall earns its owner coins every morning and a farm
-bakes them bread. Everyone starts with a house of their own.
+bakes them bread. Everyone starts with a house of their own. Now and then the weather
+turns on them: lightning, floods, gales and tremors damage buildings at dawn, and
+a damaged building stops paying off until someone repairs it (or rebuilds it, if
+it was destroyed).
 
 If a [colibri](https://github.com/JustVugg/colibri) server is running locally, a
 steward thread checks in every 90 minutes, finds the villager most stuck (no
@@ -72,6 +75,7 @@ file. Each consultation is one API call, so at most 24 a day.
 | `EMBERWICK_ORACLE_COOLDOWN` | `3600` | Real seconds between consultations |
 | `EMBERWICK_COLIBRI_URL` / `EMBERWICK_COLIBRI_MODEL` | `http://127.0.0.1:8000` / first listed | Local [colibri](https://github.com/JustVugg/colibri) server, used as the Oracle's last resort and by the steward |
 | `EMBERWICK_STEWARD_EVERY` | `5400` | Real seconds between steward passes (`0` turns it off): colibri sends the most stuck villager a dream with a plan |
+| `EMBERWICK_DISASTERS` | `1` | Multiplies the chance of a dawn disaster (lightning, flood, gale, tremor; about one night in eight by default). `0` turns them off |
 | `EMBERWICK_YIELD` | `1` | Pause while Ollama has other models loaded |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API |
 
