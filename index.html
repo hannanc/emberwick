@@ -551,17 +551,110 @@ function sky(minute, w) {
 const glow = (x, y, r, a, col = '255,200,110') => { const gr = ctx.createRadialGradient(x, y, 1, x, y, r); gr.addColorStop(0, `rgba(${col},${a})`); gr.addColorStop(1, `rgba(${col},0)`); ctx.fillStyle = gr; ctx.fillRect(x - r, y - r, r * 2, r * 2); };
 
 // ================================================================ dynamic world
+const LOOK = {   // hand-made founders; everyone else is derived from hash(name) in look()
+  Mira: { hair: 'braid', accent: 'apron', apron: '#f7f3ea' },
+  Tobias: { hair: 'bald+beard', beard: '#b9b9b0', accent: 'apron', apron: '#8a5a32', leather: 1 },
+  Isolde: { hair: 'long', accent: 'scarf', scarf: '#b8404f' },
+  Bram: { hair: 'short', beard: '#2b1b10', sleeves: 1 },
+  Wren: { hair: 'short', cap: '#2f5e5b' },
+  Hesper: { hair: 'bun', accent: 'shawl', shawl: '#d9a0b4' },
+};
+const SKIN = ['#f0c9a0', '#f0c9a0', '#e8b98c', '#d9a678', '#c58c5f', '#9a6a45'], LOOKS = {};
+function look(a) {   // cached per name and life stage
+  const key = a.name + (a.age < 18 ? 'k' : ''); if (LOOKS[key]) return LOOKS[key];
+  const h = hash(a.name), f = a.sex === 'f', kid = a.age < 18, L = { skin: SKIN[h % 6], ...(LOOK[a.name] || {}) };
+  if (!LOOK[a.name]) {
+    L.hair = f ? (kid ? ['long', 'braid', 'short'][(h >> 3) % 3] : ['long', 'bun', 'braid', 'short'][(h >> 3) % 4]) : kid || a.age < 40 || (h >> 3) % 4 ? 'short' : 'bald+beard';
+    if (!f && !kid && (h >> 6) % 3 === 0 && L.hair !== 'bald+beard') L.beard = a.hair;
+    if (L.hair === 'bald+beard') L.beard = a.hair;
+    const ac = (h >> 9) % 5;
+    if (ac === 1 && !kid) { L.accent = 'apron'; L.apron = ['#f7f3ea', '#8a5a32', '#c9b88a'][(h >> 12) % 3]; } else if (ac === 2) { L.accent = 'scarf'; L.scarf = ['#b8404f', '#e0a23a', '#4a8fc2', '#6fa04a'][(h >> 12) % 4]; }
+    else if (ac === 3 && f && !kid) { L.accent = 'shawl'; L.shawl = ['#d9a0b4', '#b6c7a4', '#c9b6e0'][(h >> 12) % 3]; }
+    else if (ac === 4 && !f && !kid && (h >> 15) % 2) L.cap = ['#7a5a3a', '#4f6b8a', '#6b4f4f'][(h >> 12) % 3];
+  }
+  return LOOKS[key] = L;
+}
+const PROPS = { Woods: 'axe', Dock: 'rod', Garden: 'basket', Bakery: 'loaf', Library: 'book', Quarry: 'pick', Cemetery: 'flowers' };
 function person(a, p, t) {
-  const S = 1.35 * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1), x = p.x * T, base = p.y * T, step = p.walking ? Math.sin(t / 95) : 0, y = base - (p.walking ? Math.abs(step) * 2.5 : 0);
-  shadow(ctx, x - 2, base + 1, 11 * S, 4 * S, .3);
-  if (selected === a.name) { const k = 1 + Math.sin(t / 300) * 0.08; ctx.strokeStyle = '#e8bd5f'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(x, base + 1, 17 * S * k, 7.5 * S * k, 0, 0, 7); ctx.stroke(); }
-  else if (hover === a.name) { ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, base + 1, 15 * S, 6.5 * S, 0, 0, 7); ctx.stroke(); }
-  ctx.fillStyle = '#3a3029'; ctx.fillRect(x - 5 * S + step * 1.5, y - 7 * S, 3.6 * S, 7 * S); ctx.fillRect(x + 1.4 * S - step * 1.5, y - 7 * S, 3.6 * S, 7 * S);
-  ctx.fillStyle = a.color; ctx.beginPath(); ctx.roundRect(x - 8 * S, y - 21 * S, 16 * S, 16 * S, 5 * S); ctx.fill();
-  ctx.fillStyle = 'rgba(0,0,0,.14)'; ctx.beginPath(); ctx.roundRect(x, y - 21 * S, 8 * S, 16 * S, [0, 5 * S, 5 * S, 0]); ctx.fill();
-  ctx.strokeStyle = 'rgba(20,16,10,.45)'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.roundRect(x - 8 * S, y - 21 * S, 16 * S, 16 * S, 5 * S); ctx.stroke();
-  ctx.fillStyle = '#f0c9a0'; ctx.beginPath(); ctx.arc(x, y - 27 * S, 7.2 * S, 0, 7); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = a.hair; ctx.beginPath(); ctx.arc(x, y - 28.5 * S, 7.6 * S, Math.PI * 1.02, Math.PI * 1.98); ctx.fill();
+  const S = 1.35 * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1), x = p.x * T, base = p.y * T, step = p.walking ? Math.sin(t / 95) : 0, h = hash(a.name), g = ctx, L = look(a);
+  const breath = p.walking || REDUCE ? 0 : Math.sin(t / 900 + h % 100) * 0.5, y = base - (p.walking ? Math.abs(step) * 2.5 : 0) + breath;
+  const now = Date.now() / 1000 + skew, old = a.age >= 65, baby = a.age < 6, hurt = a.sick;
+  let f = p.face || 0;   // which way the face points: -1 left, 0 front, 1 right
+  if (!p.walking) {
+    f = 0; const o = a.say_to && now - a.say_at < 26 && st.agents.find(q => q.name === a.say_to), op = o && o.place === a.place && pos[o.name];
+    if (op && Math.abs(op.x - p.x) > .05) f = Math.sign(op.x - p.x);
+    else if (!REDUCE) { const ph = t / 1000 + h % 7; if (ph % 6 < .9) f = (Math.floor(ph / 6) + h) & 1 ? 1 : -1; }   // now and then a glance to the side
+  }
+  const lean = old ? 1.5 * S * (f || p.face || 1) : 0, hx = x + lean + f * .5 * S, hy = y - 27 * S, r = (baby ? 8.6 : 7.2) * S, skin = hurt ? '#e2dac2' : L.skin, line = 'rgba(20,16,10,.45)';
+  const prop = !p.walking && !p.route.length && PROPS[a.place], hairC = a.hair;
+  shadow(g, x - 2, base + 1, 11 * S, 4 * S, .3);
+  if (selected === a.name) { const k = 1 + Math.sin(t / 300) * 0.08; g.strokeStyle = '#e8bd5f'; g.lineWidth = 2.5; g.beginPath(); g.ellipse(x, base + 1, 17 * S * k, 7.5 * S * k, 0, 0, 7); g.stroke(); }
+  else if (hover === a.name) { g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 2; g.beginPath(); g.ellipse(x, base + 1, 15 * S, 6.5 * S, 0, 0, 7); g.stroke(); }
+  g.lineWidth = 1.3; g.lineJoin = 'round'; g.lineCap = 'round';
+  if (old) { const sx = x - (f || p.face || 1) * 10.5 * S; g.strokeStyle = '#6b4a2e'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(sx + (f || 1) * 1.6 * S, y - 12 * S + 0); g.lineTo(sx, y - 11 * S); g.lineTo(sx, base + .5); g.stroke(); g.lineWidth = 1.3; }   // walking stick
+  if (L.hair === 'long') { g.fillStyle = hairC; g.strokeStyle = line; g.beginPath(); g.roundRect(hx - r - .9 * S, hy - r * .55, 2 * r + 1.8 * S, 15 * S, [r, r, 3 * S, 3 * S]); g.fill(); g.stroke(); }   // hair falling behind the shoulders
+  g.fillStyle = L.leather ? '#4a3626' : '#3a3029';                                                               // legs and feet
+  g.fillRect(x - 5 * S + step * 1.5, y - 7 * S, 3.6 * S, 6 * S); g.fillRect(x + 1.4 * S - step * 1.5, y - 7 * S, 3.6 * S, 6 * S);
+  g.fillStyle = '#241c17'; for (const [dx, st2] of [[-3.2, 1], [3.2, -1]]) { g.beginPath(); g.ellipse(x + dx * S + st2 * step * 1.5 + f * 1.2 * S, y - .6 * S, 2.7 * S, 1.6 * S, 0, 0, 7); g.fill(); }
+  const dress = a.sex === 'f' && a.age >= 6, hem = dress ? 7.8 : 6.4, bot = dress ? 3.6 : 4.6;   // tapered torso: shoulders wider than waist
+  const torso = () => { g.beginPath(); g.moveTo(x - 6.6 * S, y - 21.4 * S); g.lineTo(x + 6.6 * S, y - 21.4 * S); g.quadraticCurveTo(x + 9.2 * S, y - 21.2 * S, x + 8.6 * S, y - 18 * S);
+    g.lineTo(x + 6.2 * S, y - 9 * S); g.lineTo(x + hem * S, y - bot * S); g.lineTo(x - hem * S, y - bot * S); g.lineTo(x - 6.2 * S, y - 9 * S); g.lineTo(x - 8.6 * S, y - 18 * S); g.quadraticCurveTo(x - 9.2 * S, y - 21.2 * S, x - 6.6 * S, y - 21.4 * S); g.closePath(); };
+  const arm = (d, hand) => {   // d = -1 left, 1 right; hand = [dx, dy] of the hand from the shoulder
+    const sx = x + d * 8.2 * S, sy = y - 19.4 * S, ex = sx + hand[0] * S, ey = sy + hand[1] * S;
+    g.strokeStyle = line; g.lineWidth = 3.9 * S + 1.3; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke();
+    g.strokeStyle = a.color; g.lineWidth = 3.9 * S; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke();
+    if (L.sleeves) { g.strokeStyle = skin; g.lineWidth = 3.3 * S; g.beginPath(); g.moveTo(sx + (ex - sx) * .45, sy + (ey - sy) * .45); g.lineTo(ex, ey); g.stroke(); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(sx + (ex - sx) * .42 - 1.5 * S, sy + (ey - sy) * .45); g.lineTo(sx + (ex - sx) * .42 + 1.5 * S, sy + (ey - sy) * .45); g.stroke(); }
+    g.fillStyle = skin; g.beginPath(); g.arc(ex, ey + .6 * S, 1.9 * S, 0, 7); g.fill(); return [ex, ey + .6 * S];
+  };
+  g.fillStyle = a.color; torso(); g.fill();
+  g.save(); torso(); g.clip(); g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(x, y - 22 * S, 10 * S, 20 * S);
+  if (L.accent === 'apron') {   // apron over the lower body, with straps
+    g.fillStyle = L.apron; g.beginPath(); g.roundRect(x - 5.2 * S, y - 16.5 * S, 10.4 * S, 13 * S, 2 * S); g.fill(); g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x + .5 * S, y - 16.5 * S, 5 * S, 13 * S);
+    g.strokeStyle = L.leather ? '#5a3a1c' : 'rgba(150,140,120,.8)'; g.lineWidth = 1.1; g.beginPath(); g.moveTo(x - 3.6 * S, y - 16.5 * S); g.lineTo(x - 5 * S, y - 21.4 * S); g.moveTo(x + 3.6 * S, y - 16.5 * S); g.lineTo(x + 5 * S, y - 21.4 * S); g.stroke();
+    g.fillStyle = L.leather ? '#6e4624' : 'rgba(0,0,0,.1)'; g.fillRect(x - 3 * S, y - 12.5 * S, 6 * S, 3.4 * S);
+  }
+  g.restore(); g.strokeStyle = line; g.lineWidth = 1.3; torso(); g.stroke();
+  const wl = [step * 1.2 - 1.2, 8.8 - step * 2.2], wr = [-step * 1.2 + 1.2, 8.8 + step * 2.2];   // arms swing against the legs
+  if (prop === 'book') { wl[0] = 3.5; wl[1] = 6; wr[0] = -3.5; wr[1] = 6; }
+  arm(-1, wl); const [hx2, hy2] = arm(1, wr);
+  if (L.accent === 'shawl') {   // shawl draped over the shoulders, point at the chest
+    g.fillStyle = L.shawl; g.strokeStyle = line; g.lineWidth = 1.2; g.beginPath(); g.moveTo(x - 9.6 * S, y - 19.6 * S); g.quadraticCurveTo(x - 7 * S, y - 22.6 * S, x, y - 22.4 * S); g.quadraticCurveTo(x + 7 * S, y - 22.6 * S, x + 9.6 * S, y - 19.6 * S);
+    g.lineTo(x + 6.4 * S, y - 13 * S); g.lineTo(x, y - 8.5 * S); g.lineTo(x - 6.4 * S, y - 13 * S); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.55)'; for (let i = 0; i < 5; i++) { g.beginPath(); g.arc(x - 5.6 * S + i * 2.8 * S, y - 13 * S + Math.abs(i - 2) * -1.3 * S - 1.6 * S + 3.4 * S, .8 * S, 0, 7); g.fill(); }
+  }
+  if (L.accent === 'scarf') { g.fillStyle = L.scarf; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.roundRect(x - 6.2 * S, y - 22.4 * S, 12.4 * S, 3.6 * S, 1.8 * S); g.fill(); g.stroke(); g.beginPath(); g.roundRect(x + 2 * S, y - 20 * S, 3.2 * S, 7 * S, 1.2 * S); g.fill(); g.stroke(); }   // scarf with a hanging tail
+  // head: back of the braid / bun first, then face, then hair in front
+  if (L.hair === 'braid') { g.fillStyle = hairC; g.strokeStyle = line; g.lineWidth = 1; for (let i = 0; i < 4; i++) { g.beginPath(); g.ellipse(hx - 6.6 * S - i * .15 * S, hy + (5 + i * 3.2) * S, 2.3 * S, 2.1 * S, 0, 0, 7); g.fill(); g.stroke(); } g.fillStyle = '#e0a23a'; g.beginPath(); g.arc(hx - 7.1 * S, hy + 17.6 * S, 1.3 * S, 0, 7); g.fill(); }
+  g.strokeStyle = line; g.lineWidth = 1.3; g.fillStyle = skin; g.beginPath(); g.arc(hx, hy, r, 0, 7); g.fill(); g.stroke();
+  if (hurt) { g.fillStyle = 'rgba(150,200,130,.16)'; g.beginPath(); g.arc(hx, hy, r - .7, 0, 7); g.fill(); }
+  const er = (baby ? 1.5 : 1.25) * S, ex = hx + f * 3 * S, es = 2.5 * S * (1 - .3 * Math.abs(f)), ey = hy + .9 * S;   // eyes follow the facing direction
+  if (L.hair === 'bald+beard') { g.fillStyle = hairC; for (const d of [-1, 1]) { g.beginPath(); g.ellipse(hx + d * (r - .5 * S), hy - 1.2 * S, 1.8 * S, 3.4 * S, 0, 0, 7); g.fill(); } }
+  else {
+    g.fillStyle = hairC; g.beginPath(); g.arc(hx, hy - 1.5 * S, r + .4 * S, Math.PI * 1.02, Math.PI * 1.98); g.fill();
+    if (L.hair === 'long' || L.hair === 'braid') { g.beginPath(); g.ellipse(hx + (f > 0 ? -1 : 1) * r * .65, hy - 2.4 * S, r * .38, 2.8 * S, 0, 0, 7); g.fill(); }   // fringe swept to one side
+    if (L.hair === 'bun') { g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.arc(hx, hy - r - 1.3 * S, 3.6 * S, 0, 7); g.fill(); g.stroke(); }
+  }
+  if (L.beard && a.age >= 18) { g.fillStyle = L.beard; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.moveTo(hx - r * .98, hy + 1.6 * S); g.quadraticCurveTo(hx - r * 1.05, hy + r + 2.4 * S, hx, hy + r + 2.8 * S); g.quadraticCurveTo(hx + r * 1.05, hy + r + 2.4 * S, hx + r * .98, hy + 1.6 * S); g.quadraticCurveTo(hx, hy + 3.4 * S, hx - r * .98, hy + 1.6 * S); g.fill(); g.stroke(); }
+  else if (!hurt && !baby) { g.strokeStyle = 'rgba(120,50,40,.7)'; g.lineWidth = 1; g.beginPath(); g.arc(ex, hy + 2.2 * S, 1.8 * S, .15 * Math.PI, .85 * Math.PI); g.stroke(); }
+  g.fillStyle = '#1f1812'; g.beginPath(); g.arc(ex - es, ey, er, 0, 7); g.arc(ex + es + 0.01, ey, er, 0, 7); g.fill();
+  if (L.cap && a.age >= 6) {   // cap with a brim towards the facing direction
+    g.fillStyle = L.cap; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.arc(hx, hy - 1.2 * S, r + .8 * S, Math.PI * 1.0, Math.PI * 2); g.closePath(); g.fill(); g.stroke();
+    g.beginPath(); g.roundRect(hx - r - 1.2 * S + f * 2.5 * S, hy - 2.4 * S, 2 * r + 2.4 * S, 2.4 * S, 1.2 * S); g.fill(); g.stroke();
+  }
+  if (prop) {   // what they hold, only while standing at that place
+    const px = hx2, py = hy2; g.lineWidth = 1.2; g.strokeStyle = line;
+    if (prop === 'axe') { g.strokeStyle = '#6b4a2e'; g.lineWidth = 2; g.beginPath(); g.moveTo(px - .5 * S, py + 4 * S); g.lineTo(px + 3 * S, py - 12 * S); g.stroke(); g.fillStyle = '#aeb4ba'; g.beginPath(); g.moveTo(px + 2.4 * S, py - 12.4 * S); g.lineTo(px + 8 * S, py - 13.4 * S); g.lineTo(px + 7 * S, py - 7.4 * S); g.lineTo(px + 3.4 * S, py - 8.4 * S); g.closePath(); g.fill(); g.strokeStyle = line; g.lineWidth = 1; g.stroke(); }
+    else if (prop === 'rod') { g.strokeStyle = '#6b4a2e'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(px - 1 * S, py + 2 * S); g.lineTo(px + 15 * S, py - 20 * S); g.stroke(); g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = .8; g.beginPath(); g.moveTo(px + 15 * S, py - 20 * S); g.lineTo(px + 17 * S, py - 6 * S); g.stroke(); g.fillStyle = '#d9604a'; g.beginPath(); g.arc(px + 17 * S, py - 5 * S, 1.2 * S, 0, 7); g.fill(); }
+    else if (prop === 'basket') { g.fillStyle = '#6fbf5a'; g.beginPath(); g.arc(px - 1.5 * S, py - .5 * S, 2 * S, 0, 7); g.arc(px + 2 * S, py - 1 * S, 2 * S, 0, 7); g.fill(); g.fillStyle = '#b98a50'; g.beginPath(); g.roundRect(px - 5 * S, py + .4 * S, 10 * S, 5.4 * S, [0, 0, 3 * S, 3 * S]); g.fill(); g.stroke(); g.strokeStyle = 'rgba(80,50,20,.5)'; g.beginPath(); g.moveTo(px - 4 * S, py + 3 * S); g.lineTo(px + 4 * S, py + 3 * S); g.stroke(); }
+    else if (prop === 'loaf') { g.fillStyle = '#d9a35a'; g.beginPath(); g.ellipse(px, py + 1 * S, 5.2 * S, 2.8 * S, -.15, 0, 7); g.fill(); g.stroke(); g.strokeStyle = 'rgba(120,70,20,.7)'; g.beginPath(); for (const d of [-2.2, 0, 2.2]) { g.moveTo(px + d * S - .8 * S, py + .2 * S); g.lineTo(px + d * S + .8 * S, py + 1.8 * S); } g.stroke(); }
+    else if (prop === 'book') { g.fillStyle = '#8c3a3a'; g.beginPath(); g.roundRect(x - 4.8 * S, y - 13.5 * S, 9.6 * S, 6.6 * S, 1 * S); g.fill(); g.stroke(); g.fillStyle = '#f2ead6'; g.fillRect(x - 4 * S, y - 12.7 * S, 7.8 * S, 1 * S); g.fillStyle = skin; g.beginPath(); g.arc(x - 4.8 * S, y - 10 * S, 1.9 * S, 0, 7); g.arc(x + 4.8 * S, y - 10 * S, 1.9 * S, 0, 7); g.fill(); }
+    else if (prop === 'pick') { g.strokeStyle = '#6b4a2e'; g.lineWidth = 2; g.beginPath(); g.moveTo(px - .5 * S, py + 4 * S); g.lineTo(px + 3.5 * S, py - 11 * S); g.stroke(); g.strokeStyle = '#9aa0a6'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(px - 3 * S, py - 11 * S); g.quadraticCurveTo(px + 3.5 * S, py - 15 * S, px + 10 * S, py - 10 * S); g.stroke(); }
+    else if (prop === 'flowers') { g.strokeStyle = '#4f8a3c'; g.lineWidth = 1.2; g.beginPath(); for (const d of [-2, 0, 2]) { g.moveTo(px + d * .5 * S, py + 1 * S); g.lineTo(px + d * S, py - 5 * S); } g.stroke(); ['#f4e36b', '#e98bb0', '#f6f2ea'].forEach((c, i) => { g.fillStyle = c; g.beginPath(); g.arc(px + (i - 1) * 2 * S, py - 5.6 * S - (i % 2) * S, 1.6 * S, 0, 7); g.fill(); }); }
+  }
+  if (hurt && !REDUCE && (t / 1000) % 5 < 1.8) {   // a faint green "≈" above the head now and then
+    const k = ((t / 1000) % 5) / 1.8, ox = hx, oy = hy - r - 6 * S - k * 5; g.strokeStyle = `rgba(190,235,170,${1 - k * .8})`; g.lineWidth = 1.6;
+    for (const d of [0, 3]) { g.beginPath(); g.moveTo(ox - 4, oy + d - 1); g.quadraticCurveTo(ox - 2, oy + d - 3.5, ox, oy + d - 1); g.quadraticCurveTo(ox + 2, oy + d + 1.5, ox + 4, oy + d - 1); g.stroke(); }
+  }
 }
 function drawStruct(s, t, wins) {
   const X = s.x * T, Y = s.y * T, c = colorOf(s.owner), g = ctx;
@@ -707,7 +800,9 @@ function drawOverlay(t, asleep, order) {
     if (st.oracle.speech && now - st.oracle.at < 60) { const [ox, oy] = st.places.Oracle, [sx, sy] = toScreen(ox * T, oy * T - 34); bubbles.push(layoutBubble(st.oracle.speech, 'The Oracle', '#a98cf0', sx, sy, clamp((60 - (now - st.oracle.at)) / 5, 0, 1))); }
     for (const a of order) {                             // villager names: below the feet, else above the head
       const p = pos[a.name], [sx, sy] = toScreen(p.x * T, p.y * T), sel = a.name === selected, o = { color: sel ? '#e8bd5f' : '#fff', size: sel ? 13 : 12, force: sel };
-      if (!label(a.name, sx, sy + 15, o)) label(a.name, sx, sy - 42 * 1.35 * z - 6, { ...o, force: true, alpha: .9 });
+      let ly = sy + 15, ok = label(a.name, sx, ly, o);
+      if (!ok) { ly = sy - 42 * 1.35 * z - 6; ok = label(a.name, sx, ly, { ...o, force: true, alpha: .9 }); }
+      if (ok && a.expecting) { ctx.font = `600 ${o.size}px ${SANS}`; const hx = sx + ctx.measureText(a.name).width / 2 + 9, hy = ly - o.size * .38; ctx.fillStyle = '#f48fb1'; ctx.beginPath(); ctx.moveTo(hx, hy + 3.6); ctx.bezierCurveTo(hx - 7, hy - 1, hx - 3.4, hy - 6, hx, hy - 2.4); ctx.bezierCurveTo(hx + 3.4, hy - 6, hx + 7, hy - 1, hx, hy + 3.6); ctx.fill(); }   // a tiny heart for an expecting mother
     }
   } else {
     const [cx, cy] = st.places.Cottages;
@@ -737,11 +832,11 @@ function frame(t) {
   if (st && scenery) {
     const asleep = st.phase === 'night';
     for (const a of st.agents) {                         // walk along routes
-      const p = pos[a.name]; let left = 5 * dt; p.walking = false;
+      const p = pos[a.name]; let left = 5 * dt * (a.hungry >= 2 ? .75 : 1); p.walking = false;   // the hungry plod
       while (p.route.length && left > 0) {
-        const [tx, ty] = p.route[0], d = Math.hypot(tx - p.x, ty - p.y);
+        const [tx, ty] = p.route[0], d = Math.hypot(tx - p.x, ty - p.y), ox = p.x;
         if (d <= left) { p.x = tx; p.y = ty; p.route.shift(); left -= d; } else { p.x += (tx - p.x) / d * left; p.y += (ty - p.y) / d * left; left = 0; }
-        p.walking = true;
+        p.walking = true; if (Math.abs(p.x - ox) > 1e-4) p.face = Math.sign(p.x - ox);   // remember which way they last moved
       }
     }
     if (cam.follow && selected && pos[selected]) { cam.tx = pos[selected].x * T; cam.ty = pos[selected].y * T - 20; clampT(); }
