@@ -1386,11 +1386,37 @@ function showHearing() {
   else if (hear.mode !== 'off') h.append(hear.mode === 'all' ? 'listening to everyone' : 'listening to ' + hear.mode);
   $('unmute').hidden = !hear.blocked;
 }
+// room echo: a generated impulse response per kind of place, so voices sound like they are somewhere
+const room = { ctx: null, irs: {} };
+const ROOMS = { indoor: [1.0, 0.24, 3200], outdoor: [0.5, 0.1, 5200], stones: [2.6, 0.32, 2600] };   // seconds, wet, low-pass Hz
+const INDOOR = new Set(['Tavern', 'Library', 'Bakery', 'Hospital', 'Workshop']);
+function audioCtx() {                                     // call from a click or change, so the browser lets it run
+  if (room.ctx === null) { try { room.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { room.ctx = false; } }
+  if (room.ctx && room.ctx.state === 'suspended') room.ctx.resume().catch(() => {});
+  return room.ctx;
+}
+function impulse(ac, secs) {
+  if (room.irs[secs]) return room.irs[secs];
+  const n = Math.round(ac.sampleRate * secs), b = ac.createBuffer(2, n, ac.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3.2); }
+  return room.irs[secs] = b;
+}
+function withRoom(audio, place) {                         // dry voice plus a soft, filtered echo; untouched if audio is locked
+  const ac = room.ctx;
+  if (!ac || ac.state !== 'running') return;
+  try {
+    const [secs, wet, lp] = ROOMS[place === 'Oracle' ? 'stones' : INDOOR.has(place) ? 'indoor' : 'outdoor'];
+    const src = ac.createMediaElementSource(audio), conv = ac.createConvolver(), f = ac.createBiquadFilter(), w = ac.createGain();
+    conv.buffer = impulse(ac, secs); f.type = 'lowpass'; f.frequency.value = lp; w.gain.value = wet;
+    src.connect(ac.destination); src.connect(conv).connect(f).connect(w).connect(ac.destination);
+  } catch (e) {}
+}
 function nextLine() {
   hear.now = hear.queue.shift() || null; showHearing();
   if (!hear.now) return;
   const it = hear.now, done = () => { if (hear.now === it) { hear.now = null; nextLine(); } };
   if (!it.audio) return speakFallback(it, done);
+  if (!it.roomed) { it.roomed = true; withRoom(it.audio, it.e.kind === 'oracle' ? 'Oracle' : it.e.place); }
   it.audio.onended = done;
   it.audio.onerror = () => speakFallback(it, done);
   it.audio.play().catch(err => {
@@ -1412,6 +1438,7 @@ function speakFallback(it, done) {                         // the browser's own 
   speechSynthesis.speak(u);
 }
 function setHear(mode) {
+  if (mode !== 'off') audioCtx();
   hear.mode = mode; store.set('hear', mode);
   hear.queue = []; hear.blocked = false;
   if (hear.now && hear.now.audio) hear.now.audio.pause();
@@ -1420,7 +1447,8 @@ function setHear(mode) {
   showHearing();
 }
 $('hear').addEventListener('change', e => setHear(e.target.value));
-$('unmute').addEventListener('click', () => { hear.blocked = false; nextLine(); });
+$('unmute').addEventListener('click', () => { audioCtx(); hear.blocked = false; nextLine(); });
+addEventListener('pointerdown', () => { if (hear.mode !== 'off') audioCtx(); }, { once: true });   // a saved sound mode gets its echo on the first click
 function renderBuilt() {
   const key = JSON.stringify(st.structures); if (key === builtKey) return; builtKey = key;
   const box = $('built'); box.replaceChildren();

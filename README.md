@@ -54,7 +54,8 @@ adjust the paths, and run `systemctl --user enable --now emberwick`.
 Pick **Hear everyone** or **Hear only <villager>** under the clock and the
 villagers speak their lines aloud, each with their own voice (the Oracle too).
 With [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) on the server the
-voices are natural; without it the browser's own speech is used.
+voices are natural, with a soft room echo that depends on where the speaker
+stands; without Kokoro the browser's own speech is used.
 
 ```sh
 .venv/bin/pip install kokoro-onnx
