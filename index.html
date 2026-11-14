@@ -811,6 +811,8 @@ function drawOverlay(t, asleep, order) {
   if (!asleep) {
     const latest = {};                                    // one bubble per place: whoever spoke last
     for (const a of order) if (a.say && now - a.say_at < 26 && (!latest[a.place] || a.say_at > latest[a.place].say_at)) latest[a.place] = a;
+    const hs = hear.now && st.agents.find(q => q.name === hear.now.who && q.say);   // whoever is being heard keeps a bubble, opaque and on top
+    if (hs) latest[hs.place] = hs;
     const speakers = Object.values(latest).sort((a, b) => (b.name === selected) - (a.name === selected) || b.say_at - a.say_at);
     for (const a of speakers) { const p = pos[a.name], [sx, sy] = toScreen(p.x * T, p.y * T - 40 * 1.35); bubbles.push(layoutBubble(a.say, a.name, a.color, sx, sy, clamp((26 - (now - a.say_at)) / 4, 0, 1))); }
     if (st.oracle.speech && now - st.oracle.at < 60) { const [ox, oy] = st.places.Oracle, [sx, sy] = toScreen(ox * T, oy * T - 34); bubbles.push(layoutBubble(st.oracle.speech, 'The Oracle', '#a98cf0', sx, sy, clamp((60 - (now - st.oracle.at)) / 5, 0, 1))); }
@@ -838,6 +840,15 @@ function drawOverlay(t, asleep, order) {
     const [sx, sy] = toScreen(x * T, (y + off) * T);
     label((PLACE_NAME[name] || name).toUpperCase(), sx, sy, { size: z < 0.5 ? 10 : 11, weight: 700, spacing: '0.8px', color: '#f6efdc', alpha: .95 });
   }
+  if (hear.now) {   // heard and off-screen: an arrow at the edge pointing their way, with their initial
+    const sp = speakerSpot(); if (sp) { const [sx, sy] = toScreen(sp[0], sp[1] + 14 * sp[3]);
+      if (sx < 10 || sx > vw - 10 || sy < 10 || sy > vh - 10) {
+        const cx = vw / 2, cy = vh / 2, dx = sx - cx, dy = sy - cy, m = 26, k = Math.min((vw / 2 - m) / Math.abs(dx || 1e-6), (vh / 2 - m) / Math.abs(dy || 1e-6)), ex = cx + dx * k, ey = cy + dy * k, an = Math.atan2(dy, dx), ini = hear.now.who === 'The Oracle' ? 'O' : hear.now.who[0];
+        ctx.save(); ctx.translate(ex, ey); ctx.fillStyle = sp[5]; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 13, 0, 7); ctx.fill(); ctx.stroke();
+        ctx.rotate(an); ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(14, -6); ctx.lineTo(14, 6); ctx.closePath(); ctx.fillStyle = '#fff6d0'; ctx.fill(); ctx.rotate(-an);
+        ctx.fillStyle = '#fff'; ctx.font = `700 13px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ini, 0, 1); ctx.textBaseline = 'alphabetic'; ctx.restore(); } }
+  }
+  if (hear.now) { const i = bubbles.findIndex(b => b.name === hear.now.who); if (i >= 0) { const [b] = bubbles.splice(i, 1); b.alpha = 1; bubbles.push(b); } }
   bubbles.forEach(drawBubble);
 }
 
@@ -887,6 +898,20 @@ function drawFx(t, wind, under) {   // under: ground effects (floods) drawn befo
       g.save(); for (let i = 0; i < 18; i++) { const an = i * 2.4, sp = 18 + (i % 5) * 9, q = Math.min(1, k * 1.1); g.globalAlpha = (1 - k) * .9; g.fillStyle = i % 3 ? '#f6d36b' : '#fff0b0'; g.beginPath(); g.arc(f.x + Math.cos(an) * sp * q * 1.6, f.y - 20 - Math.abs(Math.sin(an)) * sp * q * 1.8 + q * q * 20, 2.2 - k, 0, 7); g.fill(); } g.restore();
     }
   }
+}
+function speakerSpot() {   // where the voice being played comes from: [x, headY, feetY, scale, side, colour] in world px, or null
+  if (!hear.now) return null; const who = hear.now.who;
+  if (who === 'The Oracle') { const [ox, oy] = st.places.Oracle; return [ox * T, oy * T - 26, oy * T + 12, 1.9, 1, '#a98cf0']; }
+  const a = st.agents.find(q => q.name === who), p = pos[who]; if (!a || !p) return null;
+  const S = 1.35 * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1); return [p.x * T, p.y * T - 27 * S, p.y * T, S, p.face < 0 ? -1 : 1, a.color];
+}
+function drawSpeaking(t) {   // a pulsing ring at the feet and three sound-wave arcs beside the head of whoever is being heard
+  const sp = speakerSpot(); if (!sp) return; const [x, hy, by, S, side, col] = sp, k = REDUCE ? .4 : (t / 800) % 1, g = ctx;
+  g.save(); g.lineCap = 'round'; g.strokeStyle = col; g.lineWidth = 2; g.globalAlpha = .55; g.beginPath(); g.ellipse(x, by + 1, 14 * S, 6 * S, 0, 0, 7); g.stroke();
+  g.strokeStyle = '#ffe08a'; g.lineWidth = 2.4; g.globalAlpha = (1 - k) * .85; g.beginPath(); g.ellipse(x, by + 1, (14 + k * 12) * S, (6 + k * 5) * S, 0, 0, 7); g.stroke();
+  for (let i = 0; i < 3; i++) { g.globalAlpha = REDUCE ? .8 - i * .2 : Math.max(.12, 1 - Math.abs(i - k * 3) / 1.6) * .95; g.strokeStyle = '#fff6d0'; g.lineWidth = 2.2; const r = (8 + i * 5.5) * (S > 1.5 ? 1.5 : 1), ox = x + side * (11 * S + 2);
+    g.beginPath(); if (side > 0) g.arc(ox - r * .5, hy, r, -.85, .85); else g.arc(ox + r * .5, hy, r, Math.PI - .85, Math.PI + .85); g.stroke(); }
+  g.restore();
 }
 function shakeOffset(t) { const f = fx.find(q => q.k === 'tremor'); if (!f) return [0, 0]; const a = t - f.t0, m = Math.max(0, 1 - a / 400) * 5; return [Math.sin(a / 22) * m, Math.cos(a / 17) * m * .7]; }
 function smoke(x, y, t, seed, wind, k = 1) {   // a curl of chimney smoke: five puffs rising and fading
@@ -968,7 +993,7 @@ function frame(t) {
     for (const s of st.structures) things.push([s.y, () => drawStruct(s, t, wins)]);
     if (!asleep) for (const a of order) things.push([pos[a.name].y, () => person(a, pos[a.name], t)]);
     drawFx(t, wind, true); smokes.length = 0; things.sort((a, b) => a[0] - b[0]).forEach(d => d[1]());
-    drawFx(t, wind, false);
+    drawFx(t, wind, false); drawSpeaking(t);
     const hr0 = st.minute / 60, hearth = hr0 >= 5 && hr0 < 9.5 || hr0 >= 17 && hr0 < 22.5, calm = !/storm|steady/.test(w);   // chimneys: bakery and tavern always, houses at breakfast and supper
     chimneys.forEach(([x, y], i) => smoke(x, y, t, i, wind)); if (hearth && calm) smokes.forEach(([x, y], i) => smoke(x, y, t, i + 3, wind, .8));
     if (S.light < .3 && !rain && hr0 >= 7 && hr0 < 19) {                                               // butterflies over the Garden and Meadow, birds crossing at midday
