@@ -249,7 +249,7 @@
     <div id="note" role="status"></div>
     <form id="whisper">
       <select id="to" aria-label="Who hears it"><option value="">The whole village hears…</option></select>
-      <input id="msg" maxlength="200" placeholder="Whisper a thought or start a rumour" autocomplete="off" aria-label="Message">
+      <input id="msg" maxlength="200" placeholder="A voice from the sky the whole village hears" autocomplete="off" aria-label="Message">
       <button>Send</button>
     </form>
   </div>
@@ -901,7 +901,7 @@ $('unsel').onclick = () => select(null);
 
 // ================================================================ side panel
 const SYS = {
-  whisper: e => ['✉', 'you', `You whispered to ${e.who}`, e.text],
+  whisper: e => e.speak ? ['❝', 'you', `You spoke to ${e.who}`, e.text] : ['✉', 'you', `You planted a thought in ${e.who}`, e.text],
   voice: e => ['✶', 'you', 'Your voice boomed from the sky', e.text],
   oracle_ask: e => ['?', 'or', `${e.who} asks the Oracle`, e.text],
   oracle: e => ['◈', 'or', `The Oracle answers ${e.who}`, e.text],
@@ -1241,17 +1241,29 @@ function debugOnce() {       // camera, selection and tab, once after the first 
   if (DEBUG.sel && st.agents.some(a => a.name === DEBUG.sel)) { selected = DEBUG.sel; $('to').value = selected; syncFocus(); renderPeople(true); renderFeed(true); }
   if (DEBUG.tab) { const b = document.querySelector(`nav button[data-tab="${DEBUG.tab}"]`); if (b) b.click(); }
 }
+function msgHint() {
+  const [how, who] = ($('to').value || ':').split(':');
+  $('msg').placeholder = how === 'speak' ? `Say something to ${who}; they will answer you` :
+    how === 'thought' ? `A thought that pops into ${who}'s head` : 'A voice from the sky the whole village hears';
+}
+$('to').addEventListener('change', msgHint);
 async function poll() {
   try {
     const r = await fetch('/api/state'); st = await r.json(); skew = st.now - Date.now() / 1000;
     debugOverride();
     if (!scenery) { buildPaths(); buildScenery(); $('loading').classList.add('gone'); setTimeout(() => $('loading').remove(), 700); }
     syncPositions();
-    const able = st.agents.filter(a => a.age >= 6).map(a => a.name);
-    if ($('to').options.length - 1 !== able.length || able.some((n, i) => $('to').options[i + 1].value !== n)) {
-      const cur = $('to').value; while ($('to').options.length > 1) $('to').remove(1);
-      for (const n of able) $('to').add(new Option('Whisper to ' + n, n));
-      $('to').value = able.includes(cur) ? cur : $('to').options[0].value;
+    const able = st.agents.filter(a => a.age >= 6).map(a => a.name), sel = $('to');
+    if (sel.dataset.names !== able.join()) {            // rebuild when people are born, grow up or die
+      const cur = sel.value; sel.dataset.names = able.join();
+      while (sel.children.length > 1) sel.lastChild.remove();
+      for (const [how, label] of [['speak', 'Speak to'], ['thought', 'Plant a thought in']]) {
+        const g = document.createElement('optgroup'); g.label = label;
+        for (const n of able) g.append(new Option(`${label} ${n}`, `${how}:${n}`));
+        sel.append(g);
+      }
+      sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
+      msgHint();
     }
     renderHeader(); renderFeed(); renderPeople(); renderPop(); renderBuilt(); hearEvents(); renderOracle(); renderPrayers(); renderChron(); syncFocus();
     debugOnce();
@@ -1268,10 +1280,10 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 $('to').onchange = () => { selected = $('to').value || null; syncFocus(); if (st) { renderPeople(true); renderFeed(true); } };
 $('whisper').onsubmit = async ev => {
   ev.preventDefault(); const text = $('msg').value.trim(); if (!text) return;
-  const to = $('to').value, note = $('note');
+  const [how, to] = ($('to').value || ':').split(':'), note = $('note');
   try {
-    const r = await (await fetch('/api/whisper', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, text }) })).json();
-    note.textContent = r.ok ? (to ? `Sent. ${to} takes the next turn and will react within about 20 seconds.` : 'Sent. Each villager reacts on their next turn, one every 15–20 seconds.') : (r.note || 'That did not go through.');
+    const r = await (await fetch('/api/whisper', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, text, how }) })).json();
+    note.textContent = r.ok ? (how === 'speak' ? `Sent. ${to} hears your voice and answers on the next turn, usually within a minute.` : to ? `Sent. ${to} takes the next turn and will react within about 20 seconds.` : 'Sent. Each villager reacts on their next turn, one every 15–20 seconds.') : (r.note || 'That did not go through.');
   } catch (e) { note.textContent = 'Could not reach the server.'; }
   clearTimeout(note.timer); note.timer = setTimeout(() => note.textContent = '', 30000);
   $('msg').value = ''; filter = 'all'; feedKey = ''; document.querySelector('[data-tab=feed]').click();

@@ -1417,6 +1417,10 @@ def agent_turn():
         if whisper and whisper.get("all"):
             u.append(f'A great voice from the sky just boomed over the whole village: "{whisper["text"]}" '
                      "Everyone heard it. React to it now, out loud.")
+        elif whisper and whisper.get("speak"):
+            u.append(f'A gentle voice that only you can hear is speaking to you, as if someone stood right beside you: '
+                     f'"{whisper["text"]}" It is talking to you directly. Answer the voice out loud now, in your own '
+                     'words, the way you would answer a person; "say" is your answer to it.')
         elif whisper:
             u.append(f'A sudden, strangely vivid thought enters your mind, as if whispered: "{whisper["text"]}" '
                      "You feel compelled to act on it now and to say something about it out loud.")
@@ -1448,9 +1452,16 @@ def agent_turn():
         if a["activity"][:1].isupper() and not a["activity"].startswith("I "):
             a["activity"] = a["activity"][0].lower() + a["activity"][1:]
         to = ""
-        if here:
+        if whisper and whisper.get("speak") and say:      # answering the listener's voice, not a neighbour
+            to = "you"
+            remember(n, f'I answered the voice: "{say}"')
+            for o in here:
+                remember(o, f'At the {old}, {n} spoke to someone none of us could see: "{say}"')
+        elif here:
             to = pending["from"] if pending and pending["from"] in here else random.choice(here)
-        if say and to:
+        if to == "you":
+            pass
+        elif say and to:
             remember(n, f'At the {old} I said to {to}: "{say}"')
             for o in here:
                 remember(o, f'At the {old}, {n} said to {"me" if o == to else to}: "{say}"')
@@ -2037,6 +2048,7 @@ class Handler(BaseHTTPRequestHandler):
             if n > 2000: raise ValueError
             req = json.loads(self.rfile.read(n))
             text, to = clip(req.get("text"), 200), req.get("to")
+            speak = req.get("how") == "speak"
             if not text: raise ValueError
         except Exception:
             return self.send(400, '{"error":"bad request"}')
@@ -2044,9 +2056,10 @@ class Handler(BaseHTTPRequestHandler):
             if S["phase"] == "night":
                 return self.send(200, '{"ok":false,"note":"Everyone is asleep. Try again in the morning."}')
             if to in S["agents"] and acting(to):
-                S["agents"][to]["whisper"] = {"text": text}
-                remember(to, f'A strange thought came to me as if whispered: "{text}"')
-                log_event(kind="whisper", who=to, text=text)
+                S["agents"][to]["whisper"] = {"text": text, "speak": speak}
+                remember(to, f'A voice only I can hear said to me: "{text}"' if speak else
+                         f'A strange thought came to me as if whispered: "{text}"')
+                log_event(kind="whisper", who=to, text=text, speak=speak)
             else:
                 S["voice"] = {"text": text, "at": time.time()}
                 for name, a in S["agents"].items():
