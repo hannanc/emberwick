@@ -49,6 +49,23 @@ python3 emberwick.py      # then open http://<server>:8377/
 To keep it running, copy `emberwick.service` to `~/.config/systemd/user/`,
 adjust the paths, and run `systemctl --user enable --now emberwick`.
 
+## Voices (optional)
+
+Pick **Hear everyone** or **Hear only <villager>** under the clock and the
+villagers speak their lines aloud, each with their own voice (the Oracle too).
+With [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) on the server the
+voices are natural; without it the browser's own speech is used.
+
+```sh
+.venv/bin/pip install kokoro-onnx
+mkdir -p ~/.local/share/emberwick/kokoro && cd ~/.local/share/emberwick/kokoro
+curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx
+curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+```
+
+Speech is only made when someone is listening (about 0.5 GB of RAM once loaded,
+and roughly half a line's length of CPU time per line), and each line is cached.
+
 ## The Oracle (optional)
 
 A ring of standing stones in the corner of the map houses the Oracle, played by
@@ -93,6 +110,8 @@ file. Each consultation is one API call, so at most 24 a day.
 | `EMBERWICK_LIFE` | `1` | Ageing, children, illness and death (`0` turns the life cycle off) |
 | `EMBERWICK_YEAR_DAYS` | `4` | Village days per year of age |
 | `EMBERWICK_MAX_PEOPLE` | `12` | Most living villagers (and babies on the way) |
+| `EMBERWICK_TTS` / `EMBERWICK_TTS_DIR` | `1` / `~/.local/share/emberwick/kokoro` | Spoken voices with Kokoro, if `kokoro-onnx` is installed and the model files are in the folder |
+| `EMBERWICK_TTS_THREADS` | `3` | CPU threads used for speech, leaving the rest to Ollama |
 | `EMBERWICK_YIELD` | `1` | Pause while Ollama has other models loaded |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API |
 

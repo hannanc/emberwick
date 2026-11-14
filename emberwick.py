@@ -33,6 +33,10 @@ DEEP_EVERY = int(os.environ.get("EMBERWICK_DEEP_EVERY", 4))  # at most one conve
 YIELD = os.environ.get("EMBERWICK_YIELD", "1") == "1"  # pause while Ollama serves other models
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# voices: optional Kokoro text-to-speech (pip install kokoro-onnx, plus the model files in TTS_DIR)
+TTS_ON = os.environ.get("EMBERWICK_TTS", "1") == "1"
+TTS_DIR = os.path.expanduser(os.environ.get("EMBERWICK_TTS_DIR", "~/.local/share/emberwick/kokoro"))
+TTS_THREADS = int(os.environ.get("EMBERWICK_TTS_THREADS", 3))   # CPU threads for speech, leaving the rest to Ollama
 DB = os.path.join(HERE, "emberwick.db")
 
 PLACES = {  # name: (x, y, description) — tile coordinates on a 58x24 map
@@ -531,6 +535,7 @@ def birth(mother):
                          hair=random.choice([who(mother)["hair"], fat["hair"]]), home=who(mother)["home"],
                          goal="to grow up, learn from your parents and find your own place in Emberwick",
                          secret="", dream="a place of your own one day", feel={mother: "my mother", father: "my father"})
+    voice_of(nm)
     S["agents"][nm] = dict(place="Cottages", activity="sleeping in a cradle", say="", say_to="", say_at=0, thought="",
                            mood="sleepy", memories=[], today=[], reflections=[], feelings={mother: "my mother",
                            father: "my father"}, pending=None, whisper=None, offer=None, inv=new_inv(nm), plan=[],
@@ -1814,6 +1819,99 @@ def run():
             time.sleep(15)
         time.sleep(max(1.0, TURN_SECONDS - (time.time() - t0)))
 
+# ---------------------------------------------------------------- voices: Kokoro speaks the villagers' lines
+VOICES = {"Mira": ("bf_emma", 1.0), "Tobias": ("bm_george", 0.9), "Isolde": ("bf_isabella", 1.05),
+          "Bram": ("am_michael", 1.0), "Wren": ("am_puck", 1.08), "Hesper": ("bf_alice", 0.86),
+          "Oracle": ("am_onyx", 0.82)}
+BORN_VOICES = {"f": ["af_sky", "bf_lily", "af_nova", "af_kore", "af_river", "af_jessica"],
+               "m": ["am_echo", "am_liam", "bm_daniel", "am_eric", "bm_lewis", "am_adam"]}
+FAST_MOODS = {"excited", "restless", "angry", "furious", "eager", "urgent", "nervous", "anxious", "frantic", "agitated"}
+SLOW_MOODS = {"sad", "tired", "pensive", "weary", "melancholy", "somber", "sombre", "grieving", "sleepy", "calm", "wistful"}
+_tts, _tts_lock, _tts_cache = [None, None], threading.Lock(), {}
+
+def tts_files():
+    return os.path.join(TTS_DIR, "kokoro-v1.0.int8.onnx"), os.path.join(TTS_DIR, "voices-v1.0.bin")
+
+def tts_available():
+    if not TTS_ON or _tts[1] is not None and not _tts[1]:
+        return False
+    import importlib.util
+    return importlib.util.find_spec("kokoro_onnx") is not None and all(map(os.path.exists, tts_files()))
+
+def tts_engine():
+    """Load Kokoro on first use (about 0.5 GB), so it costs nothing until someone listens."""
+    if _tts[1] is None:
+        try:
+            import onnxruntime as rt
+            from kokoro_onnx import Kokoro
+            model, voices = tts_files()
+            so = rt.SessionOptions()
+            so.intra_op_num_threads, so.inter_op_num_threads = TTS_THREADS, 1
+            _tts[0] = Kokoro.from_session(rt.InferenceSession(model, so, providers=["CPUExecutionProvider"]), voices)
+            _tts[1] = True
+        except Exception as e:
+            print("tts unavailable:", e, flush=True)
+            _tts[1] = False
+    return _tts[0]
+
+def voice_of(n):
+    if n in VOICES:
+        return VOICES[n]
+    b = S.get("born", {}).get(n)
+    if not b:
+        return ("am_adam", 1.0)
+    if not b.get("voice"):
+        pool = BORN_VOICES[b["sex"]]
+        taken = {S["born"][o].get("voice") for o in S["born"] if o in S["agents"]}
+        b["voice"] = next((v for v in pool if v not in taken), pool[sum(map(ord, n)) % len(pool)])
+    return b["voice"], 1.08 if n in S["agents"] and age(n) < ADULT else 1.0
+
+def spoken(event_id):
+    """(speaker, text, mood) for an event that has speech in it, or None."""
+    with db() as c:
+        row = c.execute("SELECT data FROM events WHERE id=?", (event_id,)).fetchone()
+    if not row:
+        return None
+    e = json.loads(row[0])
+    if e.get("kind") == "turn" and e.get("say"):
+        return e["who"], e["say"], e.get("mood", "")
+    if e.get("kind") == "oracle" and e.get("text"):
+        return "Oracle", e["text"], ""
+    return None
+
+def tts_wav(event_id):
+    """WAV bytes for the speech in one event, made once and cached. Only logged speech can be voiced."""
+    if event_id in _tts_cache:
+        return _tts_cache[event_id]
+    got = spoken(event_id)
+    if not got:
+        return None
+    who_, text, mood = got
+    text = re.sub(r"\*[^*]*\*|\([^)]*\)", " ", text)            # stage directions are not spoken
+    text = re.sub(r"\s+", " ", text).strip()[:400]
+    if not text:
+        return None
+    with lock:
+        voice, speed = voice_of(who_)
+    speed *= 1.07 if mood in FAST_MOODS else 0.93 if mood in SLOW_MOODS else 1.0
+    with _tts_lock:                                               # one line at a time; viewers share the cache
+        if event_id in _tts_cache:
+            return _tts_cache[event_id]
+        eng = tts_engine()
+        if not eng:
+            return None
+        import io, wave
+        import numpy as np                                        # comes with kokoro-onnx
+        samples, rate = eng.create(text, voice=voice, speed=max(0.6, min(1.4, speed)), lang="en-gb" if voice[0] == "b" else "en-us")
+        pcm = (np.clip(samples, -1, 1) * 32767).astype("<i2").tobytes()
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate); w.writeframes(pcm)
+        _tts_cache[event_id] = buf.getvalue()
+        while len(_tts_cache) > 80:
+            _tts_cache.pop(next(iter(_tts_cache)))
+        return _tts_cache[event_id]
+
 # ---------------------------------------------------------------- web
 def state_json():
     with db() as c:
@@ -1844,7 +1942,7 @@ def state_json():
         orc = dict(state=ost, model=S["oracle"].get("model") or "/".join(providers()) or ORACLE_MODEL, speech=S["oracle"]["speech"], at=S["oracle"]["at"], log=consults,
                    wait=max(0, int((ORACLE_COOLDOWN - (time.time() - S["oracle"]["last"])) / 60)) if ost == "resting" else 0)
         return json.dumps(dict(now=time.time(), structures=structs, oracle=orc, voice=S.get("voice"), day=S["day"], minute=S["minute"], weather=S["weather"],
-                               news=S["news"], merchant=S.get("merchant", 0), dead=S.get("dead", []), phase=S["phase"], status=status, agents=agents,
+                               news=S["news"], tts=tts_available(), merchant=S.get("merchant", 0), dead=S.get("dead", []), phase=S["phase"], status=status, agents=agents,
                                places={k: v[:2] for k, v in PLACES.items()}, events=ev[::-1], chronicle=chron,
                                prayers=[p for p in S["prayers"] if p["day"] == S["day"]], wishes=S["wishes"][-12:][::-1],
                                models=dict(actor=ACTOR, narrator=NARRATOR)))
@@ -1852,12 +1950,12 @@ def state_json():
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
-    def send(self, code, body, ctype="application/json"):
+    def send(self, code, body, ctype="application/json", cache="no-store"):
         body = body.encode() if isinstance(body, str) else body
         self.send_response(code)
-        self.send_header("Content-Type", ctype + "; charset=utf-8")
+        self.send_header("Content-Type", ctype + ("" if ctype.startswith("audio/") else "; charset=utf-8"))
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache)
         self.end_headers()
         self.wfile.write(body)
 
@@ -1868,6 +1966,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(200, f.read(), "text/html")
         elif path == "/api/state":
             self.send(200, state_json())
+        elif m := re.fullmatch(r"/api/tts/(\d{1,12})\.wav", path):
+            try:
+                wav = tts_wav(int(m.group(1))) if tts_available() else None
+            except Exception as e:
+                print("tts failed:", e, flush=True)
+                wav = None
+            if wav:
+                self.send(200, wav, "audio/wav", cache="private, max-age=86400")
+            else:
+                self.send(404, '{"error":"no speech"}')
         else:
             self.send(404, '{"error":"not found"}')
 
