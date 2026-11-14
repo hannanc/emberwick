@@ -867,6 +867,9 @@ def do_sell(n, r):
         return ""
     if gi not in SELL_RATE or gq < 1:
         return ""
+    if a.get("sold_day") == S["day"]:
+        remember(n, "The merchant buys from each villager only once a day, and I have already sold to her today.")
+        return ""
     gq = min(gq, a["inv"][gi])
     rate, purse = SELL_RATE[gi], S.get("merchant", 0)
     coins = min(gq // rate, purse, MERCHANT_SALE)
@@ -877,6 +880,7 @@ def do_sell(n, r):
     a["inv"][gi] -= coins * rate
     a["inv"]["coins"] += coins
     S["merchant"] = purse - coins
+    a["sold_day"] = S["day"]
     remember(n, f"I sold {coins * rate} {gi} to the merchant at the Square for {coins} coins.")
     return f"sold {coins * rate} {gi} to the merchant for {coins} coins"
 
@@ -979,7 +983,7 @@ def oracle_world(n, question):
          "of one type. Damaged buildings give nothing until repaired the same way.",
          f"Selling: at the Square, action sell gives the merchant goods for coins (1 coin per "
          + ", ".join(f"{r} {i}" for i, r in SELL_RATE.items()) + f"); her purse is {S.get('merchant', 0)} coins today, "
-         f"refilled to {MERCHANT_PURSE} each night.",
+         f"refilled to {MERCHANT_PURSE} each night; she buys from each villager once a day.",
          f"Health: villagers sometimes fall ill; action treat at the Hospital cures them for {TREAT_HERBS} herbs "
          f"({HEALER_HERBS} if a herbalist is there). Untreated illness can kill. The dead lie in the Cemetery.",
          f"Carrying: at most {CARRY} of each good (+{SHED_CARRY} per shed owned); work gains nothing past it. Each night "
@@ -1371,14 +1375,18 @@ def agent_turn():
                     actions.append("build_" + t)
         u.append("Things that can be built: " + "; ".join(can) + ". To build, go to the site and use the build action "
                  "there: it first delivers the materials you carry, then each use does one turn of work.")
-        if a["place"] == "Square" and S.get("merchant", 0) > 0:
+        sold = a.get("sold_day") == S["day"]
+        if a["place"] == "Square" and S.get("merchant", 0) > 0 and not sold:
             u.append("A travelling merchant at the Square buys goods for coins: 1 coin for every "
                      + ", ".join(f"{r} {i}" for i, r in SELL_RATE.items())
-                     + f". She has {S['merchant']} coins left to spend today and pays at most {MERCHANT_SALE} for one sale. To sell use action \"sell\" with give and "
+                     + f". She has {S['merchant']} coins left to spend today, pays at most {MERCHANT_SALE} for one sale, and buys from each villager only once a day, so make it count. To sell use action \"sell\" with give and "
                        "give_qty.")
             actions.append("sell")
+        elif sold:
+            u.append("You have already sold to the merchant today; she buys from each villager once a day.")
         elif S.get("merchant", 0) > 0:
-            u.append(f"A travelling merchant at the Square buys surplus goods for coins ({S['merchant']} coins left today).")
+            u.append(f"A travelling merchant at the Square buys surplus goods for coins ({S['merchant']} coins left today, "
+                     "one sale per villager a day).")
         if here:
             u.append('To trade with someone here use action "offer": you give give_qty of give, and ask want_qty of want '
                      '(want "nothing" makes it a gift).')

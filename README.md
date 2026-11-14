@@ -106,7 +106,7 @@ file. Each consultation is one API call, so at most 24 a day.
 | `EMBERWICK_STEWARD_EVERY` | `5400` | Real seconds between steward passes (`0` turns it off): colibri sends the most stuck villager a dream with a plan |
 | `EMBERWICK_DISASTERS` | `1` | Multiplies the chance of a dawn disaster (lightning, flood, gale, tremor; about one night in eight by default). `0` turns them off |
 | `EMBERWICK_CARRY` | `80` | Most of each good a villager can carry (+80 per shed they own). Each night 10% of fish and 5% of bread rot, and a quarter of anything over the limit is lost |
-| `EMBERWICK_MERCHANT_PURSE` | `40` | Coins the merchant at the Square spends on goods each day (at most 15 per sale) |
+| `EMBERWICK_MERCHANT_PURSE` | `40` | Coins the merchant at the Square spends on goods each day (at most 15 per sale, one sale per villager a day) |
 | `EMBERWICK_OWN_LIMIT` | `2` | Most buildings of one type a villager may own (older extras are kept) |
 | `EMBERWICK_LIFE` | `1` | Ageing, children, illness and death (`0` turns the life cycle off) |
 | `EMBERWICK_YEAR_DAYS` | `4` | Village days per year of age |
