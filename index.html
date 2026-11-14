@@ -259,6 +259,8 @@
 const T = 32, W = 58, H = 24, WW = W * T, WH = H * T, M = 8 * T, SS = 1.5, SQ = [20, 13.4];
 const SERIF = getComputedStyle(document.documentElement).getPropertyValue('--serif'), SANS = getComputedStyle(document.documentElement).getPropertyValue('--sans');
 const $ = id => document.getElementById(id);
+const DEBUG = Object.fromEntries(new URLSearchParams(location.search));   // ?t=HH:MM &w=weather &cam=x,y,z &sel=Name &tab=id &freeze=ms (screenshots)
+const FROZEN = DEBUG.freeze != null && DEBUG.freeze !== '' && isFinite(+DEBUG.freeze) ? +DEBUG.freeze : null;
 const cv = $('c'), ctx = cv.getContext('2d'), stage = $('stage');
 const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const STAND = { Oracle: 1.7, Dock: 1.2, Square: 1.4, Garden: 1.7, Shrine: 1.6, Cottages: 1.9, Meadow: 1.9, Hospital: 1.6, Cemetery: 1.9 };
@@ -302,6 +304,7 @@ function resize() {
   vw = Math.max(1, r.width); vh = Math.max(1, r.height); dpr = Math.min(2, window.devicePixelRatio || 1);
   cv.width = Math.round(vw * dpr); cv.height = Math.round(vh * dpr);
   if (first || !userMoved) resetView(true); else clampT();
+  if (first) debugCam();   // the first poll can land before the first resize
 }
 new ResizeObserver(resize).observe(stage);
 const toScreen = (x, y) => [(x - cam.x) * cam.z + vw / 2, (y - cam.y) * cam.z + vh / 2];
@@ -730,7 +733,7 @@ function drawOverlay(t, asleep, order) {
 // ================================================================ frame
 let prev = performance.now();
 function frame(t) {
-  const dt = Math.min(0.1, (t - prev) / 1000); prev = t;
+  const dt = Math.min(0.1, (t - prev) / 1000); prev = t; if (FROZEN != null) t = FROZEN;
   if (st && scenery) {
     const asleep = st.phase === 'night';
     for (const a of st.agents) {                         // walk along routes
@@ -1221,9 +1224,27 @@ function renderHeader() {
 }
 $('news').onclick = () => $('news').classList.toggle('open');
 
+let debugDone = false;
+function debugCam() {
+  const c = (DEBUG.cam || '').split(',').map(Number);
+  if (vw > 1 && c.length === 3 && c.every(isFinite)) { cam.follow = false; userMoved = true; cam.tx = c[0] * T; cam.ty = c[1] * T; cam.tz = c[2]; clampT(); cam.x = cam.tx; cam.y = cam.ty; cam.z = cam.tz; syncFocus(); }
+}
+function debugOverride() {   // URL parameters: pin time and weather after every poll
+  const m = /^(\d{1,2}):(\d{2})$/.exec(DEBUG.t || '');
+  if (m) { st.minute = +m[1] * 60 + +m[2]; st.phase = st.minute >= 1320 || st.minute < 360 ? 'night' : 'day'; }
+  if (DEBUG.w) st.weather = DEBUG.w;
+}
+function debugOnce() {       // camera, selection and tab, once after the first poll
+  if (debugDone) return; debugDone = true;
+  if (FROZEN != null) $('hint').style.display = 'none';   // its fade-out is timed, which would make shots differ
+  debugCam();
+  if (DEBUG.sel && st.agents.some(a => a.name === DEBUG.sel)) { selected = DEBUG.sel; $('to').value = selected; syncFocus(); renderPeople(true); renderFeed(true); }
+  if (DEBUG.tab) { const b = document.querySelector(`nav button[data-tab="${DEBUG.tab}"]`); if (b) b.click(); }
+}
 async function poll() {
   try {
     const r = await fetch('/api/state'); st = await r.json(); skew = st.now - Date.now() / 1000;
+    debugOverride();
     if (!scenery) { buildPaths(); buildScenery(); $('loading').classList.add('gone'); setTimeout(() => $('loading').remove(), 700); }
     syncPositions();
     const able = st.agents.filter(a => a.age >= 6).map(a => a.name);
@@ -1233,6 +1254,7 @@ async function poll() {
       $('to').value = able.includes(cur) ? cur : $('to').options[0].value;
     }
     renderHeader(); renderFeed(); renderPeople(); renderPop(); renderBuilt(); hearEvents(); renderOracle(); renderPrayers(); renderChron(); syncFocus();
+    debugOnce();
   } catch (e) { const s = $('status'); s.className = 'off'; s.lastChild.textContent = 'Connection lost'; }
   setTimeout(poll, 2500);
 }
