@@ -301,6 +301,14 @@ def chat_deep(system, user, schema, num_predict, temperature=0.9):
     except Exception:
         return chat(ACTOR, system, user, schema, keep_alive=-1, num_predict=num_predict, temperature=temperature), False
 
+def unload(model):
+    """Ask Ollama to free a model now; the next request loads it again from scratch.
+    Long-running llama.cpp runners grow (gemma4:e2b reached 13 GB for a 3.5 GB model), so this resets them."""
+    req = urllib.request.Request(OLLAMA + "/api/generate", json.dumps({"model": model, "keep_alive": 0}).encode(),
+                                 {"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        r.read()
+
 def other_models_busy():
     try:
         with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=5) as r:
@@ -1775,6 +1783,13 @@ def night():
                     a["feelings"][f["name"]] = clip(f["feeling"], 50)
             save()
 
+    with lock:
+        fresh = night_step("unload")
+    if fresh:                                         # restart the everyday model's runner while everyone sleeps
+        try:
+            unload(ACTOR)
+        except Exception as e:
+            print("unload failed:", e, flush=True)
     status = "night — births and deaths"
     try:
         with lock:
