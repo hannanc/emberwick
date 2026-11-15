@@ -1289,7 +1289,17 @@ def stranger_answer(n, question):
                   f"plainly, flaws included. You talk {st['speech']}. You left home because: {st['why']}. You want {st['goal']}. "
                   + (f"Your secret, which you keep unless pressed hard: {st['secret']}. " if st.get("secret") else "")
                   + "Speak in first person, stay in character, never mention AI.")
-        user = (f"{n}, {who(n)['job']} of the village, asks you: \"{question}\" The villagers have been saying: {others}. "
+        told = st.get("qa", [])[-8:]
+        before = [q for q in told if q["who"] == n]
+        user = (f"You arrived in Emberwick this morning and had never met anyone here before today. "
+                + (f"You have already spoken with {n} today ({len(before)} question{'s' if len(before) > 1 else ''}); you met them "
+                   "only this morning, so do not talk as if you know them well." if before else
+                   f"This is the first time you have ever spoken with {n}; you know them only from the last few minutes, "
+                   "if at all.")
+                + ("\nWhat you have already told people today (keep your story consistent with it; if you are hiding "
+                   "something, take care not to contradict yourself):\n" + "\n".join(
+                       f'- {q["who"]} asked "{q["q"]}"; you said "{q["a"]}"' for q in told) if told else "")
+                + f"\nNow {n}, {who(n)['job']} of the village, asks you: \"{question}\" The villagers have been saying: {others}. "
                 'Answer in JSON: "say" = one or two sentences you say to them.')
     try:
         r = chat(ACTOR, system, user, obj({"say": STR}), keep_alive=-1, num_predict=200, temperature=0.9)
