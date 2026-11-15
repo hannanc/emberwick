@@ -1236,6 +1236,15 @@ def stranger_text(n):
              else f"There is no banker; the village bank {'stands closed without one' if project_done('bank') else 'is being built and will need one'}."
              if st["workplace"] == "Square" else f"{', '.join(specialists(st['workplace']))} already does that work.")
     lots = len(free_lots())
+    if not st.get("met", {}).get(n) and S["agents"][n]["place"] != "Square":
+        # not seen them yet: only that someone is there, and whatever those who have met them are saying
+        out = ["A stranger has come to the Square and is asking to join Emberwick. You have not seen them yet, so you "
+               "know nothing about them for yourself."]
+        heard = [t for t in st.get("talk", []) if t["who"] != n][-4:]
+        if heard:
+            out.append("What the others who have met them are saying:\n" + "\n".join(f'- {t["who"]}: "{t["text"]}"' for t in heard))
+        out.append("Go to the Square to see them for yourself before you judge; you cannot vote before you have met them.")
+        return out, False
     line = (f'A stranger, {st["name"]}, {st["job"]} ({st["age"]}), is waiting at the Square and asks to join Emberwick: '
             f'"{st["pitch"]}" From the way they talk and carry themselves, they come across as {st["traits"]}. '
             f'They would bring {brings} and work at the {st["workplace"]}. {lacks} They would need a house '
@@ -1319,7 +1328,7 @@ def summon_stranger(trouble=False):
             return f"{S['stranger']['name']} is already waiting at the Square."
         S["stranger"] = st
         for o in S["agents"]:
-            remember(o, f"A stranger, {st['name']}, {st['job']}, has just walked into the Square and asks to join the village.")
+            remember(o, "A stranger has just walked into the Square and is asking to join the village.")
         log_event(kind="newcomer", who=st["name"], text=f"A stranger, {st['name']}, {st['job']}, arrived at the Square and asks "
                                                       f"to join the village: \"{st['pitch']}\"")
         save()
@@ -2950,8 +2959,7 @@ def night():
             S["news"] = omen = f"{omen} {newcomer}."
         if S.get("stranger") and S["stranger"]["day"] == S["day"]:
             st_ = S["stranger"]
-            S["news"] = omen = (f"{omen} A stranger, {st_['name']}, {st_['job']}, arrived at the Square at dawn and asks to "
-                                f"join the village: \"{st_['pitch']}\"")
+            S["news"] = omen = f"{omen} A stranger arrived at the Square at dawn and is asking to join the village."
             log_event(kind="newcomer", who=st_["name"], text=f"A stranger, {st_['name']}, {st_['job']}, arrived and asks to join the village.")
         life_morning()
         project_morning()
