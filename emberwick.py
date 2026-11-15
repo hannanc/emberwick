@@ -329,10 +329,12 @@ def chat_claude(model, system, user, schema, num_predict, temperature):
     """One structured call to an Anthropic model; same return shape as chat()."""
     if not _claude_client:
         _claude_client.append(anthropic.Anthropic(timeout=90, max_retries=2))
-    req = dict(model=model, max_tokens=max(num_predict, 400), system=system, messages=[{"role": "user", "content": user}],
+    req = dict(model=model, max_tokens=max(num_predict * 5, 1500), system=system, messages=[{"role": "user", "content": user}],
                output_config={"format": {"type": "json_schema", "schema": strict(schema)}})
     resp = _claude_client[0].messages.create(**req)          # no temperature: current Claude models set their own
     record_usage(model, resp.usage.input_tokens, resp.usage.output_tokens)
+    if resp.stop_reason == "max_tokens":
+        print(f"{model}: reply cut off at {resp.usage.output_tokens} tokens", flush=True)
     return json.loads(next(b.text for b in resp.content if b.type == "text"))
 
 def chat(model, system, user, schema, keep_alive, num_predict=180, temperature=0.9):
