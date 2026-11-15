@@ -141,8 +141,7 @@ start a new world.
 Set `EMBERWICK_ACTOR` (or `EMBERWICK_NARRATOR` / `EMBERWICK_DEEP_MODEL`) to a name starting with `claude-`, for example
 `claude-haiku-5-5`, to run that role on the Anthropic API instead of Ollama. The key comes from `ANTHROPIC_API_KEY`
 (the service reads `~/.config/emberwick/oracle.env`). Every call's tokens are counted per day and model in the `usage`
-table and shown under `usage` in `/api/state`, with a cost estimate; set `EMBERWICK_CLAUDE_IN_PRICE` and
-`EMBERWICK_CLAUDE_OUT_PRICE` (dollars per million tokens) to match the current price list.
+table and shown under `usage` in `/api/state`, with a cost estimate (see `PRICES` in `emberwick.py`).
 
 ## The Oracle's purpose
 
@@ -150,3 +149,23 @@ The Oracle is the village's steward. Every consultation includes a standing agen
 (everyone fed and healthy, buildings finished and repaired, every adult housed with an income, a mill and sheds, nobody
 penniless, debts cleared and the fair well entered, a growing village), each milestone marked DONE or TO DO, and its
 counsel must advance the first unmet one. See `steward_agenda()` in `emberwick.py`.
+
+## Growing the village
+
+- **Shared projects.** The village builds big things together: the bank, a granary, a common kitchen, a harbour market,
+  a fairground wheel and a festival hall, each with a perk for everyone. Villagers hand over surplus with the
+  `contribute` action at the project's site. The Oracle can also call for facilities when they are needed: a
+  schoolhouse once there are children, and new lanes of house lots (East Lane, Far Lane) when the lots run out. Each
+  lane widens the map to the east.
+- **The bank** opens only once the village has a banker: savings earn interest, and small loans are repaid automatically.
+- **Newcomers.** Every few days a stranger with a trade the village lacks (a banker first, then for example a
+  stonemason) and four random personality traits, some of them flaws, asks to join. Each adult votes during the day,
+  weighing food, house lots and the stranger's personality against their own, and the majority decides at night.
+- **Relationships.** Warmth between villagers grows with gifts, trades, help and conversation. Close adults within 20
+  years of age can court, and couples are shown on the Villagers tab.
+- **Stories.** The nightly chronicler runs four-morning story arcs that end in a real reward (coins, food, healing, or
+  help with the current project), shaped by what the villagers did about them.
+- **Goals tab.** Shows the Oracle's milestones, the story so far, the projects and any stranger at the gate.
+
+Token usage for every model, the Oracle included, is in the `usage` table and under `usage` in `/api/state`.
+Set `EMBERWICK_PRICES='{"model": [in, out]}'` to correct the cost estimate.

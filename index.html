@@ -122,6 +122,9 @@
   .card .sub { color:var(--dim); font-size:12.5px; }
   .card p { margin:8px 0 0; }
   .card .q { font:italic 14.5px/1.5 var(--serif); color:#c9c4b6; }
+  ol.goals { margin:8px 0 0; padding-left:0; list-style:none; }
+  ol.goals li { padding:3px 0; color:var(--ink, #e9e4d8); }
+  ol.goals li.done { color:var(--dim); text-decoration:line-through; text-decoration-color:rgba(255,255,255,.25); }
   .card .sp { font:15.5px/1.55 var(--serif); color:#d9c9ff; }
   .mood { margin-left:auto; align-self:flex-start; font-size:11.5px; padding:2px 9px; border-radius:999px; background:rgba(255,255,255,.06); color:var(--ink2); white-space:nowrap; max-width:42%; overflow:hidden; text-overflow:ellipsis; }
   .inv { display:flex; flex-wrap:wrap; gap:5px; margin-top:9px; }
@@ -233,6 +236,7 @@
       <button role="tab" aria-selected="false" aria-controls="people" data-tab="people">Villagers</button>
       <button role="tab" aria-selected="false" aria-controls="pop" data-tab="pop">Population<span class="n" id="npop" hidden></span></button>
       <button role="tab" aria-selected="false" aria-controls="built" data-tab="built">Built<span class="n" id="nbuilt" hidden></span></button>
+      <button role="tab" aria-selected="false" aria-controls="goals" data-tab="goals">Goals<span class="dot" id="ngoal" hidden></span></button>
       <button role="tab" aria-selected="false" aria-controls="oracle" data-tab="oracle">Oracle<span class="dot" id="nor" hidden></span></button>
       <button role="tab" aria-selected="false" aria-controls="prayers" data-tab="prayers">Prayers<span class="n" id="npray" hidden></span></button>
       <button role="tab" aria-selected="false" aria-controls="chron" data-tab="chron">Chronicle</button>
@@ -245,6 +249,7 @@
     <div id="people" class="tab" role="tabpanel"></div>
     <div id="pop" class="tab" role="tabpanel"></div>
     <div id="built" class="tab" role="tabpanel"></div>
+    <div id="goals" class="tab" role="tabpanel"></div>
     <div id="oracle" class="tab" role="tabpanel"></div>
     <div id="prayers" class="tab" role="tabpanel"></div>
     <div id="chron" class="tab" role="tabpanel"></div>
@@ -258,15 +263,22 @@
 </div>
 <script>
 // ================================================================ setup
-const T = 32, W = 58, H = 24, WW = W * T, WH = H * T, M = 8 * T, SS = 1.5, SQ = [20, 13.4];
+const T = 32, H = 24, WH = H * T, M = 8 * T, SS = 1.5, SQ = [20, 13.4];
+let W = 58, WW = W * T;                                   // grows east as the village opens new lanes
 const SERIF = getComputedStyle(document.documentElement).getPropertyValue('--serif'), SANS = getComputedStyle(document.documentElement).getPropertyValue('--sans');
 const $ = id => document.getElementById(id);
 const DEBUG = Object.fromEntries(new URLSearchParams(location.search));   // ?t=HH:MM &w=weather &cam=x,y,z &sel=Name &tab=id &freeze=ms (screenshots)
+if ('err' in DEBUG) addEventListener('error', e => {   // ?err shows script errors on the page (for headless screenshots)
+  const d = document.createElement('pre'); d.style.cssText = 'position:fixed;top:0;left:0;z-index:99;background:#fff;color:#000;font:12px monospace;max-width:60vw;white-space:pre-wrap;margin:0';
+  d.textContent = e.message + ' @ line ' + e.lineno + ':' + e.colno; document.body.append(d); });
 const FROZEN = DEBUG.freeze != null && DEBUG.freeze !== '' && isFinite(+DEBUG.freeze) ? +DEBUG.freeze : null;
 const cv = $('c'), ctx = cv.getContext('2d'), stage = $('stage');
 const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const STAND = { Oracle: 1.7, Dock: 1.2, Square: 1.4, Garden: 1.7, Shrine: 1.6, Cottages: 1.9, Meadow: 1.9, Hospital: 1.6, Cemetery: 1.9 };
-const VIA = { Meadow: 'Shrine', Cemetery: 'Hospital' };   // places reached by a branch off another place's path, not straight from the Square
+const VIA = {   // the four roads leave the square to the Cottages, Garden, Dock and Shrine; every other place branches off one of them
+  Bakery: 'Cottages', Workshop: 'Cottages', Oracle: 'Bakery', Woods: 'Garden', Tavern: 'Shrine', Quarry: 'Tavern',
+  Library: 'Shrine', Hospital: 'Library', Cemetery: 'Hospital', Meadow: 'Shrine', 'East Lane': 'Meadow', 'Far Lane': 'East Lane' };
+const viaDepth = p => { let d = 0; for (let q = p; VIA[q] && d < 9; q = VIA[q]) d++; return d; };   // places reached by a branch off another place's path, not straight from the Square
 const PLACE_NAME = { Tavern: 'The Gilded Newt', Shrine: 'Old Oak Shrine' };
 let st = null, selected = null, hover = null, skew = 0, filter = 'all', scenery = null, pathPts = {};
 const pos = {};               // name -> {x, y, route:[[x,y]...], place, walking}
@@ -281,7 +293,8 @@ const hhmm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m %
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, k) => a + (b - a) * k;
 const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-const colorOf = n => (st && st.agents.find(a => a.name === n) || {}).color || '#bbb';
+const colorOf = n => n === 'Village' ? '#e8bd5f' : (st && st.agents.find(a => a.name === n) || {}).color || '#bbb';
+const projName = s => s.owner === 'Village' ? cap(((st.goals && st.goals.projects || []).find(p => p.key === s.type) || {}).name || s.type) : `${s.owner}'s ${s.type}`;
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
 
 // ================================================================ camera
@@ -331,7 +344,7 @@ function inMeadow(x, y) { const m = st.places.Meadow; return !!m && Math.abs(x -
 
 function buildPaths() {      // gentle curves from the Square to every door, sampled so villagers can walk them
   pathPts = {};
-  for (const p of Object.keys(st.places).sort((x, y) => !!VIA[x] - !!VIA[y])) {   // hubs before their branches
+  for (const p of Object.keys(st.places).sort((x, y) => viaDepth(x) - viaDepth(y))) {   // hubs before their branches, however deep
     if (p === 'Square') continue;
     const a = VIA[p] && st.places[VIA[p]] ? door(VIA[p]) : SQ, b = door(p), dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
     const bend = ((hash(p) % 1000) / 1000 - 0.5) * 0.34 * L, cx = (a[0] + b[0]) / 2 - dy / L * bend, cy = (a[1] + b[1]) / 2 + dx / L * bend;
@@ -424,17 +437,17 @@ function buildScenery() {
     g.fillStyle = r() < .5 ? 'rgba(120,100,70,.45)' : 'rgba(240,230,200,.35)'; g.beginPath(); g.ellipse(lerp(p[0], q[0], f) * T + (r() - .5) * 12, lerp(p[1], q[1], f) * T + (r() - .5) * 12, 1.8, 1.3, 0, 0, 7); g.fill();
   }
   // square: cobbled plaza
-  const [sx, sy] = [20 * T, 12.6 * T];
-  g.fillStyle = '#9f8a60'; g.beginPath(); g.ellipse(sx, sy, 3.35 * T, 2.35 * T, 0, 0, 7); g.fill();
-  g.fillStyle = '#c6b388'; g.beginPath(); g.ellipse(sx, sy, 3.2 * T, 2.2 * T, 0, 0, 7); g.fill();
-  for (let ring = 1; ring <= 5; ring++) for (let i = 0, n = ring * 9; i < n; i++) {
-    const a = i / n * Math.PI * 2 + ring, rx = ring * 0.58 * T, ry = ring * 0.4 * T;
+  const [sx, sy] = [20.4 * T, 13.0 * T];                 // the big square: room for shops, the well and a crowd
+  g.fillStyle = '#9f8a60'; g.beginPath(); g.ellipse(sx, sy, 5.75 * T, 3.35 * T, 0, 0, 7); g.fill();
+  g.fillStyle = '#c6b388'; g.beginPath(); g.ellipse(sx, sy, 5.6 * T, 3.2 * T, 0, 0, 7); g.fill();
+  for (let ring = 1; ring <= 9; ring++) for (let i = 0, n = ring * 9; i < n; i++) {
+    const a = i / n * Math.PI * 2 + ring, rx = ring * 0.6 * T, ry = ring * 0.345 * T;
     g.fillStyle = (i + ring) % 3 ? 'rgba(120,100,70,.16)' : 'rgba(255,248,225,.14)'; g.beginPath(); g.roundRect(sx + Math.cos(a) * rx - 5, sy + Math.sin(a) * ry - 3.5, 10, 7, 2.5); g.fill();
   }
   // grass tufts and wildflowers
   for (let i = 0; i < 2600; i++) {
     const x = -M / T + r() * (W + 2 * M / T), y = -M / T + r() * (H + 2 * M / T);
-    if (inLake(x, y + 0.2) || (x > 16.5 && x < 23.5 && y > 10 && y < 15.2) || distPaths(x, y) < 0.55) continue;
+    if (inLake(x, y + 0.2) || (((x - 20.4) / 5.8) ** 2 + ((y - 13) / 3.4) ** 2 < 1) || distPaths(x, y) < 0.55) continue;
     const X = x * T, Y = y * T; g.strokeStyle = r() < .5 ? 'rgba(160,200,110,.32)' : 'rgba(20,50,20,.22)'; g.lineWidth = 1.2;
     g.beginPath(); g.moveTo(X - 2.5, Y - 4); g.lineTo(X, Y); g.lineTo(X + 2.5, Y - 4.5); g.moveTo(X, Y); g.lineTo(X + .5, Y - 5.5); g.stroke();
   }
@@ -447,7 +460,8 @@ function buildScenery() {
   const items = [], P = st.places;
   for (let i = 0; i < 900 && items.length < 140; i++) {
     const x = 0.6 + r() * (W - 1.2), y = 1.4 + r() * (H - 2.4);
-    if (inLake(x, y + 0.6) || distPaths(x, y) < 1.4 || nearPlace(x, y) || inMeadow(x, y) || (x > 16 && x < 24 && y > 9.6 && y < 15.6)) continue;
+    if (inLake(x, y + 0.6) || distPaths(x, y) < 1.4 || nearPlace(x, y) || inMeadow(x, y) || (((x - 20.4) / 6.6) ** 2 + ((y - 13) / 4.2) ** 2 < 1)
+        || (x > 26 && x < 30.5 && y > 6.6 && y < 11.4)) continue;   // the square, and the fairground lot beside it
     const k = 0.8 + r() * 0.5, pn = r() < .28; items.push([y, () => (pn ? pine : tree)(g, x, y, k, r)]);
   }
   for (let i = 0; i < 900; i++) {                                                     // dense forest past the edges
@@ -492,7 +506,7 @@ function buildScenery() {
     const [cx, cy] = P.Cemetery; tree(g, cx + 3.4, cy - 0.9, 1.3, rng(77));   // an old yew by the gate
   }]);
   const lamp = (x, y) => items.push([y, () => { const X = x * T, Y = y * T; shadow(g, X + 2, Y, 5, 2); g.fillStyle = '#3d3a36'; g.fillRect(X - 1.5, Y - 30, 3, 30); g.fillStyle = '#2f2c28'; g.fillRect(X - 5, Y - 38, 10, 9); g.fillStyle = '#f2d48a'; g.fillRect(X - 3, Y - 36, 6, 5); windows.push([X, Y - 33.5, .9]); }]);
-  lamp(16.5, 13.6); lamp(23.5, 13.6); lamp(P.Tavern[0] - 2.8, P.Tavern[1] + 0.3); lamp(P.Dock[0] - 2, P.Dock[1] + 0.5);
+  lamp(15.2, 11.6); lamp(25.6, 11.6); lamp(15.2, 14.8); lamp(25.6, 14.8); lamp(P.Tavern[0] - 2.8, P.Tavern[1] + 0.3); lamp(P.Dock[0] - 2, P.Dock[1] + 0.5);
   items.sort((a, b) => a[0] - b[0]).forEach(i => i[1]());
   // garden
   const [gx, gy] = P.Garden;
@@ -734,6 +748,39 @@ function drawStruct(s, t, wins) {
     }
     g.fillStyle = '#5a4030'; g.fillRect(X + 34, Y - 52, 3, 30); g.fillRect(X + 26, Y - 44, 19, 3);   // scarecrow in the owner's colour
     g.fillStyle = c; g.fillRect(X + 30, Y - 46, 11, 13); g.fillStyle = '#e2c46a'; g.beginPath(); g.arc(X + 35.5, Y - 51, 5, 0, 7); g.fill();
+  } else if (s.type === 'bank') {                         // stone front, columns, a gold coin over the door
+    house(g, s.x, s.y, 3.1, 1.55, '#d8d2c4', '#6f6250', { win: [-0.62, 0.62], pitch: 0.65, wins });
+    g.fillStyle = '#efe9dc'; for (const dx of [-0.36, -0.14, 0.14, 0.36]) g.fillRect(X + dx * 3.1 * T - 3, Y - 1.55 * T + 6, 6, 1.55 * T - 8);
+    g.fillStyle = '#e8bd5f'; g.strokeStyle = '#8a6a20'; g.lineWidth = 1.5; g.beginPath(); g.arc(X, Y - 1.55 * T - 0.32 * T, 7, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = '#8a6a20'; g.font = 'bold 9px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('¤', X, Y - 1.55 * T - 0.32 * T + .5);
+  } else if (s.type === 'granary') {                      // tall barn with sacks at the door
+    house(g, s.x, s.y, 2.8, 2.0, '#c8a46a', '#8a4a2a', { win: [0], pitch: 1.0, wins });
+    for (const [dx, c2] of [[-30, '#e6d6a8'], [-21, '#d9c690'], [24, '#e6d6a8']]) { g.fillStyle = c2; g.beginPath(); g.ellipse(X + dx, Y - 6, 6, 7, 0, 0, 7); g.fill(); }
+  } else if (s.type === 'kitchen') {                      // long low kitchen with a busy chimney
+    house(g, s.x, s.y, 2.7, 1.3, '#e6d2b0', '#9a4a32', { win: [-0.6, 0.6], pitch: 0.85, wins, chimney: 1, chim: smokes });
+  } else if (s.type === 'market') {                       // open hall with striped awnings
+    house(g, s.x, s.y, 3.2, 1.1, '#b8956a', '#3f6f8a', { win: [], pitch: 0.6, wins });
+    for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#f4efe2' : '#3f6f8a'; g.beginPath(); g.roundRect(X - 1.6 * T + i * 0.4 * T, Y - 1.1 * T, 0.4 * T, 10, [0, 0, 4, 4]); g.fill(); }
+  } else if (s.type === 'hall') {                         // the biggest roof in the village, with a flag
+    house(g, s.x, s.y, 3.6, 1.9, '#e9dcc0', '#7a3a5a', { win: [-0.66, 0, 0.66], pitch: 1.25, wins });
+    g.fillStyle = '#4a3222'; g.fillRect(X - 1, Y - 1.9 * T - 1.25 * T - 26, 2, 28);
+    const fl = REDUCE ? 0 : Math.sin(t / 260) * 2; g.fillStyle = '#e8bd5f'; g.beginPath(); g.moveTo(X + 1, Y - 1.9 * T - 1.25 * T - 26); g.lineTo(X + 20, Y - 1.9 * T - 1.25 * T - 21 + fl); g.lineTo(X + 1, Y - 1.9 * T - 1.25 * T - 15); g.fill();
+  } else if (s.type === 'wheel') {                        // the fairground wheel: A-frame legs, a turning rim, swinging cabins
+    const R = 1.45 * T, cx = X, cy = Y - R - 14, ang = REDUCE ? 0 : t / 9000, cols = ['#d9604a', '#e8bd5f', '#4a8fc2', '#6fbf5a', '#b9a2f5', '#e98bb0', '#f4efe2', '#e0a23a'];
+    shadow(g, X, Y + 2, R * 0.9, 8);
+    g.strokeStyle = '#6b4a30'; g.lineWidth = 4; for (const d of [-1, 1]) { g.beginPath(); g.moveTo(cx + d * R * 0.62, Y); g.lineTo(cx, cy); g.stroke(); }
+    g.strokeStyle = '#d8d2c4'; g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
+    g.lineWidth = 1.2; g.strokeStyle = 'rgba(216,210,196,.8)'; g.beginPath(); g.arc(cx, cy, R * 0.55, 0, 7); g.stroke();
+    for (let i = 0; i < 8; i++) { const a = ang + i * Math.PI / 4; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.stroke(); }
+    for (let i = 0; i < 8; i++) { const a = ang + i * Math.PI / 4, px = cx + Math.cos(a) * R, py = cy + Math.sin(a) * R;
+      g.strokeStyle = '#4a3222'; g.lineWidth = 1; g.beginPath(); g.moveTo(px, py); g.lineTo(px, py + 5); g.stroke();
+      g.fillStyle = cols[i]; g.beginPath(); g.roundRect(px - 6, py + 4, 12, 9, [2, 2, 4, 4]); g.fill(); g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(px - 4, py + 6, 8, 2.5); }
+    g.fillStyle = '#e8bd5f'; g.beginPath(); g.arc(cx, cy, 5, 0, 7); g.fill();
+    g.fillStyle = '#8a6a44'; g.fillRect(X - 14, Y - 6, 28, 6);
+  } else if (s.type === 'school') {                       // a schoolhouse with a little bell tower
+    house(g, s.x, s.y, 3.0, 1.5, '#e7c9a0', '#3f5f8a', { win: [-0.6, 0.6], pitch: 0.95, wins });
+    g.fillStyle = '#e7c9a0'; g.fillRect(X - 7, Y - 1.5 * T - 0.95 * T - 14, 14, 16); g.fillStyle = '#3f5f8a'; g.beginPath(); g.moveTo(X - 10, Y - 1.5 * T - 0.95 * T - 14); g.lineTo(X, Y - 1.5 * T - 0.95 * T - 26); g.lineTo(X + 10, Y - 1.5 * T - 0.95 * T - 14); g.fill();
+    g.fillStyle = '#d8b13c'; g.beginPath(); g.arc(X, Y - 1.5 * T - 0.95 * T - 5, 3.5, 0, 7); g.fill();
   } else if (s.type === 'statue') {
     shadow(g, X, Y + 2, 18, 6);
     g.fillStyle = '#7d8186'; g.fillRect(X - 14, Y - 14, 28, 14);
@@ -836,7 +883,7 @@ function drawOverlay(t, asleep, order) {
   for (const s of st.structures) {                       // building-site labels, when there is room
     if (z < 0.7 && s.owner !== selected) continue;
     const [sx, sy] = toScreen(s.x * T, s.y * T);
-    label(s.done ? `${s.owner}'s ${s.type}` : `${s.owner}'s ${s.type} · ${s.repair ? 'damaged · ' : ''}${Math.round(s.progress * 100)}%`, sx, sy + (s.done ? 20 : 29) * z + 8, { size: 11, weight: 500, color: s.done ? '#e2dac6' : '#f3e2b6' });
+    label(s.done ? projName(s) : `${projName(s)} · ${s.repair ? 'damaged · ' : ''}${Math.round(s.progress * 100)}%`, sx, sy + (s.done ? 20 : 29) * z + 8, { size: 11, weight: 500, color: s.done ? '#e2dac6' : '#f3e2b6' });
   }
   if (st.places.Cemetery && z >= 1.4) {                 // names on the headstones, close up
     const [cx, cy] = st.places.Cemetery;
@@ -862,7 +909,7 @@ function drawOverlay(t, asleep, order) {
 // ================================================================ frame
 // ================================================================ event effects
 const fx = [], structPos = {}; let fxUpTo = null, lastT = 0, shake = 0;
-const STRUCT_H = { house: 58, shed: 38, stall: 52, boat: 62, tower: 100, beehive: 22, mill: 90, statue: 56, farm: 26 };
+const STRUCT_H = { house: 58, shed: 38, stall: 52, boat: 62, tower: 100, beehive: 22, mill: 90, statue: 56, farm: 26, bank: 70, granary: 84, kitchen: 62, market: 56, hall: 96, school: 80, lane1: 40, lane2: 40, wheel: 120 };
 function fxEvents() {   // turn events that arrive after the page loaded into short-lived effects
   const evs = st.events || [], real = evs.filter(e => e.id < 9e6), age = +DEBUG.xage || 0, t0 = lastT - age;
   if (fxUpTo === null) fxUpTo = Math.max(0, ...real.map(e => e.id));
@@ -1006,6 +1053,10 @@ function frame(t) {
     const order = st.agents.slice().sort((a, b) => pos[a.name].y - pos[b.name].y), wins = [], things = [];
     for (const s of st.structures) if (vis(s.x * T, s.y * T, 130, 60, 160)) things.push([s.y, () => drawStruct(s, t, wins)]);   // off-screen things are skipped
     if (!asleep) for (const a of order) if (vis(pos[a.name].x * T, pos[a.name].y * T, 70, 40, 100)) things.push([pos[a.name].y, () => person(a, pos[a.name], t)]);
+    const sg = st.goals && st.goals.stranger;
+    if (!asleep && sg) { const sp = { x: st.places.Square[0] - 3.2, y: st.places.Square[1] + 2.6, walking: false, route: [], face: 1 };   // the stranger, waiting with a bundle
+      things.push([sp.y, () => { person({ name: sg.name, age: sg.age, sex: sg.sex, hair: sg.hair, color: sg.color, place: 'Square', say_to: '', say_at: 0 }, sp, t);
+        const g = ctx; g.fillStyle = '#8a6a44'; g.beginPath(); g.ellipse(sp.x * T + 12, sp.y * T - 4, 6, 5, 0, 0, 7); g.fill(); }]); }
     drawFx(t, wind, true); smokes.length = 0; things.sort((a, b) => a[0] - b[0]).forEach(d => d[1]());
     drawFx(t, wind, false); drawSpeaking(t);
     const hr0 = st.minute / 60, hearth = hr0 >= 5 && hr0 < 9.5 || hr0 >= 17 && hr0 < 22.5, calm = !/storm|steady/.test(w);   // chimneys: bakery and tavern always, houses at breakfast and supper
@@ -1225,7 +1276,11 @@ const SYS = {
   sick: e => ['✚', 'lf', `${e.who} falls ill`, e.text, true],
   fair: e => ['🎪', 'pr', 'The midsummer fair', e.text, true],
   debt: e => ['⚖', 'you', `The city merchant and ${e.who}`, e.text, true],
-  family: e => ['♥', 'lf', 'A family begins', e.text, true],
+  family: e => ['♥', 'lf', 'Love and family', e.text, true],
+  newcomer: e => ['⛺', 'lf', e.text && /arrived/.test(e.text) ? 'A stranger at the Square' : 'The village decides', e.text, true],
+  vote: e => ['✋', 'you', `${e.who} votes`, e.text],
+  project: e => ['⌂', 'pr', 'The village builds together', e.text, true],
+  arc: e => ['❦', 'or', 'The village story', e.text, true],
   birth: e => ['✿', 'lf', `${e.who} is born`, e.text, true],
   death: e => ['✝', 'lf', `${e.who} has died`, e.text, true],
   disaster: e => ['⚠', 'dz', cap(e.name || 'disaster') + ' strikes Emberwick', e.text, true],
@@ -1292,13 +1347,15 @@ function renderPeople(force) {
     if (a.ribbons && a.ribbons.length) id.lastChild.title = 'Fair ribbons: ' + a.ribbons.join('; ');
     top.append(avatar(a.name), id, el('span', 'mood', a.mood)); top.lastChild.title = 'Mood: ' + a.mood; c.append(top);
     c.append(el('p', '', `At the ${a.place}, ${a.activity}.`));
+    const bits = [a.newcomer ? 'came to Emberwick as a stranger' : '', a.partner ? `sweetheart of ${a.partner}` : '', a.bank || a.loan ? `bank: ${a.bank} saved${a.loan ? `, owes ${a.loan}` : ''}` : ''].filter(Boolean);
+    if (bits.length) c.append(el('p', 'fam', cap(bits.join(' · ')) + '.'));
     if (a.family) c.append(el('p', 'fam', cap(a.family.replace(/\byour\b/g, 'their').replace(/\byou are\b/g, 'is').replace(/\byou have\b/g, 'has')) + '.'));
     const inv = el('div', 'inv'), items = Object.entries(a.inv).filter(([, q]) => q);
     items.forEach(([k, q]) => { const o = k !== 'coins' && a.carry && q > a.carry, s = el('span', o ? 'over' : '', `${q} ${k}`); if (o) s.title = `Over the carrying limit of ${a.carry}; a quarter of the surplus is lost each night`; inv.append(s); }); a.owns.forEach(o => inv.append(el('span', 'own', '⌂ ' + o)));
     if (!items.length && !a.owns.length) inv.append(el('span', '', 'empty-handed'));
     c.append(inv);
     if (a.thought) c.append(el('p', 'q', '“' + a.thought + '”'));
-    const extra = [['Traits', a.traits], ['Feelings', Object.entries(a.feelings).map(([k, v]) => `${k}: ${v}`).join(' · ')], ['Growing', a.growth], ['Last night', a.reflection]].filter(([, v]) => v);
+    const extra = [['Traits', a.traits], ['Closeness', Object.entries(a.close || {}).map(([k, v]) => `${k}: ${v}`).join(' · ')], ['Feelings', Object.entries(a.feelings).map(([k, v]) => `${k}: ${v}`).join(' · ')], ['Growing', a.growth], ['Last night', a.reflection]].filter(([, v]) => v);
     if (extra.length || a.plan.length) {
       const det = el('details'); det.open = openMore.has(a.name); det.ontoggle = () => det.open ? openMore.add(a.name) : openMore.delete(a.name);
       det.append(el('summary', '', a.plan.length ? `More · following the Oracle's ${a.plan.length}-step counsel` : 'More about ' + a.name));
@@ -1500,7 +1557,7 @@ function renderBuilt() {
   if (!st.structures.length) { box.append(el('div', 'empty', 'Nothing has been built yet. Villagers gather wood at the Woods and stone at the Quarry, trade for what they lack, and build houses, stalls, boats, beehives, a mill, statues, sheds and watchtowers.')); return; }
   const card = s => {
     const c = el('div', 'card'); c.style.borderLeftColor = colorOf(s.owner);
-    c.append(el('h3', '', `${s.owner}'s ${s.type}`), el('div', 'sub', `at the ${s.site} · ${s.done ? 'finished' : s.repair ? `damaged by the ${s.repair}` : 'started'} on day ${s.day}` + (s.helpers.length ? ` · helped by ${s.helpers.join(', ')}` : '')));
+    c.append(el('h3', '', projName(s)), el('div', 'sub', `at the ${s.site} · ${s.done ? 'finished' : s.repair ? `damaged by the ${s.repair}` : 'started'} on day ${s.day}` + (s.helpers.length ? ` · ${s.owner === 'Village' ? 'built by' : 'helped by'} ${s.helpers.join(', ')}` : '')));
     if (s.done) c.append(el('p', '', cap(s.perk) + '.'));
     else { c.append(el('p', '', `Still needs ${s.needs}.`)); const b = el('div', 'bar'), i = el('i'); i.style.width = Math.round(s.progress * 100) + '%'; b.append(i); c.append(b); b.title = Math.round(s.progress * 100) + '% done'; }
     c.onclick = () => { cam.follow = false; cam.tx = s.x * T; cam.ty = s.y * T - 30; cam.tz = Math.max(cam.tz, defaultZ() * 1.6); clampT(); userMoved = true; syncFocus(); };
@@ -1508,6 +1565,41 @@ function renderBuilt() {
   };
   if (going.length) { box.append(el('div', 'sec', `Being built · ${going.length}`)); going.forEach(s => box.append(card(s))); }
   if (done.length) { box.append(el('div', 'sec', `Finished · ${done.length}`)); done.forEach(s => box.append(card(s))); }
+}
+let goalsKey = '';
+function renderGoals() {
+  const G = st.goals; if (!G) return;
+  const key = JSON.stringify(G); if (key === goalsKey) return; goalsKey = key;
+  $('ngoal').hidden = !G.stranger;
+  const box = $('goals'); box.replaceChildren();
+  if (G.stranger) {
+    const S2 = G.stranger, c = el('div', 'card'); c.style.borderLeftColor = S2.color;
+    const v = Object.entries(S2.votes), yes = v.filter(([, x]) => x === 'welcome').map(([n]) => n), no = v.filter(([, x]) => x === 'turn_away').map(([n]) => n);
+    c.append(el('h3', '', `${S2.name}, ${S2.job}, asks to join`), el('div', 'sub', `${S2.sex === 'f' ? '♀' : '♂'} ${S2.age} · waiting at the Square · brings ${Object.entries(S2.brings).map(([i, q]) => `${q} ${i}`).join(', ')}`),
+      el('p', 'q', '“' + S2.pitch + '”'), el('p', '', `Welcome: ${yes.join(', ') || 'nobody yet'} · Turn away: ${no.join(', ') || 'nobody yet'}. The village decides tonight.`));
+    box.append(el('div', 'sec', 'At the gate'), c);
+  }
+  box.append(el('div', 'sec', 'The village\'s goals'));
+  const gc = el('div', 'card'); gc.style.borderLeftColor = '#a98cf0';
+  gc.append(el('h3', '', 'What the Oracle is working towards'), el('div', 'sub', G.next ? 'Next: ' + G.next.replace(/^\d+\.\s*/, '') : 'Every goal is met'));
+  const ol = el('ol', 'goals');
+  for (const line of G.agenda) { const m = /^\d+\. \[(DONE|TO DO)\] (.*)$/.exec(line) || [0, 'TO DO', line]; const li = el('li', m[1] === 'DONE' ? 'done' : '', (m[1] === 'DONE' ? '✓ ' : '○ ') + m[2]); ol.append(li); }
+  gc.append(ol); box.append(gc);
+  box.append(el('div', 'sec', 'The story'));
+  const sc = el('div', 'card'); sc.style.borderLeftColor = '#7fe0c8';
+  if (G.arc) sc.append(el('h3', '', G.arc.title), el('div', 'sub', `Part ${G.arc.stage} of 4`), el('p', '', st.news));
+  else sc.append(el('h3', '', 'A new story begins tonight'), el('div', 'sub', 'The chronicler is choosing the next thread'));
+  if (G.arcs.length) { const pl = el('div', 'kv'); pl.append(el('b', '', 'Told so far — '), G.arcs.map(a => `${a.title} (day ${a.day}, ${a.reward})`).join(' · ')); sc.append(pl); }
+  box.append(sc);
+  box.append(el('div', 'sec', 'Built together'));
+  for (const P of G.projects) {
+    const c = el('div', 'card'); c.style.borderLeftColor = P.status === 'done' ? '#9fc98a' : P.status === 'building' ? '#e8bd5f' : '#555';
+    c.append(el('h3', '', cap(P.name)), el('div', 'sub', `at the ${P.site} · ${P.status === 'done' ? 'finished' : P.status === 'building' ? 'being built now' : 'planned'}` +
+      (P.key === 'bank' && P.status === 'done' ? (G.banker ? ` · run by ${G.banker}` : ' · waiting for a banker') : '')), el('p', '', cap(P.perk) + '.'));
+    if (P.status === 'building') { c.append(el('p', '', `Still needs ${P.needs}.`)); const b = el('div', 'bar'), i = el('i'); i.style.width = Math.round(P.progress * 100) + '%'; b.append(i); c.append(b); }
+    if (P.by.length) c.append(el('div', 'sub', 'Given by ' + P.by.map(([n, q]) => `${n} (${q})`).join(', ')));
+    box.append(c);
+  }
 }
 let oracleKey = null;
 function renderOracle() {
@@ -1617,7 +1709,8 @@ async function poll() {
   try {
     const r = await fetch('/api/state'); st = await r.json(); skew = st.now - Date.now() / 1000;
     debugOverride();
-    if (!scenery) { buildPaths(); buildScenery(); $('loading').classList.add('gone'); setTimeout(() => $('loading').remove(), 700); }
+    if (st.world && st.world.w !== W) { W = st.world.w; WW = W * T; scenery = null; if (!userMoved) resetView(true); else clampT(); }   // a new lane: redraw the land
+    if (!scenery) { buildPaths(); buildScenery(); const ld = $('loading'); if (ld) { ld.classList.add('gone'); setTimeout(() => ld.remove(), 700); } }
     syncPositions(); fxEvents();
     const able = st.agents.filter(a => a.age >= 6).map(a => a.name), sel = $('to');
     if (sel.dataset.names !== able.join()) {            // rebuild when people are born, grow up or die
@@ -1631,7 +1724,7 @@ async function poll() {
       sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
       msgHint();
     }
-    renderHeader(); renderFeed(); renderPeople(); renderPop(); renderBuilt(); hearEvents(); renderOracle(); renderPrayers(); renderChron(); syncFocus();
+    renderHeader(); renderFeed(); renderPeople(); renderPop(); renderBuilt(); hearEvents(); renderGoals(); renderOracle(); renderPrayers(); renderChron(); syncFocus();
     debugOnce();
   } catch (e) { const s = $('status'); s.className = 'off'; s.lastChild.textContent = 'Connection lost'; }
   setTimeout(poll, 2500);
