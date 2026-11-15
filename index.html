@@ -1580,6 +1580,8 @@ function renderGoals() {
       el('p', 'q', '“' + S2.pitch + '”'));
     if (S2.traits) { const k = el('div', 'kv'); k.append(el('b', '', 'Comes across as — '), S2.traits); c.append(k); }
     const met = Object.keys(S2.met || {}); c.append(el('p', '', `Met them: ${met.join(', ') || 'nobody yet'}. Welcome: ${yes.join(', ') || 'nobody yet'} · Turn away: ${no.join(', ') || 'nobody yet'}. The village decides tonight.`));
+    const whys = Object.entries(S2.reasons || {}).filter(([, w]) => w);
+    if (whys.length) { const k = el('div', 'kv'); k.append(el('b', '', 'Why they voted')); c.append(k); for (const [n, w] of whys) c.append(el('p', '', `${n} (${S2.votes[n] === 'welcome' ? 'welcome' : 'turn away'}): ${w}`)); }
     if ((S2.qa || []).length) { const k = el('div', 'kv'); k.append(el('b', '', 'Questioned')); c.append(k); for (const q of S2.qa) c.append(el('p', '', `${q.who}: “${q.q}” — ${S2.name}: “${q.a}”`)); }
     if ((S2.talk || []).length) { const k = el('div', 'kv'); k.append(el('b', '', 'What the village is saying')); c.append(k); for (const t of S2.talk.slice(-6)) c.append(el('p', 'q', `${t.who}: “${t.text}”`)); }
     box.append(el('div', 'sec', 'At the gate'), c);

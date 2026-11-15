@@ -378,7 +378,7 @@ def chat_claude(model, system, user, schema, num_predict, temperature):
     """One structured call to an Anthropic model; same return shape as chat()."""
     if not _claude_client:
         _claude_client.append(anthropic.Anthropic(timeout=90, max_retries=2))
-    req = dict(model=model, max_tokens=max(num_predict * 5, 1500), system=system, messages=[{"role": "user", "content": user}],
+    req = dict(model=model, max_tokens=max(num_predict * 10, 6000), system=system, messages=[{"role": "user", "content": user}],
                output_config={"format": {"type": "json_schema", "schema": strict(schema)}})
     resp = _claude_client[0].messages.create(**req)          # no temperature: current Claude models set their own
     record_usage(model, resp.usage.input_tokens, resp.usage.output_tokens)
@@ -1337,7 +1337,7 @@ def settle_stranger():
         why = "the village could not take another" if len(yes) > len(no) else f"{len(no)} voted against, {len(yes)} for"
         for o in S["agents"]:
             remember(o, f"The village turned {nm} the stranger away ({why}); they left Emberwick.")
-        log_event(kind="newcomer", who=nm, text=f"{nm}, {st['job']}, was turned away ({why}) and left Emberwick.")
+        log_event(kind="newcomer", who=nm, text=f"{nm}, {st['job']}, was turned away ({why}) and left Emberwick.", reasons=st.get("reasons", {}))
         return f"{nm} the stranger was turned away and left"
     S["born"][nm] = dict(sex=st["sex"], day=S["day"] + 1 - st["age"] * YEAR_DAYS, parents=[], job=st["job"],
                          workplace=st["workplace"], traits=st["traits"], speech=st["speech"], color=st["color"],
@@ -1363,8 +1363,8 @@ def settle_stranger():
             remember(o, f"The village voted to welcome {nm}, {st['job']}, who will live among us now"
                         + (" (I voted for them)." if o in yes else " (I voted against)." if o in no else "."))
     log_event(kind="newcomer", who=nm, text=f"The village welcomed {nm}, {st['job']}, to live in Emberwick "
-                                            f"({len(yes)} for, {len(no)} against).")
-    return f"the village welcomed {nm}, {st['job']}, as a new villager"
+                                            f"({len(yes)} for, {len(no)} against).", reasons=st.get("reasons", {}))
+    return f"The village welcomed {nm}, {st['job']}, as a new villager"
 
 # ---------------------------------------------------------------- relationships: warmth grows with kindness, couples form
 COURT_AT = 4                      # warmth (out of 10) each must feel before courting
@@ -2345,6 +2345,8 @@ def agent_turn():
         u += lines_st
         if must_vote:
             extra["stranger_vote"] = {"type": "string", "enum": ["undecided", "welcome", "turn_away"]}
+            extra["vote_reason"] = STR
+            u.append('If you vote, give your honest reason in "vote_reason", in one sentence of your own.')
         if lines_st and a["place"] == "Square":
             extra["ask_stranger"] = STR
         courtship = a.get("courtship")
@@ -2475,9 +2477,13 @@ def agent_turn():
         ask = clip(r.get("ask_stranger"), 200) if st_ and old == "Square" else ""
         sv = r.get("stranger_vote")
         if must_vote and sv in ("welcome", "turn_away") and S.get("stranger"):
+            why = clip(r.get("vote_reason"), 220)
             S["stranger"]["votes"][n] = sv
-            remember(n, f"I voted to {'welcome' if sv == 'welcome' else 'turn away'} {S['stranger']['name']} the stranger.")
-            log_event(kind="vote", who=n, text=f"{n} voted to {'welcome' if sv == 'welcome' else 'turn away'} {S['stranger']['name']}.")
+            S["stranger"].setdefault("reasons", {})[n] = why
+            remember(n, f"I voted to {'welcome' if sv == 'welcome' else 'turn away'} {S['stranger']['name']} the stranger"
+                        + (f", because {why[0].lower() + why[1:]}" if why else "."))
+            log_event(kind="vote", who=n, vote=sv, why=why,
+                      text=f"{n} voted to {'welcome' if sv == 'welcome' else 'turn away'} {S['stranger']['name']}" + (f": {why}" if why else "."))
         if act == "work":
             item, q = work_yield(n, old)
             if q and item != "coins":
@@ -3189,7 +3195,7 @@ def state_json():
                      banker=banker(),
                      stranger=None if not S.get("stranger") or S["stranger"]["day"] > S["day"] else
                      {k: S["stranger"].get(k) for k in ("name", "job", "age", "sex", "pitch", "color", "hair", "votes", "brings",
-                                                         "traits", "talk", "qa", "met")})
+                                                         "traits", "talk", "qa", "met", "reasons")})
         ost = oracle_state()
         orc = dict(state=ost, model=S["oracle"].get("model") or "/".join(providers()) or ORACLE_MODEL, speech=S["oracle"]["speech"], at=S["oracle"]["at"], log=consults,
                    wait=max(0, int((ORACLE_COOLDOWN - (time.time() - S["oracle"]["last"])) / 60)) if ost == "resting" else 0)
