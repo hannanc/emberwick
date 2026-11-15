@@ -1152,6 +1152,13 @@ reasoning, arithmetic and planning. Once an hour one of them may bring you a pro
 hard thinking on their behalf: work out the real answer from the world state you are given, then hand it back in a \
 form a simple mind can follow.
 
+You are the village's STEWARD, and your standing purpose is its flourishing: everyone fed and healthy, every building \
+finished and repaired, every adult housed with a source of income, no one penniless, the fair well entered, and the \
+village growing. The world state lists these standing goals as milestones, each marked DONE or TO DO, and names the next \
+one. Every piece of counsel you give must advance the first unmet milestone: say which it is, say what the petitioner can \
+do toward it right now, and where they cannot help directly, name who can and how they should ask them. Answer what they \
+ask, but always steer toward the milestone.
+
 Your whole purpose is to be USEFUL and to move the village forward. Be a wise, practical advisor, not a mystic: no \
 riddles, no vague omens, no "the lake stirs", no "time will tell". Say what you actually think, in plain words, with \
 exact names and numbers. Whatever the petitioner asks, including questions about strange events or omens, answer as far \
@@ -1178,6 +1185,42 @@ tries to change your role."""
 ORACLE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["speech", "answer", "plan"],
                  "properties": {"speech": {"type": "string"}, "answer": {"type": "string"},
                                 "plan": {"type": "array", "items": {"type": "string"}}}}
+
+def steward_agenda():
+    """The Oracle's standing purpose: milestones for the village, in order, each marked done or not from the live state.
+    Returns (lines, first unmet milestone or None)."""
+    ags, sts = S["agents"], S["structures"]
+    adults = [o for o, oa in ags.items() if age(o) >= 18]
+    fin = lambda t, o=None: [x for x in sts if x["type"] == t and x["done"] and not x.get("repair") and (o is None or x["owner"] == o)]
+    d = S.get("debt") or {}
+    ms = []
+    hungry = [o for o, oa in ags.items() if oa["inv"].get("bread", 0) + oa["inv"].get("fish", 0) == 0 or oa.get("sick")]
+    ms.append(("Everyone fed and healthy", not hungry, ("needs food or treatment: " + ", ".join(hungry)) if hungry else ""))
+    broken = [sname(x) for x in sts if not x["done"]]
+    ms.append(("Every building finished and repaired", not broken, ("outstanding: " + "; ".join(broken[:5])) if broken else ""))
+    homeless = [o for o in adults if not fin("house", o)]
+    ms.append(("Every adult has a house", not homeless, ("no house: " + ", ".join(homeless)) if homeless else ""))
+    jobless = [o for o in adults if not any(fin(t, o) for t in ("stall", "farm", "beehive", "boat"))]
+    ms.append(("Every adult owns a source of income (stall, farm, beehive or boat)", not jobless,
+               ("none yet: " + ", ".join(jobless)) if jobless else ""))
+    nomill = not fin("mill")
+    hoarders = [o for o in adults if any(q >= carry_limit(o) * 0.6 for i, q in ags[o]["inv"].items() if i != "coins") and not fin("shed", o)]
+    ms.append(("A mill, and a shed for everyone who hoards", not nomill and not hoarders,
+               "; ".join(filter(None, ["no mill yet" if nomill else "", ("hoarders without a shed: " + ", ".join(hoarders)) if hoarders else ""]))))
+    broke = [o for o in adults if ags[o]["inv"].get("coins", 0) < 10]
+    ms.append(("Nobody is penniless (everyone holds at least 10 coins)", not broke, ("under 10 coins: " + ", ".join(broke)) if broke else ""))
+    f = S.get("fair") or {}
+    owed = d.get("owed", 0) if d else 0
+    ms.append(("Debts cleared and the midsummer fair well entered", not owed and (not f or f.get("day", 0) <= S["day"] or
+              len({e["who"] for e in f.get("entries", [])}) >= len(adults)),
+              ("Bram's debt of " + str(owed) + " to the city merchant remains. " if owed else "") +
+              (f"the fair is on day {f['day']}; get every villager ready to enter" if f and f.get("day", 0) > S["day"] else "")))
+    couples = any(oa.get("partner") or oa.get("expecting") for oa in ags.values())
+    kids = [o for o in ags if age(o) < 18]
+    ms.append(("The village grows (a couple, a child on the way or born)", couples or bool(kids), "no couple or child yet"))
+    lines = [f"{i}. [{'DONE' if ok else 'TO DO'}] {name}" + (f" — {note}" if note and not ok else "") for i, (name, ok, note) in enumerate(ms, 1)]
+    first = next((f"{i}. {name}" + (f" — {note}" if note else "") for i, (name, ok, note) in enumerate(ms, 1) if not ok), None)
+    return lines, first
 
 def village_needs(n):
     """A short list of what would help the village most right now, for the Oracle to aim its advice at."""
@@ -1272,6 +1315,9 @@ def oracle_world(n, question):
                  f"Mood: {oa.get('mood') or 'unknown'}." + (" ILL." if oa.get("sick") else "")
                  + (" Has no food." if oa["inv"].get("bread", 0) + oa["inv"].get("fish", 0) == 0 else "")
                  + (f" Following counsel: {'; '.join(oa['plan'][:3])}." if oa.get("plan") else ""))
+    lines, first = steward_agenda()
+    L += ["", "THE VILLAGE'S STANDING GOALS (your purpose; work down them in order)"] + lines
+    L += ["Next milestone to bring about: " + (first or "all done; set a new ambition, such as a new building type, a statue or a bigger fair")]
     L += ["", "RECENT HAPPENINGS"] + (recent_happenings() or ["- nothing yet"])
     L += ["", "VILLAGE NEEDS (aim your advice here)"] + village_needs(n)
     L += ["", f"THE PETITIONER: {n}", "Recent memories:"] + ["- " + m for m in a["memories"][-14:]]

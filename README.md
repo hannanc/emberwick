@@ -143,3 +143,10 @@ Set `EMBERWICK_ACTOR` (or `EMBERWICK_NARRATOR` / `EMBERWICK_DEEP_MODEL`) to a na
 (the service reads `~/.config/emberwick/oracle.env`). Every call's tokens are counted per day and model in the `usage`
 table and shown under `usage` in `/api/state`, with a cost estimate; set `EMBERWICK_CLAUDE_IN_PRICE` and
 `EMBERWICK_CLAUDE_OUT_PRICE` (dollars per million tokens) to match the current price list.
+
+## The Oracle's purpose
+
+The Oracle is the village's steward. Every consultation includes a standing agenda computed from the live state
+(everyone fed and healthy, buildings finished and repaired, every adult housed with an income, a mill and sheds, nobody
+penniless, debts cleared and the fair well entered, a growing village), each milestone marked DONE or TO DO, and its
+counsel must advance the first unmet one. See `steward_agenda()` in `emberwick.py`.
