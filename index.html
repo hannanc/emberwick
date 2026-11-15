@@ -1371,7 +1371,7 @@ function renderPop() {
   box.scrollTop = keep;
 }
 // ================================================================ voices: hear everyone, one villager, or nobody
-const hear = { mode: store.get('hear') || 'off', upTo: null, queue: [], now: null, blocked: false };
+const hear = { mode: store.get('hear') || 'off', upTo: null, queue: [], now: null, blocked: false, wait: false, timer: 0, dog: 0 };
 function hearOptions() {
   const sel = $('hear'), names = st.agents.filter(a => a.age >= 6).map(a => a.name);
   const want = ['off', 'all', ...names], have = [...sel.options].map(o => o.value);
@@ -1400,7 +1400,7 @@ function hearEvents() {
     hear.queue.push(item);
   }
   while (hear.queue.length > 4) hear.queue.shift();       // stay close to the present
-  if (!hear.now) nextLine();
+  if (!hear.now && !hear.wait) nextLine();
 }
 function showHearing() {
   const h = $('hearing'); h.replaceChildren();
@@ -1433,17 +1433,39 @@ function withRoom(audio, place) {                         // dry voice plus a so
     src.connect(ac.destination); src.connect(conv).connect(f).connect(w).connect(ac.destination);
   } catch (e) {}
 }
+function stopSound() {                                     // silence whatever is playing, so two voices can never overlap
+  if (hear.now && hear.now.audio) { try { hear.now.audio.onended = hear.now.audio.onerror = null; hear.now.audio.pause(); } catch (e) {} }
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  clearTimeout(hear.timer); clearTimeout(hear.dog);
+}
 function nextLine() {
+  if (hear.now) return;                                    // one voice at a time: never start while one is still going
+  hear.wait = false;
   hear.now = hear.queue.shift() || null; showHearing();
   if (!hear.now) return;
-  const it = hear.now, done = () => { if (hear.now === it) { hear.now = null; nextLine(); } };
-  if (!it.audio) return speakFallback(it, done);
+  const it = hear.now;
+  let over = false, fell = false;
+  const done = () => {                                     // runs once per line, however it ends
+    if (over) return; over = true; clearTimeout(hear.dog);
+    if (it.audio) it.audio.onended = it.audio.onerror = null;
+    if (hear.now !== it) return;
+    hear.now = null; hear.wait = true; showHearing();      // a short breath between speakers
+    hear.timer = setTimeout(nextLine, 450);
+  };
+  const fallback = () => {                                 // the browser voice takes over at most once, after the file's sound is stopped
+    if (over || fell) return; fell = true;
+    if (it.audio) { try { it.audio.pause(); } catch (e) {} }
+    speakFallback(it, done);
+  };
+  hear.dog = setTimeout(() => { if (hear.now === it) { stopSound(); done(); } }, 90000);   // never stall on a line that hangs
+  if (!it.audio) return fallback();
   if (!it.roomed) { it.roomed = true; withRoom(it.audio, it.e.kind === 'oracle' ? 'Oracle' : it.e.place); }
   it.audio.onended = done;
-  it.audio.onerror = () => speakFallback(it, done);
+  it.audio.onerror = fallback;
   it.audio.play().catch(err => {
-    if (err && err.name === 'NotAllowedError') { hear.blocked = true; hear.queue.unshift(it); hear.now = null; showHearing(); }
-    else speakFallback(it, done);
+    if (over) return;
+    if (err && err.name === 'NotAllowedError') { clearTimeout(hear.dog); hear.blocked = true; hear.queue.unshift(it); hear.now = null; showHearing(); }
+    else fallback();
   });
 }
 function speakFallback(it, done) {                         // the browser's own voice when the server has none
@@ -1463,9 +1485,8 @@ function setHear(mode) {
   if (mode !== 'off') audioCtx();
   hear.mode = mode; store.set('hear', mode);
   hear.queue = []; hear.blocked = false;
-  if (hear.now && hear.now.audio) hear.now.audio.pause();
-  if ('speechSynthesis' in window) speechSynthesis.cancel();
-  hear.now = null; hear.upTo = st ? Math.max(0, ...st.events.map(e => e.id)) : null;
+  stopSound();
+  hear.now = null; hear.wait = false; hear.upTo = st ? Math.max(0, ...st.events.map(e => e.id)) : null;
   showHearing();
 }
 $('hear').addEventListener('change', e => setHear(e.target.value));
