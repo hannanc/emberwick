@@ -432,6 +432,14 @@ def clip(s, n):
     s = " ".join(str(s or "").split())
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
 
+def trim(s, n):
+    """Shorten to at most n characters at the end of a sentence, so speech is never cut off mid-word."""
+    s = " ".join(str(s or "").split())
+    if len(s) <= n:
+        return s
+    cut = max(s.rfind(p, 0, n) for p in (". ", "! ", "? ", '." ', '!" ', '?" '))
+    return s[:cut + 1].rstrip() if cut > n // 3 else clip(s, n)
+
 def hhmm(m):
     return f"{m // 60:02d}:{m % 60:02d}"
 
@@ -1300,10 +1308,10 @@ def stranger_answer(n, question):
                    "something, take care not to contradict yourself):\n" + "\n".join(
                        f'- {q["who"]} asked "{q["q"]}"; you said "{q["a"]}"' for q in told) if told else "")
                 + f"\nNow {n}, {who(n)['job']} of the village, asks you: \"{question}\" The villagers have been saying: {others}. "
-                'Answer in JSON: "say" = one or two sentences you say to them.')
+                'Answer in JSON: "say" = one or two sentences you say to them, at most about 40 words.')
     try:
         r = chat(ACTOR, system, user, obj({"say": STR}), keep_alive=-1, num_predict=200, temperature=0.9)
-        ans = clip(r.get("say"), 260)
+        ans = trim(r.get("say"), 420)
     except Exception as e:
         print("stranger_answer failed:", e, flush=True)
         return
@@ -2438,7 +2446,7 @@ def agent_turn():
             u.append(f'A sudden, strangely vivid thought enters your mind, as if whispered: "{whisper["text"]}" '
                      "You feel compelled to act on it now and to say something about it out loud.")
         u.append("Decide what you do in the next few minutes. Answer in JSON: "
-                 '"thought" = one private sentence; "say" = one or two sentences you say out loud, or "" to stay quiet; '
+                 '"thought" = one private sentence; "say" = one or two sentences you say out loud (at most about 40 words), or "" to stay quiet; '
                  f'"action" = one of: {", ".join(actions)}; '
                  '"give", "give_qty", "want", "want_qty" = only for action "offer" (give and give_qty also for "sell"), otherwise "nothing" and 0; '
                  '"go_to" = a place to walk to afterwards, or "stay"; '
@@ -2459,8 +2467,8 @@ def agent_turn():
         a["pending"], a["whisper"], a["offer"], a["proposal"], a["courtship"] = None, None, None, None, None
         old = a["place"]
         here = [o for o in S["agents"] if o != n and S["agents"][o]["place"] == old]
-        say = clip(r.get("say"), 240)
-        a["thought"], a["mood"] = clip(r.get("thought"), 200), clip(r.get("mood"), 20).lower()
+        say = trim(r.get("say"), 420)
+        a["thought"], a["mood"] = trim(r.get("thought"), 300), clip(r.get("mood"), 20).lower()
         a["activity"] = clip(r.get("activity"), 70).rstrip(".") or "idling"
         if a["activity"][:1].isupper() and not a["activity"].startswith("I "):
             a["activity"] = a["activity"][0].lower() + a["activity"][1:]
@@ -2494,7 +2502,7 @@ def agent_turn():
                 st_.setdefault("met", {})[n] = True
             low, trade = say.lower(), st_["job"].split()[-1].lower()
             if say and (st_["name"].lower() in low or trade in low or re.search(r"\b(stranger|newcomer|join|joining|settle|vote|welcome)\b", low)):
-                st_.setdefault("talk", []).append(dict(who=n, text=clip(say, 200)))
+                st_.setdefault("talk", []).append(dict(who=n, text=say))
                 st_["talk"] = st_["talk"][-12:]
                 if st_.get("met", {}).get(n):
                     st_.setdefault("spoke", {})[n] = st_.get("spoke", {}).get(n, 0) + 1
