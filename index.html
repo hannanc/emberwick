@@ -1279,6 +1279,7 @@ const SYS = {
   family: e => ['♥', 'lf', 'Love and family', e.text, true],
   newcomer: e => ['⛺', 'lf', e.text && /arrived/.test(e.text) ? 'A stranger at the Square' : 'The village decides', e.text, true],
   vote: e => ['✋', 'you', `${e.who} votes`, e.text],
+  will: e => ['✒', 'lf', `${e.who}'s last wishes`, e.text, true],
   stranger: e => ['⛺', 'lf', `${e.who} answers ${e.to}`, (e.q ? `Asked “${e.q}”: ` : '') + '“' + e.text + '”'],
   project: e => ['⌂', 'pr', 'The village builds together', e.text, true],
   arc: e => ['❦', 'or', 'The village story', e.text, true],

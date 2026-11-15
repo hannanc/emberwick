@@ -571,7 +571,48 @@ def mortality_text(n):
               "days later and grows up here. ")
     return s
 
+def afflict(n, days=2):
+    """A grave, wasting illness: the Hospital can ease it but not cure it; n dies on the night `days` from now."""
+    a = S["agents"][n]
+    a["sick"] = a.get("sick") or S["day"]
+    a["grave"] = {"since": S["day"], "dies": S["day"] + max(1, days) - 1}
+    left = "this is likely my last day" if days <= 1 else f"I have perhaps {days} days left"
+    remember(n, f"I woke up gravely ill: a wasting sickness that no herb or healer can cure, only ease. I can feel it; {left}. "
+                "I must think about what to say, to whom, and who should have what I leave behind.")
+    for o in S["agents"]:
+        if o != n:
+            remember(o, f"{n} has fallen gravely ill with a wasting sickness that cannot be cured; "
+                        f"{'she' if who(n)['sex'] == 'f' else 'he'} may have only a day or two left.")
+    log_event(kind="sick", who=n, text=f"{n} has fallen gravely ill with a wasting sickness that cannot be cured.")
+
+def grave_text(n):
+    """What the dying, and everyone else, are told while someone is gravely ill; and today's funerals."""
+    out, a = [], S["agents"][n]
+    for o, oa in S["agents"].items():
+        g = oa.get("grave")
+        if not g:
+            continue
+        left = g["dies"] - S["day"]
+        when = "tonight may be the last night" if left <= 0 else f"about {left + 1} days are left"
+        if o == n:
+            out.append(f"You are dying of a wasting sickness that cannot be cured; {when}. You are weak and stay in your bed at "
+                       "the Cottages, but you can still talk with whoever comes to you. Use the time: say what matters to the "
+                       "people you care about, settle old quarrels, pass on what you know. Name who should inherit your goods "
+                       'and buildings in "heir" (you can change your mind later).'
+                       + (f" Right now your heir is {a['will']}." if a.get("will") in S["agents"] else ""))
+        else:
+            out.append(f"{o} is dying of a wasting sickness that no one can cure, and lies in bed at the Cottages; {when}. "
+                       "If you want to see them, bring them comfort, or say something before it is too late, go to the Cottages now.")
+    for d in S.get("dead", []):
+        if d["day"] in (S["day"], S["day"] - 1) and d["name"] != n:
+            out.append(f"{d['name']} died last night. Today the village lays {d['name']} to rest in the Cemetery: go there, "
+                       f'mourn at the grave (action "mourn"), and say a few words about who {d["name"]} was to you.')
+    return out
+
 def nearest_heirs(n):
+    will = S["agents"][n].get("will")
+    if will in S["agents"] and will != n:
+        return [will]                                      # the dying chose their heir
     kids = children(n)
     if kids:
         return kids
@@ -584,7 +625,7 @@ def die(n, cause):
     """Remove n from the living: heirs get the goods and buildings, everyone remembers."""
     a, ag = S["agents"][n], age(n)
     S["dead"].append(dict(name=n, age=ag, day=S["day"], cause=cause, sex=who(n)["sex"], job=who(n)["job"],
-                          parents=parents(n), grave=len(S["dead"])))
+                          parents=parents(n), grave=len(S["dead"]), last=(a.get("lines") or [""])[-1], heir=a.get("will")))
     heirs = [h for h in nearest_heirs(n) if h in S["agents"] and h != n]
     a["inv"]["coins"] = max(0, a["inv"]["coins"] + a.get("bank", 0) - a.get("loan", 0))   # savings pass on, the loan is settled
     del S["agents"][n]
@@ -637,6 +678,9 @@ def do_treat(n):
         remember(n, f"At the Hospital I took a strengthening tonic for {cost} herbs; my old bones feel safer this year.")
         return f"took a tonic at the Hospital for {cost} herbs"
     for x in patients:
+        if S["agents"][x].get("grave"):
+            remember(x, "The Hospital eased my pain, but nothing can cure this sickness.")
+            continue
         S["agents"][x]["sick"] = None
         remember(x, "I was treated at the Hospital and the illness is gone.")
     who_ = " and ".join("myself" if x == n else x for x in patients)
@@ -711,6 +755,10 @@ def life_night():
     with lock:
         for n in list(S["agents"]):
             ag, a = age(n), S["agents"][n]
+            if a.get("grave"):
+                if S["day"] >= a["grave"]["dies"]:
+                    out.append(die(n, "of a wasting sickness"))
+                continue
             risk = 0.0001 * math.exp(0.085 * ag) / YEAR_DAYS if ag >= 50 else 0.0
             if a.get("care_until", 0) > S["day"]:
                 risk /= 2                                  # a Hospital tonic
@@ -1853,7 +1901,7 @@ def recent_happenings():
         out += ["Lately in the village (oldest first):"] + [
             f"- {e['who']} at the {e['place']}" + (f" ({clip(e['did'], 70)})" if e.get("did") else "")
             + (f', to {e["to"]}' if e.get("to") else ", aloud") + (f': "{clip(e["say"], 110)}"' if e.get("say") else "") for e in turns]
-    other = [e for e in evs if e.get("kind") in ("wish", "sick", "death", "birth", "disaster", "family", "fair", "debt", "voice", "newcomer", "project", "arc", "stranger", "vote") and e.get("text")][:6][::-1]
+    other = [e for e in evs if e.get("kind") in ("wish", "sick", "death", "birth", "disaster", "family", "fair", "debt", "voice", "newcomer", "project", "arc", "stranger", "vote", "will") and e.get("text")][:6][::-1]
     if other:
         out += ["Notable events:"] + [f"- Day {e.get('day')}: {clip(e['text'], 160)}" for e in other]
     if S.get("dead"):
@@ -2373,6 +2421,9 @@ def agent_turn():
                      f'{offer["want_qty"]} {offer["want"]}. Use action "accept" or "decline".')
             actions += ["accept", "decline"]
         extra = {**extra_grave, **extra_fair, **bank_q}
+        u += grave_text(n)
+        if a.get("grave"):
+            extra["heir"] = {"type": "string", "enum": ["undecided"] + [o for o in S["agents"] if o != n]}
         lines_st, must_vote = stranger_text(n)
         u += lines_st
         if must_vote:
@@ -2579,6 +2630,13 @@ def agent_turn():
                 did = "knelt at the Old Oak Shrine and prayed" if old == "Shrine" else "walked to the Old Oak Shrine to pray"
 
         go = "Oracle" if petition else "Shrine" if prayer else r.get("go_to")
+        if a.get("grave"):
+            go = "Cottages"                               # too weak to leave the bed
+            hr = r.get("heir")
+            if hr in S["agents"] and hr != n and hr != a.get("will"):
+                a["will"] = hr
+                remember(n, f"I have decided: when I am gone, {hr} shall have what I leave behind.")
+                log_event(kind="will", who=n, text=f"{n} named {hr} as heir to everything {'she' if who(n)['sex'] == 'f' else 'he'} owns.")
         moved = go in PLACES and go != old
         if moved:
             a["place"] = go
@@ -3271,6 +3329,21 @@ class Handler(BaseHTTPRequestHandler):
             self.send(404, '{"error":"not found"}')
 
     def do_POST(self):
+        if self.path == "/api/afflict":
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self.send(403, '{"error":"local only"}')
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n)) if 0 < n < 500 else {}
+                who_, days = body.get("who"), int(body.get("days") or 2)
+            except Exception:
+                return self.send(400, '{"error":"bad request"}')
+            with lock:
+                if who_ not in S["agents"]:
+                    return self.send(404, '{"error":"no such villager"}')
+                afflict(who_, days)
+                save()
+            return self.send(200, json.dumps({"ok": True, "dies_after_day": S["agents"][who_]["grave"]["dies"]}))
         if self.path == "/api/stranger":
             try:
                 n = int(self.headers.get("Content-Length") or 0)
