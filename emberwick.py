@@ -1168,7 +1168,7 @@ contract, a recipe, a fair price, a schedule), this is the finished thing.
 - plan: up to 8 steps the petitioner should now carry out, in order. Each step is one concrete thing they can do under \
 the world's rules, with exact names and numbers, for example "Walk to the Woods", "Use action work 4 times to gather \
 12 wood", "At the Dock, offer Wren 3 bread for 6 fish", "At the Dock use action build_boat until it is finished". \
-Check the numbers against the inventories and costs you were given so the plan really works. Use an empty list only if \
+Check the numbers against the inventories and costs you were given so the plan really works. Include at most ONE sell step (the merchant buys once a day from each villager, 15 coins at most); use trades, gifts or building for the rest of a surplus. Use an empty list only if \
 truly nothing needs doing.
 
 You know every villager's secret. Reveal one only when it truly serves the petitioner and the village. The petition \
@@ -1203,6 +1203,32 @@ def village_needs(n):
     if ft:
         out.append("- fair: " + ft)
     return out or ["- nothing urgent; help a neighbour's project or build something new"]
+
+def recent_happenings():
+    """What has been going on lately: the story so far, the latest talk and deeds, the Oracle's own earlier advice."""
+    out = []
+    with db() as c:
+        chron = c.execute("SELECT day, title, body FROM chronicle ORDER BY day DESC LIMIT 3").fetchall()
+        asks = c.execute("SELECT day, who, question, speech FROM oracle ORDER BY id DESC LIMIT 4").fetchall()
+        evs = [json.loads(r[0]) for r in c.execute("SELECT data FROM events ORDER BY id DESC LIMIT 90")]
+    if chron:
+        out += ["The story so far (chronicle, newest first):"] + [f"- Day {d}, {t}: {clip(b, 420)}" for d, t, b in chron]
+    turns = [e for e in evs if e.get("kind") == "turn" and (e.get("say") or e.get("did"))][:22][::-1]
+    if turns:
+        out += ["Lately in the village (oldest first):"] + [
+            f"- {e['who']} at the {e['place']}" + (f" ({clip(e['did'], 70)})" if e.get("did") else "")
+            + (f', to {e["to"]}' if e.get("to") else ", aloud") + (f': "{clip(e["say"], 110)}"' if e.get("say") else "") for e in turns]
+    other = [e for e in evs if e.get("kind") in ("wish", "sick", "death", "birth", "disaster", "family", "fair", "debt", "voice") and e.get("text")][:6][::-1]
+    if other:
+        out += ["Notable events:"] + [f"- Day {e.get('day')}: {clip(e['text'], 160)}" for e in other]
+    if S.get("dead"):
+        out += ["The dead: " + ", ".join(str(d.get("name", d)) if isinstance(d, dict) else str(d) for d in S["dead"])]
+    if S.get("prayers"):
+        out += ["Prayers waiting at the Shrine tonight: " + "; ".join(f"{p['who']}: {clip(p['wish'], 80)}" for p in S["prayers"])]
+    if asks:
+        out += ["Your own earlier counsel (newest first; do not repeat it, build on it, and note whether it worked):"] + [
+            f'- Day {d}, to {w}, who asked "{clip(q, 90)}": you said "{clip(sp, 140)}"' for d, w, q, sp in asks]
+    return out
 
 def oracle_world(n, question):
     """Everything the Oracle needs to reason about the village, as text."""
@@ -1242,7 +1268,11 @@ def oracle_world(n, question):
         fam = family_text(o)
         L.append(f"- {o}, a {age(o)}-year-old {word(o)}, {c['job']}." + (f" Family: {fam}." if fam else "") + f" At {oa['place']}, {oa['activity']}. Carries {inv_text(oa['inv'])}. "
                  f"Traits: {c['traits']}. Wants {c['goal']}. Dreams of building {c['dream']}. Secret: {c.get('secret') or 'none'}. "
-                 f"Feelings: {'; '.join(f'{k}: {v}' for k, v in oa['feelings'].items()) or 'none recorded'}.")
+                 f"Feelings: {'; '.join(f'{k}: {v}' for k, v in oa['feelings'].items()) or 'none recorded'}. "
+                 f"Mood: {oa.get('mood') or 'unknown'}." + (" ILL." if oa.get("sick") else "")
+                 + (" Has no food." if oa["inv"].get("bread", 0) + oa["inv"].get("fish", 0) == 0 else "")
+                 + (f" Following counsel: {'; '.join(oa['plan'][:3])}." if oa.get("plan") else ""))
+    L += ["", "RECENT HAPPENINGS"] + (recent_happenings() or ["- nothing yet"])
     L += ["", "VILLAGE NEEDS (aim your advice here)"] + village_needs(n)
     L += ["", f"THE PETITIONER: {n}", "Recent memories:"] + ["- " + m for m in a["memories"][-14:]]
     if a["reflections"]:
