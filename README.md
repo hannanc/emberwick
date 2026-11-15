@@ -135,3 +135,11 @@ them, and answers with a thought, an action, a destination and a line of speech
 reflects on their day and updates how they feel about the others, and the
 narrator writes the chronicle and tomorrow's omen. Delete `emberwick.db` to
 start a new world.
+
+## Cloud models
+
+Set `EMBERWICK_ACTOR` (or `EMBERWICK_NARRATOR` / `EMBERWICK_DEEP_MODEL`) to a name starting with `claude-`, for example
+`claude-haiku-5-5`, to run that role on the Anthropic API instead of Ollama. The key comes from `ANTHROPIC_API_KEY`
+(the service reads `~/.config/emberwick/oracle.env`). Every call's tokens are counted per day and model in the `usage`
+table and shown under `usage` in `/api/state`, with a cost estimate; set `EMBERWICK_CLAUDE_IN_PRICE` and
+`EMBERWICK_CLAUDE_OUT_PRICE` (dollars per million tokens) to match the current price list.

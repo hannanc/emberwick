@@ -198,6 +198,8 @@ def init_db():
         c.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, day INT, minute INT, data TEXT)")
         c.execute("CREATE TABLE IF NOT EXISTS oracle (id INTEGER PRIMARY KEY, day INT, minute INT, who TEXT, "
                   "question TEXT, speech TEXT, answer TEXT, plan TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS usage (day TEXT, model TEXT, calls INT, tokens_in INT, tokens_out INT, "
+                  "PRIMARY KEY (day, model))")
         c.execute("CREATE TABLE IF NOT EXISTS chronicle (day INT PRIMARY KEY, title TEXT, body TEXT, weather TEXT)")
 
 def save():
@@ -296,7 +298,46 @@ def load():
         save()
 
 # ---------------------------------------------------------------- model calls
+# prices in dollars per million tokens, for the usage estimate only (check Anthropic's pricing page)
+CLAUDE_PRICE = (float(os.environ.get("EMBERWICK_CLAUDE_IN_PRICE", 0.10)), float(os.environ.get("EMBERWICK_CLAUDE_OUT_PRICE", 0.50)))
+_claude_client = []
+
+def strict(schema):
+    """Anthropic's structured output wants additionalProperties:false on every object."""
+    if isinstance(schema, dict):
+        out = {k: strict(v) for k, v in schema.items()}
+        if out.get("type") == "object":
+            out["additionalProperties"] = False
+        return out
+    return [strict(v) for v in schema] if isinstance(schema, list) else schema
+
+def record_usage(model, tokens_in, tokens_out):
+    day = time.strftime("%Y-%m-%d", time.gmtime())
+    with db() as c:
+        c.execute("INSERT OR IGNORE INTO usage VALUES (?, ?, 0, 0, 0)", (day, model))
+        c.execute("UPDATE usage SET calls = calls + 1, tokens_in = tokens_in + ?, tokens_out = tokens_out + ? "
+                  "WHERE day = ? AND model = ?", (tokens_in, tokens_out, day, model))
+
+def usage_report():
+    with db() as c:
+        rows = c.execute("SELECT day, model, calls, tokens_in, tokens_out FROM usage ORDER BY day DESC, model LIMIT 30").fetchall()
+    return [dict(day=d, model=m, calls=n, tokens_in=i, tokens_out=o,
+                 avg_in=round(i / n) if n else 0, avg_out=round(o / n) if n else 0,
+                 cost=round(i * CLAUDE_PRICE[0] / 1e6 + o * CLAUDE_PRICE[1] / 1e6, 4)) for d, m, n, i, o in rows]
+
+def chat_claude(model, system, user, schema, num_predict, temperature):
+    """One structured call to an Anthropic model; same return shape as chat()."""
+    if not _claude_client:
+        _claude_client.append(anthropic.Anthropic(timeout=90, max_retries=2))
+    req = dict(model=model, max_tokens=max(num_predict, 400), system=system, messages=[{"role": "user", "content": user}],
+               output_config={"format": {"type": "json_schema", "schema": strict(schema)}})
+    resp = _claude_client[0].messages.create(**req)          # no temperature: current Claude models set their own
+    record_usage(model, resp.usage.input_tokens, resp.usage.output_tokens)
+    return json.loads(next(b.text for b in resp.content if b.type == "text"))
+
 def chat(model, system, user, schema, keep_alive, num_predict=180, temperature=0.9):
+    if model.startswith("claude-"):
+        return chat_claude(model, system, user, schema, num_predict, temperature)
     body = {"model": model, "stream": False, "think": False, "format": schema, "keep_alive": keep_alive,
             "options": {"temperature": temperature, "num_predict": num_predict},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
@@ -314,6 +355,8 @@ def chat_deep(system, user, schema, num_predict, temperature=0.9):
 def unload(model):
     """Ask Ollama to free a model now; the next request loads it again from scratch.
     Long-running llama.cpp runners grow (gemma4:e2b reached 13 GB for a 3.5 GB model), so this resets them."""
+    if model.startswith("claude-"):
+        return                                        # nothing to free in the cloud
     req = urllib.request.Request(OLLAMA + "/api/generate", json.dumps({"model": model, "keep_alive": 0}).encode(),
                                  {"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=60) as r:
@@ -2232,7 +2275,7 @@ def state_json():
                                entries=len(S.get("fair", {}).get("entries", [])), results=S.get("fair", {}).get("results", [])), merchant=S.get("merchant", 0), dead=S.get("dead", []), phase=S["phase"], status=status, agents=agents,
                                places={k: v[:2] for k, v in PLACES.items()}, events=ev[::-1], chronicle=chron,
                                prayers=[p for p in S["prayers"] if p["day"] == S["day"]], wishes=S["wishes"][-12:][::-1],
-                               models=dict(actor=ACTOR, narrator=NARRATOR)))
+                               models=dict(actor=ACTOR, narrator=NARRATOR), usage=usage_report()))
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
