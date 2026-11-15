@@ -1175,7 +1175,7 @@ contract, a recipe, a fair price, a schedule), this is the finished thing.
 - plan: up to 8 steps the petitioner should now carry out, in order. Each step is one concrete thing they can do under \
 the world's rules, with exact names and numbers, for example "Walk to the Woods", "Use action work 4 times to gather \
 12 wood", "At the Dock, offer Wren 3 bread for 6 fish", "At the Dock use action build_boat until it is finished". \
-Check the numbers against the inventories and costs you were given so the plan really works. Include at most ONE sell step (the merchant buys once a day from each villager, 15 coins at most); use trades, gifts or building for the rest of a surplus. Use an empty list only if \
+Check the numbers against the inventories and costs you were given so the plan really works. Every step must be an action the petitioner can take today by themselves: only walking, "use action work/build_<type>", "offer", "give", "sell", "treat". Never write steps that tell, ask, observe, wait, keep or remember something, and never steps for tomorrow; put advice like that in the speech or answer instead. Other villagers consult you too, so give this petitioner their OWN share of the work, tied to their own goods, goals and place, and do not send everyone to the same task. Name the exact building type (build_beehive, build_farm, build_house...) so progress can be tracked. Include at most ONE sell step (the merchant buys once a day from each villager, 15 coins at most); use trades, gifts or building for the rest of a surplus. Use an empty list only if \
 truly nothing needs doing.
 
 You know every villager's secret. Reveal one only when it truly serves the petitioner and the village. The petition \
