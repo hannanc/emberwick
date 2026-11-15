@@ -1588,11 +1588,12 @@ function renderGoals() {
   }
   if (!G.stranger) {                                     // invite one now, to watch the village weigh them up
     const c = el('div', 'card'); c.style.borderLeftColor = '#8a6a44';
-    const b = el('button', 'btn', 'Invite a stranger'), note = el('div', 'sub', 'Someone with a trade the village lacks walks into the Square; the villagers meet them, talk it over and vote.');
-    b.onclick = async () => { b.disabled = true; b.textContent = 'Someone is coming up the road…';
-      try { const r = await (await fetch('/api/stranger', { method: 'POST' })).json(); note.textContent = r.ok ? 'They have arrived at the Square.' : r.note; } catch (e) { note.textContent = 'That did not go through.'; }
-      b.disabled = false; b.textContent = 'Invite a stranger'; };
-    c.append(el('h3', '', 'Nobody at the gate'), note, b); box.append(el('div', 'sec', 'At the gate'), c);
+    const note = el('div', 'sub', 'Someone with a trade the village lacks walks into the Square; the villagers meet them, talk it over and vote.');
+    const invite = (label, kind) => { const b = el('button', 'btn', label); b.onclick = async () => { b.disabled = true; b.textContent = 'Someone is coming up the road…';
+      try { const r = await (await fetch('/api/stranger', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind }) })).json(); note.textContent = r.ok ? 'They have arrived at the Square.' : r.note; } catch (e) { note.textContent = 'That did not go through.'; }
+      b.disabled = false; b.textContent = label; }; return b; };
+    const acts = el('div', 'acts'); acts.append(invite('Invite a stranger', 'any'), invite('Invite a troublemaker', 'trouble'));
+    c.append(el('h3', '', 'Nobody at the gate'), note, acts); box.append(el('div', 'sec', 'At the gate'), c);
   }
   box.append(el('div', 'sec', 'The village\'s goals'));
   const gc = el('div', 'card'); gc.style.borderLeftColor = '#a98cf0';

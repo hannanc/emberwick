@@ -1176,18 +1176,23 @@ def free_lots():
     used = {(x["x"], x["y"]) for x in S["structures"] if x["type"] == "house"}
     return [q for q in BLUEPRINTS["house"]["slots"] if tuple(q) not in used]
 
-def invent_stranger(day=None):
+def invent_stranger(day=None, trouble=False):
     """Ask the narrator for a person to arrive (tomorrow by default); the code decides their trade from what the village needs."""
     place = needed_role()
     job, brings = ROLES[place]
     taken = set(CAST) | set(S["born"]) | {d["name"] for d in S["dead"]}
-    traits = stranger_traits()
+    traits = random.sample(HARD_TRAITS, 3) + random.sample(GOOD_TRAITS, 1) if trouble else stranger_traits()
     random.shuffle(traits)
+    shade = (" This person is trouble the village would be wise to refuse: their flaws run deep and will show in "
+             "how they talk, however charming they try to be. Give them a secret that would really harm the village if "
+             "they were let in (for example running from a debt or a crime, or meaning to cheat whoever trusts them), "
+             "and a reason for leaving home that does not quite add up.") if trouble else ""
     try:
         r = chat(NARRATOR, "You invent believable characters for a cosy village story.",
                  f"A stranger, {job}, will arrive at the lakeside village of Emberwick tomorrow morning and ask to settle "
                  f"there. Villagers: " + ", ".join(f"{n} ({who(n)['job']}, {age(n)})" for n in S["agents"]) + ". "
                  f"Their personality is exactly this, flaws included: {', '.join(traits)}. Let it show plainly, "
+                 + shade + " "
                  "including in how they ask to join. Invent this person. Answer in JSON: \"name\" = one first name not used "
                  "by anyone above; \"sex\" = f or m; \"age\" = 20 to 50; \"speech\" = how they talk, one "
                  "short phrase; \"goal\" = what they want, starting with 'to'; \"secret\" = a small secret in second person; "
@@ -1297,7 +1302,7 @@ def stranger_answer(n, question):
         log_event(kind="stranger", who=st["name"], to=n, text=ans, q=clip(question, 160))
         save()
 
-def summon_stranger():
+def summon_stranger(trouble=False):
     """Bring a stranger to the Square now (from the page). Returns a note, or '' when one has arrived."""
     with lock:
         if S["phase"] == "night":
@@ -1306,7 +1311,7 @@ def summon_stranger():
             return f"{S['stranger']['name']} is already waiting at the Square."
         if len(S["agents"]) + expecting_count() >= MAX_PEOPLE or not free_lots():
             return "The village has no room for anyone else right now."
-    st = invent_stranger(day=S["day"])
+    st = invent_stranger(day=S["day"], trouble=trouble)
     if not st:
         return "Nobody came up the road this time; try again."
     with lock:
@@ -3241,7 +3246,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/api/stranger":
-            note = summon_stranger()
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n)) if 0 < n < 500 else {}
+            except Exception:
+                body = {}
+            note = summon_stranger(trouble=body.get("kind") == "trouble")
             return self.send(200, json.dumps({"ok": not note, "note": note}))
         if self.path != "/api/whisper":
             return self.send(404, '{"error":"not found"}')
