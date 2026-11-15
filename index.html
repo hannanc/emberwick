@@ -1279,6 +1279,7 @@ const SYS = {
   family: e => ['♥', 'lf', 'Love and family', e.text, true],
   newcomer: e => ['⛺', 'lf', e.text && /arrived/.test(e.text) ? 'A stranger at the Square' : 'The village decides', e.text, true],
   vote: e => ['✋', 'you', `${e.who} votes`, e.text],
+  stranger: e => ['⛺', 'lf', `${e.who} answers ${e.to}`, (e.q ? `Asked “${e.q}”: ` : '') + '“' + e.text + '”'],
   project: e => ['⌂', 'pr', 'The village builds together', e.text, true],
   arc: e => ['❦', 'or', 'The village story', e.text, true],
   birth: e => ['✿', 'lf', `${e.who} is born`, e.text, true],
@@ -1576,8 +1577,20 @@ function renderGoals() {
     const S2 = G.stranger, c = el('div', 'card'); c.style.borderLeftColor = S2.color;
     const v = Object.entries(S2.votes), yes = v.filter(([, x]) => x === 'welcome').map(([n]) => n), no = v.filter(([, x]) => x === 'turn_away').map(([n]) => n);
     c.append(el('h3', '', `${S2.name}, ${S2.job}, asks to join`), el('div', 'sub', `${S2.sex === 'f' ? '♀' : '♂'} ${S2.age} · waiting at the Square · brings ${Object.entries(S2.brings).map(([i, q]) => `${q} ${i}`).join(', ')}`),
-      el('p', 'q', '“' + S2.pitch + '”'), el('p', '', `Welcome: ${yes.join(', ') || 'nobody yet'} · Turn away: ${no.join(', ') || 'nobody yet'}. The village decides tonight.`));
+      el('p', 'q', '“' + S2.pitch + '”'));
+    if (S2.traits) { const k = el('div', 'kv'); k.append(el('b', '', 'Comes across as — '), S2.traits); c.append(k); }
+    const met = Object.keys(S2.met || {}); c.append(el('p', '', `Met them: ${met.join(', ') || 'nobody yet'}. Welcome: ${yes.join(', ') || 'nobody yet'} · Turn away: ${no.join(', ') || 'nobody yet'}. The village decides tonight.`));
+    if ((S2.qa || []).length) { const k = el('div', 'kv'); k.append(el('b', '', 'Questioned')); c.append(k); for (const q of S2.qa) c.append(el('p', '', `${q.who}: “${q.q}” — ${S2.name}: “${q.a}”`)); }
+    if ((S2.talk || []).length) { const k = el('div', 'kv'); k.append(el('b', '', 'What the village is saying')); c.append(k); for (const t of S2.talk.slice(-6)) c.append(el('p', 'q', `${t.who}: “${t.text}”`)); }
     box.append(el('div', 'sec', 'At the gate'), c);
+  }
+  if (!G.stranger) {                                     // invite one now, to watch the village weigh them up
+    const c = el('div', 'card'); c.style.borderLeftColor = '#8a6a44';
+    const b = el('button', 'btn', 'Invite a stranger'), note = el('div', 'sub', 'Someone with a trade the village lacks walks into the Square; the villagers meet them, talk it over and vote.');
+    b.onclick = async () => { b.disabled = true; b.textContent = 'Someone is coming up the road…';
+      try { const r = await (await fetch('/api/stranger', { method: 'POST' })).json(); note.textContent = r.ok ? 'They have arrived at the Square.' : r.note; } catch (e) { note.textContent = 'That did not go through.'; }
+      b.disabled = false; b.textContent = 'Invite a stranger'; };
+    c.append(el('h3', '', 'Nobody at the gate'), note, b); box.append(el('div', 'sec', 'At the gate'), c);
   }
   box.append(el('div', 'sec', 'The village\'s goals'));
   const gc = el('div', 'card'); gc.style.borderLeftColor = '#a98cf0';

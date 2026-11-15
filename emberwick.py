@@ -1176,8 +1176,8 @@ def free_lots():
     used = {(x["x"], x["y"]) for x in S["structures"] if x["type"] == "house"}
     return [q for q in BLUEPRINTS["house"]["slots"] if tuple(q) not in used]
 
-def invent_stranger():
-    """Ask the narrator for a person to arrive tomorrow; the code decides their trade from what the village needs."""
+def invent_stranger(day=None):
+    """Ask the narrator for a person to arrive (tomorrow by default); the code decides their trade from what the village needs."""
     place = needed_role()
     job, brings = ROLES[place]
     taken = set(CAST) | set(S["born"]) | {d["name"] for d in S["dead"]}
@@ -1217,7 +1217,8 @@ def invent_stranger():
                 secret=clip(r.get("secret"), 160), dream=clip(r.get("dream"), 120) or "a home of your own",
                 why=clip(r.get("why"), 200), pitch=clip(r.get("pitch"), 260) or "I would like to make my home here.",
                 color="#%02x%02x%02x" % tuple(random.randint(70, 210) for _ in range(3)),
-                hair=random.choice(["#2b1b10", "#5a2d1a", "#8a6a3a", "#c9a25a", "#3a3a3a", "#7a4a2a"]), votes={}, day=S["day"] + 1)
+                hair=random.choice(["#2b1b10", "#5a2d1a", "#8a6a3a", "#c9a25a", "#3a3a3a", "#7a4a2a"]), votes={},
+                day=S["day"] + 1 if day is None else day, met={}, spoke={}, talk=[], qa=[])
 
 def stranger_text(n):
     """What a villager is told about the stranger, and whether they still have to vote."""
@@ -1236,11 +1237,88 @@ def stranger_text(n):
             f"({lots} free lot{'s' if lots != 1 else ''} at the Cottages) and food every night; the village holds {food} bread and fish "
             f"for {len(S['agents'])} people. Weigh it both ways: what the village needs and can afford, and whether you, being who "
             "you are, like and trust this person and could live beside them. Talk it over with the others; tonight the village decides by majority.")
+    out = [line]
+    talk = [t for t in st.get("talk", []) if t["who"] != n][-6:]
+    if talk:
+        out.append(f"What the others have said about {st['name']}:\n" + "\n".join(f'- {t["who"]}: "{t["text"]}"' for t in talk)
+                   + "\nRespond to them: agree, argue, or raise what they missed.")
+    if st.get("qa"):
+        out.append(f"What {st['name']} has answered when questioned:\n" + "\n".join(
+            f'- {q["who"]} asked "{q["q"]}"; {st["name"]} said "{q["a"]}"' for q in st["qa"][-4:]))
+    if S["agents"][n]["place"] == "Square":
+        out.append(f'{st["name"]} is standing right here. You may question them yourself: put your question in "ask_stranger" '
+                   '(or "" to say nothing to them), and they will answer you.')
     voted = st["votes"].get(n)
     if voted:
-        return [line + f" You have voted to {'welcome' if voted == 'welcome' else 'turn away'} them."], False
-    return [line + ' When you have made up your mind, cast your vote in "stranger_vote": "welcome" or "turn_away" '
-                   '(or "undecided" to wait and hear more).'], True
+        out.append(f"You have voted to {'welcome' if voted == 'welcome' else 'turn away'} them, but you can still argue your case.")
+        return out, False
+    if not st.get("met", {}).get(n):
+        out.append(f"You have not met {st['name']} yet. Go to the Square to see them for yourself, and tell the others "
+                   "what you make of them. You cannot vote before you have met them.")
+        return out, False
+    if not st.get("spoke", {}).get(n):
+        out.append(f"Say out loud what you think of {st['name']} joining, so the others hear your view; you can vote after that.")
+        return out, False
+    out.append('When you have made up your mind, cast your vote in "stranger_vote": "welcome" or "turn_away" '
+               '(or "undecided" to keep talking it over).')
+    return out, True
+
+def stranger_answer(n, question):
+    """The stranger answers a villager's question in character, flaws and all."""
+    with lock:
+        st = S.get("stranger")
+        if not st:
+            return
+        others = "; ".join(f'{t["who"]}: "{t["text"]}"' for t in st.get("talk", [])[-4:]) or "nothing yet"
+        system = (f"You are {st['name']}, a {st['age']}-year-old {'woman' if st['sex'] == 'f' else 'man'}, {st['job']}, a "
+                  f"stranger asking to settle in the lakeside village of Emberwick. Your personality: {st['traits']}; let it show "
+                  f"plainly, flaws included. You talk {st['speech']}. You left home because: {st['why']}. You want {st['goal']}. "
+                  + (f"Your secret, which you keep unless pressed hard: {st['secret']}. " if st.get("secret") else "")
+                  + "Speak in first person, stay in character, never mention AI.")
+        user = (f"{n}, {who(n)['job']} of the village, asks you: \"{question}\" The villagers have been saying: {others}. "
+                'Answer in JSON: "say" = one or two sentences you say to them.')
+    try:
+        r = chat(ACTOR, system, user, obj({"say": STR}), keep_alive=-1, num_predict=200, temperature=0.9)
+        ans = clip(r.get("say"), 260)
+    except Exception as e:
+        print("stranger_answer failed:", e, flush=True)
+        return
+    if not ans:
+        return
+    with lock:
+        st = S.get("stranger")
+        if not st:
+            return
+        st.setdefault("qa", []).append(dict(who=n, q=clip(question, 160), a=ans))
+        st["qa"] = st["qa"][-8:]
+        here = [o for o in S["agents"] if S["agents"][o]["place"] == "Square"]
+        for o in here:
+            remember(o, f'{n} asked the stranger {st["name"]}: "{clip(question, 120)}" {st["name"]} answered: "{ans}"')
+        log_event(kind="stranger", who=st["name"], to=n, text=ans, q=clip(question, 160))
+        save()
+
+def summon_stranger():
+    """Bring a stranger to the Square now (from the page). Returns a note, or '' when one has arrived."""
+    with lock:
+        if S["phase"] == "night":
+            return "Everyone is asleep. Try again in the morning."
+        if S.get("stranger"):
+            return f"{S['stranger']['name']} is already waiting at the Square."
+        if len(S["agents"]) + expecting_count() >= MAX_PEOPLE or not free_lots():
+            return "The village has no room for anyone else right now."
+    st = invent_stranger(day=S["day"])
+    if not st:
+        return "Nobody came up the road this time; try again."
+    with lock:
+        if S.get("stranger"):
+            return f"{S['stranger']['name']} is already waiting at the Square."
+        S["stranger"] = st
+        for o in S["agents"]:
+            remember(o, f"A stranger, {st['name']}, {st['job']}, has just walked into the Square and asks to join the village.")
+        log_event(kind="newcomer", who=st["name"], text=f"A stranger, {st['name']}, {st['job']}, arrived at the Square and asks "
+                                                      f"to join the village: \"{st['pitch']}\"")
+        save()
+    return ""
 
 def settle_stranger():
     """At night: count the votes. A welcomed stranger becomes a villager; otherwise they leave (or wait one more day)."""
@@ -1743,7 +1821,7 @@ def recent_happenings():
         out += ["Lately in the village (oldest first):"] + [
             f"- {e['who']} at the {e['place']}" + (f" ({clip(e['did'], 70)})" if e.get("did") else "")
             + (f', to {e["to"]}' if e.get("to") else ", aloud") + (f': "{clip(e["say"], 110)}"' if e.get("say") else "") for e in turns]
-    other = [e for e in evs if e.get("kind") in ("wish", "sick", "death", "birth", "disaster", "family", "fair", "debt", "voice", "newcomer", "project", "arc") and e.get("text")][:6][::-1]
+    other = [e for e in evs if e.get("kind") in ("wish", "sick", "death", "birth", "disaster", "family", "fair", "debt", "voice", "newcomer", "project", "arc", "stranger", "vote") and e.get("text")][:6][::-1]
     if other:
         out += ["Notable events:"] + [f"- Day {e.get('day')}: {clip(e['text'], 160)}" for e in other]
     if S.get("dead"):
@@ -2267,6 +2345,8 @@ def agent_turn():
         u += lines_st
         if must_vote:
             extra["stranger_vote"] = {"type": "string", "enum": ["undecided", "welcome", "turn_away"]}
+        if lines_st and a["place"] == "Square":
+            extra["ask_stranger"] = STR
         courtship = a.get("courtship")
         if courtship and not (courtship["from"] in here and can_court(n, courtship["from"])):
             courtship = a["courtship"] = None
@@ -2382,6 +2462,17 @@ def agent_turn():
             a["lines"] = (a.get("lines", []) + [say])[-8:]
 
         act, did, petition, prayer = str(r.get("action") or "none"), "", "", ""
+        st_ = S.get("stranger") if lines_st else None
+        if st_:
+            if old == "Square":
+                st_.setdefault("met", {})[n] = True
+            low, trade = say.lower(), st_["job"].split()[-1].lower()
+            if say and (st_["name"].lower() in low or trade in low or re.search(r"\b(stranger|newcomer|join|joining|settle|vote|welcome)\b", low)):
+                st_.setdefault("talk", []).append(dict(who=n, text=clip(say, 200)))
+                st_["talk"] = st_["talk"][-12:]
+                if st_.get("met", {}).get(n):
+                    st_.setdefault("spoke", {})[n] = st_.get("spoke", {}).get(n, 0) + 1
+        ask = clip(r.get("ask_stranger"), 200) if st_ and old == "Square" else ""
         sv = r.get("stranger_vote")
         if must_vote and sv in ("welcome", "turn_away") and S.get("stranger"):
             S["stranger"]["votes"][n] = sv
@@ -2468,6 +2559,8 @@ def agent_turn():
         save()
     if petition:
         oracle_consult(n, petition)
+    if ask:
+        stranger_answer(n, ask)
 
 # ---------------------------------------------------------------- prayers: one reasonable wish granted each night
 WISH_GOODS, WISH_COINS = 5, 10   # the most a granted wish can give, enforced here whatever the model answers
@@ -3095,7 +3188,8 @@ def state_json():
                                if not PROJECTS[k].get("optional") or projects()[k]["done"] or k in S.get("project_queue", [])],
                      banker=banker(),
                      stranger=None if not S.get("stranger") or S["stranger"]["day"] > S["day"] else
-                     {k: S["stranger"][k] for k in ("name", "job", "age", "sex", "pitch", "color", "hair", "votes", "brings")})
+                     {k: S["stranger"].get(k) for k in ("name", "job", "age", "sex", "pitch", "color", "hair", "votes", "brings",
+                                                         "traits", "talk", "qa", "met")})
         ost = oracle_state()
         orc = dict(state=ost, model=S["oracle"].get("model") or "/".join(providers()) or ORACLE_MODEL, speech=S["oracle"]["speech"], at=S["oracle"]["at"], log=consults,
                    wait=max(0, int((ORACLE_COOLDOWN - (time.time() - S["oracle"]["last"])) / 60)) if ost == "resting" else 0)
@@ -3140,6 +3234,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send(404, '{"error":"not found"}')
 
     def do_POST(self):
+        if self.path == "/api/stranger":
+            note = summon_stranger()
+            return self.send(200, json.dumps({"ok": not note, "note": note}))
         if self.path != "/api/whisper":
             return self.send(404, '{"error":"not found"}')
         try:
