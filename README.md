@@ -116,7 +116,9 @@ file. Each consultation is one API call, so at most 24 a day.
 | `EMBERWICK_OWN_LIMIT` | `2` | Most buildings of one type a villager may own (older extras are kept) |
 | `EMBERWICK_LIFE` | `1` | Ageing, children, illness and death (`0` turns the life cycle off) |
 | `EMBERWICK_YEAR_DAYS` | `4` | Village days per year of age |
-| `EMBERWICK_MAX_PEOPLE` | `12` | Most living villagers (and babies on the way) |
+| `EMBERWICK_MAX_PEOPLE` | `12` | Most living villagers (and babies on the way) at the start |
+| `EMBERWICK_GROW_DAYS` | `15` | The limit rises by one every this many days |
+| `EMBERWICK_PEOPLE_CEILING` | `20` | The limit never rises past this |
 | `EMBERWICK_TTS` / `EMBERWICK_TTS_DIR` | `1` / `~/.local/share/emberwick/kokoro` | Spoken voices with Kokoro, if `kokoro-onnx` is installed and the model files are in the folder |
 | `EMBERWICK_TTS_THREADS` | `3` | CPU threads used for speech, leaving the rest to Ollama |
 | `EMBERWICK_FAIR_EVERY` | `28` | Village days between midsummer fairs |

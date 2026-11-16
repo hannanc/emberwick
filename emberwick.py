@@ -160,7 +160,12 @@ LIFE = os.environ.get("EMBERWICK_LIFE", "1") == "1"
 YEAR_DAYS = float(os.environ.get("EMBERWICK_YEAR_DAYS", 4))     # village days per year of age
 CHILD_ACTS, ADULT, FERTILE_UNTIL = 6, 18, 45             # takes own turns from 6, adult at 18, can bear children to 45
 GESTATION_DAYS = 2                                       # nights from deciding to have a child to the birth
-MAX_PEOPLE = int(os.environ.get("EMBERWICK_MAX_PEOPLE", 12))  # living villagers (and babies on the way) at most
+MAX_PEOPLE = int(os.environ.get("EMBERWICK_MAX_PEOPLE", 12))  # living villagers (and babies on the way) at most, to start with
+GROW_DAYS = int(os.environ.get("EMBERWICK_GROW_DAYS", 15))    # the village may hold one more person every this many days
+PEOPLE_CEILING = int(os.environ.get("EMBERWICK_PEOPLE_CEILING", 20))   # but never more than this
+
+def max_people():
+    return min(PEOPLE_CEILING, MAX_PEOPLE + S.get("day", 0) // GROW_DAYS)
 HUNGER_DEADLY = 4                                        # hungry nights in a row after which hunger can kill
 SICK_CHANCE = 0.03                                       # base chance a villager wakes up ill
 TREAT_HERBS, HEALER_HERBS = 3, 1                         # herbs a treatment costs; less when a herbalist is there
@@ -538,7 +543,7 @@ def can_have_child(n, o):
     f = n if who(n)["sex"] == "f" else o
     fa = S["agents"][f]
     return age(f) <= FERTILE_UNTIL and not fa.get("expecting") and S["day"] >= fa.get("rest_until", 0) \
-        and len(S["agents"]) + expecting_count() < MAX_PEOPLE
+        and len(S["agents"]) + expecting_count() < max_people()
 
 def word(n):
     child = age(n) < ADULT
@@ -1398,7 +1403,7 @@ def summon_stranger(trouble=False):
             return "Everyone is asleep. Try again in the morning."
         if S.get("stranger"):
             return f"{S['stranger']['name']} is already waiting at the Square."
-        if len(S["agents"]) + expecting_count() >= MAX_PEOPLE or not free_lots():
+        if len(S["agents"]) + expecting_count() >= max_people() or not free_lots():
             return "The village has no room for anyone else right now."
     st = invent_stranger(day=S["day"], trouble=trouble)
     if not st:
@@ -1427,7 +1432,7 @@ def settle_stranger():
     S["stranger"] = None
     S["last_stranger"] = S["day"]
     nm = st["name"]
-    if len(yes) <= len(no) or len(S["agents"]) + expecting_count() >= MAX_PEOPLE or not free_lots():
+    if len(yes) <= len(no) or len(S["agents"]) + expecting_count() >= max_people() or not free_lots():
         why = "the village could not take another" if len(yes) > len(no) else f"{len(no)} voted against, {len(yes)} for"
         for o in S["agents"]:
             remember(o, f"The village turned {nm} the stranger away ({why}); they left Emberwick.")
@@ -2950,7 +2955,7 @@ def night():
                     S["wanted_since"].pop(k, None)
         settle_now = night_step("stranger")
         newcomer = settle_stranger() if settle_now else ""
-        want_new = (settle_now and not S.get("stranger") and len(S["agents"]) + expecting_count() < MAX_PEOPLE and free_lots()
+        want_new = (settle_now and not S.get("stranger") and len(S["agents"]) + expecting_count() < max_people() and free_lots()
                     and S["day"] - S.get("last_stranger", -99) >= STRANGER_GAP
                     and ("last_stranger" not in S or random.random() < STRANGER_CHANCE))
     if want_new:
