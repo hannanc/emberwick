@@ -1520,7 +1520,7 @@ def warm(n, o, d):
 # a village is not all best friends: each pair drifts back toward its own baseline, some pairs rub
 FRICTION = {("Tobias", "Wren"): -2.5, ("Wren", "Tobias"): -1.0, ("Mira", "Isolde"): -2.5, ("Isolde", "Mira"): 0.5,
             ("Bram", "Ansel"): -2.0, ("Ansel", "Bram"): -0.5}
-WARM_DECAY, GRUDGE_DAYS = 0.1, 12      # share of the gap to the baseline lost each night; days a grudge lasts
+WARM_DECAY = 0.1      # share of the gap to the baseline lost each night
 
 def warm_base(n, o):
     h = (sum(map(ord, n)) * 31 + sum(map(ord, o)) * 17) % 7        # a fixed little asymmetry for each ordered pair
@@ -1532,7 +1532,7 @@ def cool_warmth():
         for o, w in list(a.get("warmth", {}).items()):
             if o in S["agents"]:
                 a["warmth"][o] = round(w + (warm_base(n, o) - w) * WARM_DECAY, 2)
-        a["grudges"] = [g for g in a.get("grudges", []) if S["day"] - g["day"] < GRUDGE_DAYS and g["who"] in S["agents"]]
+        a["grudges"] = [g for g in a.get("grudges", []) if g["who"] in S["agents"]]
 
 def warmth(n, o):
     return S["agents"].get(n, {}).get("warmth", {}).get(o, 0)
@@ -2976,15 +2976,18 @@ def night():
                      '"milestone" = one first-person sentence about something from today you will remember for the rest '
                      "of your life (a loss, a love, a promise made or broken, a betrayal, a discovery, a debt, a "
                      'kindness that changed you), or "" if today was an ordinary day; most days are ordinary. '
-                     '"grudge_who" = the one person who slighted, wronged or really irritated you today, or "nobody" '
-                     '(most days nobody did) and "grudge" = what they did that you cannot easily let go of, or "". '
+                     + ("Resentments you carried into today: " + "; ".join(f"{g['who']} ({g['why']})" for g in S["agents"][n].get("grudges", []))
+                        + ". " if S["agents"][n].get("grudges") else "") +
+                     '"grudges" = the resentments you still carry tonight, in your own words: anyone who slighted, wronged or '
+                     'really irritated you today, and any older grievance you have not honestly got over. Drop the ones you '
+                     'have let go of; keep at most three; most days there may be none. '
                      '"wake" = how you will wake tomorrow, in your own words: "mood" (a few words), "body" (how you slept, '
                      'what aches, how hungry or tired you are), "on_mind" (the worry or hope you cannot shake), "avoid" (a '
                      'person, place or chore you mean to dodge, or ""), "seek" (who or what you want, or ""). Be petty and '
                      'particular; not every day is meaningful, and you may simply be tired. "worn" = a phrase, topic or habit '
                      'you caught yourself falling back on today, or "".',
                      obj({"reflection": STR, "growth": STR, "milestone": STR,
-                          "grudge_who": {"type": "string", "enum": ["nobody"] + others}, "grudge": STR,
+                          "grudges": {"type": "array", "items": obj({"who": {"type": "string", "enum": others or ["nobody"]}, "why": STR})},
                           "wake": obj({"mood": STR, "body": STR, "on_mind": STR, "avoid": STR, "seek": STR}), "worn": STR,
                           "feelings": {"type": "array", "items": obj(
                          {"name": {"type": "string", "enum": others or ["nobody"]}, "feeling": STR})}}),
@@ -2998,10 +3001,9 @@ def night():
             a["reflections"] = (a["reflections"] + [f"Day {day}: {clip(r.get('reflection'), 300)}"])[-5:]
             if r.get("growth"):
                 a["self"] = clip(r["growth"], 330)
-            gw, gt = r.get("grudge_who"), clip(r.get("grudge"), 160)
-            if gw in others and gt:
-                a["grudges"] = [g for g in a.get("grudges", []) if g["who"] != gw][-2:] + [dict(who=gw, why=gt, day=day)]
-                warm(n, gw, -1)
+            if isinstance(r.get("grudges"), list):
+                a["grudges"] = [dict(who=g["who"], why=clip(g.get("why"), 160), day=day) for g in r["grudges"]
+                                if isinstance(g, dict) and g.get("who") in others and g.get("why")][:3]
             a["worn"] = clip(r.get("worn"), 120)
             wk = r.get("wake") or {}
             if isinstance(wk, dict) and any(wk.get(k) for k in ("mood", "body", "on_mind")):
