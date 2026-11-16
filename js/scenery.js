@@ -1,6 +1,5 @@
 // ================================================================ scenery
 function door(p) { const [x, y] = st.places[p]; return [x, y + (STAND[p] || 1.9) - 0.5]; }
-function distSeg(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1; let t = ((px - a[0]) * dx + (py - a[1]) * dy) / L; t = clamp(t, 0, 1); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
 let pathGrid = null;     // the path segments filed by 4x4-tile cell (each also in the cells within 2 tiles), so a lookup tests a few segments, not all of them
 function buildPathGrid() {
   pathGrid = new Map();
@@ -14,7 +13,6 @@ function distPaths(x, y) {      // exact below 2 tiles, which is all the callers
   const segs = pathGrid.get(Math.floor(x / 4) * 1000 + Math.floor(y / 4)); if (!segs) return 1e9;
   let d = 1e9; for (const [a, b] of segs) d = Math.min(d, distSeg(x, y, a, b)); return d;
 }
-function inLake(x, y) { return ((x - 20) / 15.5) ** 2 + ((y - 25) / 5.4) ** 2 < 1; }
 function nearPlace(x, y, dx = 3.4, dy = 3.2) { return Object.values(st.places).some(([px, py]) => Math.abs(x - px) < dx && Math.abs(y - py) < dy); }
 function inMeadow(x, y) { const m = st.places.Meadow; return !!m && Math.abs(x - m[0]) < 5.6 && Math.abs(y - m[1]) < 7.2; }
 

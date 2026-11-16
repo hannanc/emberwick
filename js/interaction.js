@@ -1,11 +1,6 @@
 // ================================================================ map interaction
 const ptrs = new Map(); let drag = null, pinch = null;
-function villagerAt(sx, sy) {
-  if (!st || st.phase === 'night') return null;
-  const [wx, wy] = toWorld(sx, sy), rad = Math.max(24, 16 / cam.z); let best = null, bd = rad;
-  for (const a of st.agents) { const p = pos[a.name]; if (!p) continue; const d = Math.hypot(p.x * T - wx, p.y * T - 24 - wy); if (d < bd) { bd = d; best = a.name; } }
-  return best;
-}
+function villagerAt(sx, sy) { const [wx, wy] = toWorld(sx, sy); return villagerNear(st, pos, wx, wy, cam.z, T); }
 function dismissHint() { $('hint').classList.add('gone'); store.set('ew-hint', '1'); }
 if (store.get('ew-hint')) $('hint').classList.add('gone'); else setTimeout(dismissHint, 12000);
 cv.addEventListener('pointerdown', e => {

@@ -1,11 +1,11 @@
 // ================================================================ screen-space labels & bubbles
 let occ = [], bubbleTone = 1;     // bubbleTone: the cream of a speech bubble dims a little as the lamps come on
-const hits = r => occ.some(o => r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y);
+const hits = r => hitsAny(r, occ);
 function label(text, sx, sy, o = {}) {
   const size = o.size || 12, font = `${o.weight || 600} ${size}px ${SANS}`;
   ctx.font = font; if ('letterSpacing' in ctx) ctx.letterSpacing = o.spacing || '0px';
   const w = ctx.measureText(text).width + 8, r = { x: sx - w / 2, y: sy - size, w, h: size + 5 };
-  if (r.x + r.w < 0 || r.x > vw || r.y > vh || r.y + r.h < 0 || (o.edge && (r.x < 2 || r.x + r.w > vw - 2 || r.y < 2 || r.y + r.h > vh - 2)) || (!o.force && hits(r))) { if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; return false; }   // never leave the spacing set on an early exit
+  if (labelRejected(r, o, vw, vh, occ)) { if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; return false; }   // never leave the spacing set on an early exit
   occ.push(r);
   ctx.globalAlpha = o.alpha ?? 1; ctx.textAlign = 'center'; ctx.lineJoin = 'round';
   ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(14,16,20,.82)'; ctx.strokeText(text, sx, sy);
@@ -13,11 +13,7 @@ function label(text, sx, sy, o = {}) {
   if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   return true;
 }
-function wrap(text, maxW) {
-  const lines = []; let cur = '';
-  for (const w of text.split(/\s+/)) { const t = cur ? cur + ' ' + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
-  if (cur) lines.push(cur); return lines;
-}
+function wrap(text, maxW) { return wrapText(text, maxW, t => ctx.measureText(t).width); }
 function layoutBubble(text, name, color, ax, ay, alpha) {
   if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   const small = vw < 520, fs = small ? 13 : 14, lh = Math.round(fs * 1.36), maxW = small ? 170 : 240, maxL = small ? 3 : 4;

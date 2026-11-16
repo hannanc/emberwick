@@ -1,38 +1,5 @@
 // ================================================================ dynamic world
-const LOOK = {   // hand-made founders; everyone else is derived from hash(name) in look()
-  Mira: { hair: 'braid', accent: 'apron', apron: '#f7f3ea' },
-  Tobias: { hair: 'bald+beard', beard: '#b9b9b0', accent: 'apron', apron: '#8a5a32', leather: 1 },
-  Isolde: { hair: 'long', accent: 'scarf', scarf: '#b8404f' },
-  Bram: { hair: 'short', beard: '#2b1b10', sleeves: 1 },
-  Wren: { hair: 'short', cap: '#2f5e5b' },
-  Hesper: { hair: 'bun', accent: 'shawl', shawl: '#d9a0b4' },
-};
-const SKIN = ['#f0c9a0', '#f0c9a0', '#e8b98c', '#d9a678', '#c58c5f', '#9a6a45'], LOOKS = {};
-function look(a) {   // cached per name and life stage
-  const key = a.name + (a.age < 18 ? 'k' : ''); if (LOOKS[key]) return LOOKS[key];
-  const h = hash(a.name), f = a.sex === 'f', kid = a.age < 18, L = { skin: SKIN[h % 6], ...(LOOK[a.name] || {}) };
-  if (!LOOK[a.name]) {
-    L.hair = f ? (kid ? ['long', 'braid', 'short'][(h >> 3) % 3] : ['long', 'bun', 'braid', 'short'][(h >> 3) % 4]) : kid || a.age < 40 || (h >> 3) % 4 ? 'short' : 'bald+beard';
-    if (!f && !kid && (h >> 6) % 3 === 0 && L.hair !== 'bald+beard') L.beard = a.hair;
-    if (L.hair === 'bald+beard') L.beard = a.hair;
-    const ac = (h >> 9) % 5;
-    if (ac === 1 && !kid) { L.accent = 'apron'; L.apron = ['#f7f3ea', '#8a5a32', '#c9b88a'][(h >> 12) % 3]; } else if (ac === 2) { L.accent = 'scarf'; L.scarf = ['#b8404f', '#e0a23a', '#4a8fc2', '#6fa04a'][(h >> 12) % 4]; }
-    else if (ac === 3 && f && !kid) { L.accent = 'shawl'; L.shawl = ['#d9a0b4', '#b6c7a4', '#c9b6e0'][(h >> 12) % 3]; }
-    else if (ac === 4 && !f && !kid && (h >> 15) % 2) L.cap = ['#7a5a3a', '#4f6b8a', '#6b4f4f'][(h >> 12) % 3];
-  }
-  return LOOKS[key] = L;
-}
 const PROPS = { Woods: 'axe', Dock: 'rod', Garden: 'basket', Bakery: 'loaf', Library: 'book', Quarry: 'pick', Cemetery: 'flowers' };
-const MOOD_KIND = {};      // mood word -> how the face shows it, worked out once per word
-function moodKind(m) {
-  m = (m || '').toLowerCase(); if (MOOD_KIND[m]) return MOOD_KIND[m];
-  const k = /joy|jovial|cheer|glad|content|happy|hopeful|amus|warm|grateful|giddy|playful|relieved|proud|delight|merry|eager|fond|pleased|affection|wry|smug/.test(m) ? { mouth: 'smile', brow: 0 }
-    : /sad|grie|mourn|wistful|weary|tired|melanchol|lonely|sorrow|heavy|gloom|bereft|guilt|sore|drained|numb/.test(m) ? { mouth: 'frown', brow: 1 }
-    : /irritable|sour|angry|annoyed|grumpy|stern|resolute|determined|stubborn|edgy|fierce|bitter|defiant/.test(m) ? { mouth: 'flat', brow: -1 }
-    : /wary|uneasy|fretful|anxious|nervous|worried|afraid|suspic|watchful|tense|restless|jumpy|troubled/.test(m) ? { mouth: 'flat', brow: 1 }
-    : { mouth: 'soft', brow: 0 };
-  return MOOD_KIND[m] = k;
-}
 function drawFace(g, o) {   // eyes with whites and pupils, brows, a nose and a mouth that follows the mood and moves when speaking
   const { a, S, hx, hy, r, f, t, talking, hurt, baby, beard, skin, h } = o, k = moodKind(a.mood), af = Math.abs(f);
   const ex = hx + f * 2.6 * S, es = 2.15 * S * (1 - .3 * af), ey = hy + .3 * S, blink = !REDUCE && ((t / 1000 + h % 5) % 4.3) < .13;
@@ -57,16 +24,6 @@ function drawFace(g, o) {   // eyes with whites and pupils, brows, a nose and a 
     else { g.moveTo(mx - 1.7 * S, my + .5 * S); g.lineTo(mx + 1.7 * S, my + .5 * S); }
     g.stroke();
   }
-}
-const POSE = {};     // activity text -> what the body does, worked out once per phrase
-function poseOf(a) {
-  const k = a.activity || ''; if (POSE[k] !== undefined) return POSE[k];
-  const m = k.toLowerCase();
-  return POSE[k] = /\bladl|\bpouring|\bwiping|\bsweeping|\bkneading|\bhammer|\bplan(e|ing)\b|\bsaw(ing)?\b|\bchop|\bchip|\bhaul|\bdigging|\bmending|\brepair|\bstacking|\bscrub|\bpolish|\bcoiling|\braking|\bweeding|\bplanting|\bcarving|\bmeasuring|\blifting|\bsorting/.test(m) ? 'work'
-    : /\bsip|\bdrink|\bale\b|\bcup\b|\bmug\b|\btea\b|\btoast/.test(m) ? 'drink'
-    : /\beat|\bchewing|\btasting|\bnibbl|\bmunch|\bsupper|\bbreakfast|\blunch|\bstew\b|\bbowl\b|\bcrust|\bmeal/.test(m) ? 'eat'
-    : /\bsit|\bseated|\brest|\bnap|\bdoz|\bwaiting|\blounging|\bperched|\bslumped/.test(m) ? 'sit'
-    : 'stand';
 }
 function person(a, p, t) {
   const S = 1.35 * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1), x = p.x * T, base = p.y * T, step = p.walking ? Math.sin(t / 95) : 0, h = hash(a.name), g = ctx, L = look(a);

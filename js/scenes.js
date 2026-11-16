@@ -8,13 +8,7 @@ const PLACE_DESC = {
 const SCENE_ZOOM = { Square: 15, Dock: 14, Cottages: 15, Meadow: 12, Garden: 11, Tavern: 10, Woods: 12, Quarry: 10, Shrine: 9, Cemetery: 9, Library: 8, Bakery: 8, Workshop: 8, Hospital: 8, Oracle: 8 };   // tiles of map across the screen
 const SCENE_R = { Square: 6.5, Cottages: 14, Dock: 9, Meadow: 7, Garden: 4.5, Woods: 8, Quarry: 6 };                                                                                  // how far round a place counts as "here"
 let sceneAt = null, sceneKey = '', sceneRect = null, sceneRectAt = -1e9;
-function placeAt(sx, sy) {
-  if (!st) return null; const [wx, wy] = toWorld(sx, sy).map(v => v / T);
-  if (((wx - 20.4) / 5.8) ** 2 + ((wy - 13) / 3.4) ** 2 < 1) return 'Square';
-  let best = null, bd = 2.3;
-  for (const [n, [x, y]] of Object.entries(st.places)) { if (n === 'Square') continue; const d = Math.hypot(wx - x, wy - y - 0.5); if (d < bd) { bd = d; best = n; } }
-  return best;
-}
+function placeAt(sx, sy) { if (!st) return null; const [wx, wy] = toWorld(sx, sy).map(v => v / T); return placeNear(st.places, wx, wy); }
 function focusPlace(name, fly = true) {
   if (!st || !st.places[name]) return;
   if (selected) select(null);
@@ -25,9 +19,7 @@ function focusPlace(name, fly = true) {
 function closeScene() { sceneAt = null; sceneRect = null; $('scene').hidden = true; }
 function renderScene(force) {
   const box = $('scene'); if (!sceneAt || !st || !st.places[sceneAt]) { box.hidden = true; return; }
-  const name = sceneAt, [px, py] = st.places[name], here = st.agents.filter(a => a.place === name), nowMin = st.day * 1440 + st.minute;
-  const talk = (st.events || []).filter(e => e.kind === 'turn' && e.place === name && e.say && nowMin - (e.day * 1440 + e.minute) <= 90).slice(-6);
-  const built = (st.structures || []).filter(s => s.done && Math.hypot(s.x - px, s.y - py) <= (SCENE_R[name] || 5));
+  const name = sceneAt, { here, talk, built } = sceneData(st, name, SCENE_R[name]);
   const key = [name, st.day, st.minute, st.phase, here.map(a => a.name + a.activity + a.say + a.mood + a.thought).join('|'), talk.length && talk[talk.length - 1].id, built.length].join('~');
   if (!force && key === sceneKey) return; sceneKey = key; box.hidden = false;
   const head = el('div', 'sc-head'), sel = el('select'); sel.setAttribute('aria-label', 'Visit a place');
