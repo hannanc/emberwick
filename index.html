@@ -63,7 +63,10 @@
   #clock b { color:var(--ink); font-weight:600; }
   #news { margin-top:10px; padding:8px 12px; background:#241e15; border-left:3px solid var(--gold); border-radius:6px; font:italic 14px/1.45 var(--serif); color:#eadfc6; cursor:default; }
   #news::before { content:"Village news"; display:block; font:600 10.5px var(--sans); letter-spacing:.09em; text-transform:uppercase; color:var(--gold); font-style:normal; margin-bottom:2px; }
+  #news:not(.open) { max-height:calc(3 * 1.45em + 44px); overflow:hidden; cursor:pointer; -webkit-mask-image:linear-gradient(#000 78%, transparent); mask-image:linear-gradient(#000 78%, transparent); }   /* three lines, fading out; click to read it all */
+  #news.open { max-height:none; -webkit-mask-image:none; mask-image:none; }
   nav { display:flex; border-bottom:1px solid var(--line); overflow-x:auto; scrollbar-width:none; }
+  nav.more { -webkit-mask-image:linear-gradient(to right, #000 calc(100% - 38px), transparent); mask-image:linear-gradient(to right, #000 calc(100% - 38px), transparent); }   /* more tabs to the right */
   nav::-webkit-scrollbar { display:none; }
   nav button { flex:1 0 auto; padding:11px 12px 10px; background:none; border:0; border-bottom:2px solid transparent; color:var(--dim); font-weight:500; font-size:13.5px; cursor:pointer; white-space:nowrap; }
   nav button:hover { color:var(--ink); }
@@ -1922,6 +1925,8 @@ async function poll() {
 }
 poll();
 
+const navEl = document.querySelector('nav'), navMore = () => navEl.classList.toggle('more', navEl.scrollWidth - navEl.clientWidth - navEl.scrollLeft > 6);
+navEl.addEventListener('scroll', navMore, { passive: true }); new ResizeObserver(navMore).observe(navEl); setTimeout(navMore, 300);
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.id === b.dataset.tab));
