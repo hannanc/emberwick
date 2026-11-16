@@ -347,6 +347,7 @@ function resize() {
   cv.width = Math.round(vw * dpr); cv.height = Math.round(vh * dpr);
   if (first || !userMoved) resetView(true); else clampT();
   if (first) debugCam();   // the first poll can land before the first resize
+  redrawFrozen();
 }
 new ResizeObserver(resize).observe(stage);
 const toScreen = (x, y) => [(x - cam.x) * cam.z + vw / 2, (y - cam.y) * cam.z + vh / 2];
@@ -431,6 +432,7 @@ const pigeons = [];
 function stepPigeons(dt, t) {
   const sq = [20.4 * T, 13 * T];
   if (!pigeons.length) { const r = rng(91); for (let i = 0; i < 6; i++) { const a = r() * 6.28, k = Math.sqrt(r()) * .8; pigeons.push({ x: sq[0] + Math.cos(a) * 5.2 * T * k, y: sq[1] + Math.sin(a) * 3 * T * k, face: r() < .5 ? -1 : 1, wait: r() * 2, ph: r() * 6, fly: 0, tx: 0, ty: 0, vx: 0, vy: 0 }); } }
+  if (FROZEN != null) return;                            // a frozen frame keeps the pigeons where they start, so shots are identical
   for (const p of pigeons) {
     let near = 1e9, nx = 0, ny = 0;
     for (const a of st.agents) { const q = pos[a.name]; if (!q || a.place !== 'Square') continue; const d = Math.hypot(q.x * T - p.x, q.y * T - p.y); if (d < near) { near = d; nx = q.x * T; ny = q.y * T; } }
@@ -1277,14 +1279,23 @@ function frame(t) {
       let best = null, bd = 1e9; for (const s of st.structures) { const d = Math.hypot(s.x * T - tx, s.y * T - ty); if (s.done && d < bd) { bd = d; best = s; } }
       if (best) { const [bx2, by2] = toScreen(best.x * T, best.y * T - 22); ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(bx2, by2, 70 * z + 20, .7 * (1 - ph), '200,215,255'); ctx.restore(); }
     }
-    drawOverlay(t, asleep, order);
+    drawOverlay(t, asleep, order); drewFrame = vw > 1 && vh > 1;          // a frame drawn before the canvas had its size does not count
     busy = !REDUCE || !!selected || hover != null || fx.length > 0 || !!hear.now || cam.follow || drag != null || ptrs.size > 0 || st.agents.some(a => pos[a.name].walking) || Math.abs(cam.x - cam.tx) > .3 || Math.abs(cam.y - cam.ty) > .3 || Math.abs(cam.z - cam.tz) > .002;
     if (DEBUG.fps) {   // ?fps=1: average JS time per frame over the last 60 frames, top right
       frameMs.push(performance.now() - t0); if (frameMs.length > 60) frameMs.shift(); const avg = frameMs.reduce((a, b) => a + b, 0) / frameMs.length;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(vw - 148, 8, 140, 22); ctx.fillStyle = '#9f9'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; ctx.fillText(avg.toFixed(2) + ' ms / frame', vw - 140, 23);
     }
   }
+  if (drewFrame) markReady();
+  if (FROZEN != null && drewFrame && ++frozenFrames >= 6) { halted = true; return; }   // a frozen frame is final: a few identical frames so it is on screen when a headless shot is taken, then stop
   requestAnimationFrame(frame);
+}
+let drewFrame = false, readyMarked = false, halted = false, frozenFrames = 0;
+function redrawFrozen() { if (halted) { halted = false; drewFrame = false; frozenFrames = 0; frame(lastDraw); } }   // resizing clears the canvas, so a halted frozen frame is drawn again at once (not on the next frame, which a shot may miss)
+function markReady() {      // the first real frame is on screen: scripts and headless shots can wait for this (never the loading screen)
+  if (readyMarked) return; readyMarked = true;
+  document.documentElement.dataset.ready = '1';
+  if (FROZEN != null || DEBUG.ready != null) document.title = 'ready';          // only for debugging: do not rename the tab for viewers
 }
 requestAnimationFrame(frame);
 

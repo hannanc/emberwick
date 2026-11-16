@@ -100,6 +100,11 @@ birth, death, sick, family, …).
    - JS errors: add `--enable-logging=stderr --v=0` and grep stderr for
      `Uncaught`.
 
+2b. **Ready signal and `tools/shot.sh`.** The page sets `data-ready="1"` on `<html>` once its first real frame is on
+   screen (and, in debug mode, `document.title = 'ready'`). With `?freeze=<ms>` it draws a few identical frames and
+   stops, so two shots of the same URL and the same state are byte-identical. `tools/shot.sh URL OUT.png [W,H]` waits
+   for the flag (retrying with a longer virtual-time budget) before taking the shot, so it is never the loading screen.
+
 3. **Syntax check** after every edit:
    `python3 -c "import re,sys; s=open(sys.argv[1]).read(); open(sys.argv[2],'w').write('\n'.join(re.findall(r'<script>(.*?)</script>', s, re.S)))" $SCRATCH/work.html $SCRATCH/work.js && node --check $SCRATCH/work.js`
 
