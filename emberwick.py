@@ -96,13 +96,15 @@ CAST = {
         traits="warm, nosy, superstitious, quick to laugh",
         goal="to win the midsummer fair's baking prize and to find out who keeps leaving wildflowers at your door",
         secret="you burned last year's prize loaf and blamed the oven",
-        home="Bakery", feel={"Tobias": "reliable but grumpy", "Bram": "best gossip partner"}),
+        home="Bakery", feel={"Tobias": "reliable but grumpy", "Bram": "best gossip partner"},
+        grates=("Isolde", "counts everything twice and says so out loud in front of people, which stings your pride")),
     "Tobias": dict(temp=0.75, speech="few words: short gruff fragments, carpentry comparisons, never says outright what he feels",
         sex="m", age=58, dream="the sailboat, at the Dock", job="the carpenter", color="#7b8f4a", hair="#b9b9b0",
         traits="gruff, proud, sentimental underneath, few words",
         goal="to finish the sailboat you began with your late brother before the midsummer fair",
         secret="you are the one leaving wildflowers at Mira's door and would die of embarrassment if anyone knew",
-        home="Workshop", feel={"Mira": "admires her, tongue-tied", "Wren": "reckless but good hands"}),
+        home="Workshop", feel={"Mira": "admires her, tongue-tied", "Wren": "reckless but good hands"},
+        grates=("Wren", "borrows tools and leaves them where they fall, and has always grated on you")),
     "Isolde": dict(temp=0.7, speech="precise, wry and a little formal: bookish references and dry understatement, hedges when nervous",
         sex="f", age=27, dream="a house of your own with a quiet writing room", job="the librarian", color="#5b7fd1", hair="#22203a",
         traits="curious, anxious, bookish, dry wit",
@@ -114,7 +116,8 @@ CAST = {
         traits="jovial, generous, a shameless gossip, worries in private",
         goal="to keep the Gilded Newt open through the season and pay off what you owe",
         secret="you owe a great deal of money to a merchant from the city who is due to visit",
-        home="Tavern", feel={"Mira": "dear friend", "Tobias": "owes me a table repair"}),
+        home="Tavern", feel={"Mira": "dear friend", "Tobias": "owes me a table repair"},
+        grates=("Ansel", "does his sums on your tab with a cold, patient eye that makes you uneasy")),
     "Wren": dict(temp=1.05, speech="fast and eager: runs sentences together, talks about the lake, the sea and adventure, blurts things out",
         sex="m", age=19, dream="a boat of your own", job="the fisher", color="#3aa6a0", hair="#c4572e",
         traits="restless, daring, kind, speaks before thinking",
@@ -462,6 +465,7 @@ def persona(n):
     return (f"You are {n}, a {age(n)}-year-old {word(n)}, {c['job']} of Emberwick, a small lakeside village. "
             f"Personality: {c['traits']}. Deep down you want {c['goal']}. "
             + (f"Your secret: {c['secret']}. " if c.get("secret") else "") + mortality_text(n)
+            + (f"{c['grates'][0]} {c['grates'][1]}. " if c.get("grates") and c["grates"][0] in S.get("agents", {}) else "")
             + (f"Family: {fam}. " if fam else "")
             + f"How you talk: {speech_style(n)}. " +
             f"You dream of {'building ' if n in CAST else ''}{c['dream']}. Villagers gather materials, trade with each other and build things. "
@@ -1517,22 +1521,8 @@ def warm(n, o, d):
         w = S["agents"][n].setdefault("warmth", {})
         w[o] = round(max(-10.0, min(10.0, w.get(o, 0) + d)), 2)
 
-# a village is not all best friends: each pair drifts back toward its own baseline, some pairs rub
-FRICTION = {("Tobias", "Wren"): -2.5, ("Wren", "Tobias"): -1.0, ("Mira", "Isolde"): -2.5, ("Isolde", "Mira"): 0.5,
-            ("Bram", "Ansel"): -2.0, ("Ansel", "Bram"): -0.5}
-WARM_DECAY = 0.1      # share of the gap to the baseline lost each night
-
-def warm_base(n, o):
-    h = (sum(map(ord, n)) * 31 + sum(map(ord, o)) * 17) % 7        # a fixed little asymmetry for each ordered pair
-    return 3.0 + (h - 3) * 0.5 + FRICTION.get((n, o), 0)
-
-def cool_warmth():
-    """Each night every relationship slips a little toward its baseline, and old grudges lapse."""
-    for n, a in S["agents"].items():
-        for o, w in list(a.get("warmth", {}).items()):
-            if o in S["agents"]:
-                a["warmth"][o] = round(w + (warm_base(n, o) - w) * WARM_DECAY, 2)
-        a["grudges"] = [g for g in a.get("grudges", []) if g["who"] in S["agents"]]
+# how close the villagers say they are, as the label they chose each night, kept as a number for the older code
+CLOSE_LABELS = {"cold": -5.0, "cool": -1.5, "acquaintance": 1.0, "friend": 3.0, "close friend": 5.5, "dear": 8.5}
 
 def warmth(n, o):
     return S["agents"].get(n, {}).get("warmth", {}).get(o, 0)
@@ -2631,7 +2621,6 @@ def agent_turn():
             for o in here:
                 remember(o, f'At the {old}, {n} said to me: "{say}"' if o == to else
                             f'At the {old}, {n} said to {to}, something like: "{gist(say)}"')
-            warm(n, to, 0.04); warm(to, n, 0.04)
             if bump_talk(n, to) < TALK_STOP:          # past that, they hear it but are not prompted to answer again
                 S["agents"][to]["pending"] = {"from": n, "text": say}
         elif say:
@@ -2968,7 +2957,8 @@ def night():
                      + "\n".join("- " + t for t in today[-30:]) +
                      '\nAnswer in JSON: "reflection" = one or two first-person sentences on what mattered most today '
                      'and what you intend to do tomorrow; "feelings" = how you now feel about each person you dealt '
-                     'with today, 3 to 6 words each; "growth" = two first-person sentences on how this day has changed '
+                     'with today, 3 to 6 words each, and "closeness" = how close you honestly are to them now (most '
+                     'neighbours are only neighbours, some grate on you, and warmth cools when nothing feeds it); "growth" = two first-person sentences on how this day has changed '
                      "who you are: what you have become more or less, bolder, warier, fonder, harder, softer. You are "
                      "still recognisably yourself, but let real change show, and build on this earlier description of "
                      f"yourself: {S['agents'][n].get('self') or 'none yet, this is your first night'}. Be specific to "
@@ -2990,7 +2980,8 @@ def night():
                           "grudges": {"type": "array", "items": obj({"who": {"type": "string", "enum": others or ["nobody"]}, "why": STR})},
                           "wake": obj({"mood": STR, "body": STR, "on_mind": STR, "avoid": STR, "seek": STR}), "worn": STR,
                           "feelings": {"type": "array", "items": obj(
-                         {"name": {"type": "string", "enum": others or ["nobody"]}, "feeling": STR})}}),
+                         {"name": {"type": "string", "enum": others or ["nobody"]}, "feeling": STR,
+                          "closeness": {"type": "string", "enum": list(CLOSE_LABELS)}})}}),
                      num_predict=700, temperature=0.7)
         except Exception:
             continue
@@ -3014,6 +3005,8 @@ def night():
             for f in (r.get("feelings") or [])[:5]:
                 if f.get("name") in others and f.get("feeling"):
                     a["feelings"][f["name"]] = clip(f["feeling"], 50)
+                if f.get("name") in others and f.get("closeness") in CLOSE_LABELS:
+                    a.setdefault("warmth", {})[f["name"]] = CLOSE_LABELS[f["closeness"]]
             save()
 
     for n in [x for x in S["agents"] if acting(x)]:
@@ -3043,10 +3036,6 @@ def night():
                 S["agents"][n]["story_day"] = day
                 save()
 
-    with lock:
-        if night_step("cooling"):
-            cool_warmth()
-            save()
     with lock:
         fresh = night_step("unload")
     if fresh:                                         # restart the everyday model's runner while everyone sleeps
