@@ -75,7 +75,7 @@ function drawArm(c, d, hand) {
   const { g, S, x, sleeve, skin, line, B, L } = c, sx = x + d * (B.shW + 1) * S, sy = c.Y(B.sh - 1.8);
   const { elbow: [ex, ey], wrist: [wx, wy] } = armPoints(d, S, sx, sy, hand), fl = Math.hypot(wx - ex, wy - ey) || 1, fx = (wx - ex) / fl, fy = (wy - ey) / fl;
   g.lineCap = 'round'; g.lineJoin = 'round';
-  g.strokeStyle = line; g.lineWidth = 3.6 * S + 1.3; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.lineTo(wx, wy); g.stroke();
+  if (c.z >= 1) { g.strokeStyle = line; g.lineWidth = 3.6 * S + 1.3; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.lineTo(wx, wy); g.stroke(); }
   g.strokeStyle = sleeve; g.lineWidth = 3.6 * S; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.lineTo(wx, wy); g.stroke();
   if (L.sleeves) { g.strokeStyle = skin; g.lineWidth = 3.1 * S; g.beginPath(); g.moveTo(ex, ey); g.lineTo(wx, wy); g.stroke(); g.strokeStyle = shade(sleeve, 1.35); g.lineWidth = 1.5 * S; g.beginPath(); g.moveTo(ex - fy * 1.8 * S, ey + fx * 1.8 * S); g.lineTo(ex + fy * 1.8 * S, ey - fx * 1.8 * S); g.stroke(); }   // sleeves rolled to the elbow
   else { g.strokeStyle = shade(sleeve, .78); g.lineWidth = 1.2; g.beginPath(); g.moveTo(wx - fy * 1.8 * S, wy + fx * 1.8 * S); g.lineTo(wx + fy * 1.8 * S, wy - fx * 1.8 * S); g.stroke(); }   // a cuff at the wrist
@@ -98,7 +98,7 @@ function drawLegs(c) {   // trousers to the knee, socks, boots; a skirt hides th
       hipX = d * 2.3; hipV = B.hem + 1; ankX = d * 2.3 + ph * 2.8; ankV = 2.4 + lift; kneeX = (hipX + ankX) / 2 + dir * .5; kneeV = lerp(hipV, ankV, .55);
     }
     for (const [fill, w, x1, v1, x2, v2] of [[c.trouser, 3.6, hipX, hipV, kneeX, kneeV], [c.sock, 3, kneeX, kneeV, ankX, ankV]]) {
-            g.strokeStyle = line; g.lineWidth = w * S + 1.3; g.beginPath(); g.moveTo(x + x1 * S, G(v1)); g.lineTo(x + x2 * S, G(v2)); g.stroke();
+            if (c.z >= 1) { g.strokeStyle = line; g.lineWidth = w * S + 1.3; g.beginPath(); g.moveTo(x + x1 * S, G(v1)); g.lineTo(x + x2 * S, G(v2)); g.stroke(); }
       g.strokeStyle = fill; g.lineWidth = w * S; g.beginPath(); g.moveTo(x + x1 * S, G(v1)); g.lineTo(x + x2 * S, G(v2)); g.stroke();
     }
     { const bx = x + (ankX + dir * .9) * S, by = G(ankV - 1.1), bc = c.L.boot || BOOT; g.fillStyle = bc; g.beginPath(); g.ellipse(bx, by, 2.6 * S, 1.6 * S, 0, 0, 7); g.fill(); if (c.z >= 1) { g.strokeStyle = shade(bc, .4); g.lineWidth = 1.3; g.beginPath(); g.ellipse(bx, by, 2.6 * S, 1.6 * S, 0, .12 * Math.PI, .88 * Math.PI); g.stroke(); } }   // the sole a shade darker
