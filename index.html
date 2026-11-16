@@ -446,6 +446,14 @@ function barrels(g, x, y) {
   }
 }
 const pigeons = [];
+function drawLogs(x, y, n) {      // a pyramid of log ends
+  const X = x * T, Y = y * T; shadow(ctx, X + 6, Y + 2, 20, 5); let i = 0;
+  for (let row = 0; row < 4 && i < n; row++) for (let k = 0; k < 4 - row && i < n; k++, i++) { const cx = X + (k - (3 - row) / 2) * 9, cy = Y - 4 - row * 7.4; ctx.fillStyle = '#7a5532'; ctx.beginPath(); ctx.arc(cx, cy, 4.4, 0, 7); ctx.fill(); ctx.fillStyle = '#c99a62'; ctx.beginPath(); ctx.arc(cx, cy, 2, 0, 7); ctx.fill(); }
+}
+function drawStones(x, y, n) {    // cut blocks, two rows deep
+  const X = x * T, Y = y * T; shadow(ctx, X, Y + 2, 24, 5);
+  for (let i = 0; i < n; i++) { const row = i < 6 ? 0 : 1, k = row ? i - 6 : i, bx = X - 17 + k * 7 + row * 3.5, by = Y - 6 - row * 7; ctx.fillStyle = (i % 3 ? '#a9aaa6' : '#b9b8b2'); ctx.strokeStyle = 'rgba(40,40,40,.45)'; ctx.lineWidth = .8; ctx.beginPath(); ctx.roundRect(bx, by, 7, 6.4, 1); ctx.fill(); ctx.stroke(); }
+}
 function stepPigeons(dt, t) {
   const sq = [20.4 * T, 13 * T];
   if (!pigeons.length) { const r = rng(91); for (let i = 0; i < 6; i++) { const a = r() * 6.28, k = Math.sqrt(r()) * .8; pigeons.push({ x: sq[0] + Math.cos(a) * 5.2 * T * k, y: sq[1] + Math.sin(a) * 3 * T * k, face: r() < .5 ? -1 : 1, wait: r() * 2, ph: r() * 6, fly: 0, tx: 0, ty: 0, vx: 0, vy: 0 }); } }
@@ -878,7 +886,16 @@ function drawStruct(s, t, wins) {
     g.fillStyle = '#a2794a'; g.fillRect(X - 28, Y - 18, 56, 12);
     for (let i = 0; i < 6; i++) { const fl = REDUCE ? 0 : Math.sin(t / 420 + i * .9 + s.x) * (/windy|storm/.test(st.weather) ? 2.6 : .9); g.fillStyle = i % 2 ? '#f4efe2' : c; g.beginPath(); g.roundRect(X - 30 + i * 10, Y - 50, 10, 14 + fl, [0, 0, 5, 5]); g.fill(); }   // awning flutters
     g.fillStyle = '#c98a45'; g.strokeStyle = 'rgba(60,35,15,.5)'; g.lineWidth = .8; for (const dx of [-24, 24]) { g.beginPath(); g.ellipse(X + dx, Y - 20, 4.4, 2.6, 0, 0, 7); g.fill(); g.stroke(); }   // loaves at the ends of the counter
-    for (let i = 0; i < 4; i++) { g.fillStyle = ['#e0a23a', '#c0392b', '#6fbf5a', '#f4e36b'][i]; g.beginPath(); g.arc(X - 18 + i * 12, Y - 21, 4, 0, 7); g.fill(); }
+    const own = st.agents.find(q => q.name === s.owner), kinds = own ? ['bread', 'fish', 'herbs', 'ale'].filter(k => own.inv[k] > 0) : [], goods = [];
+    for (const k of kinds) for (let n = 0; n < Math.min(2, 1 + Math.floor(own.inv[k] / 40)) && goods.length < 5; n++) goods.push(k);          // up to five things, more of what they hold most of
+    if (!own) for (let i = 0; i < 4; i++) { g.fillStyle = ['#e0a23a', '#c0392b', '#6fbf5a', '#f4e36b'][i]; g.beginPath(); g.arc(X - 18 + i * 12, Y - 21, 4, 0, 7); g.fill(); }
+    goods.forEach((k, i) => {
+      const gx = X - 20 + i * (40 / Math.max(goods.length - 1, 1)) * (goods.length > 1 ? 1 : 0) + (goods.length === 1 ? 20 : 0), gy = Y - 21; g.lineWidth = .8; g.strokeStyle = 'rgba(60,35,15,.5)';
+      if (k === 'bread') { g.fillStyle = '#d9a35a'; g.beginPath(); g.ellipse(gx, gy, 5.4, 3.2, -.15, 0, 7); g.fill(); g.stroke(); }
+      else if (k === 'fish') { g.fillStyle = '#b8c6d2'; g.beginPath(); g.ellipse(gx, gy, 5.2, 2.6, 0, 0, 7); g.fill(); g.stroke(); g.beginPath(); g.moveTo(gx + 4.6, gy); g.lineTo(gx + 8, gy - 2.6); g.lineTo(gx + 8, gy + 2.6); g.closePath(); g.fill(); g.fillStyle = '#2a3a4a'; g.fillRect(gx - 3.4, gy - 1, 1.2, 1.2); }
+      else if (k === 'herbs') { g.strokeStyle = '#4f8a3c'; g.lineWidth = 1.2; g.beginPath(); for (const d of [-2.4, 0, 2.4]) { g.moveTo(gx + d * .4, gy + 2); g.lineTo(gx + d, gy - 5); } g.stroke(); g.fillStyle = '#6fbf5a'; for (const d of [-2.4, 0, 2.4]) { g.beginPath(); g.arc(gx + d, gy - 5.5, 1.8, 0, 7); g.fill(); } }
+      else { g.fillStyle = '#9a6a38'; g.beginPath(); g.roundRect(gx - 3.2, gy - 5, 6.4, 8, 1.2); g.fill(); g.stroke(); g.fillStyle = '#f4efe0'; g.fillRect(gx - 3.2, gy - 5.6, 6.4, 1.8); }
+    });
   } else if (s.type === 'boat') {
     const b = REDUCE ? 0 : Math.sin(t / 1100 + s.id) * 1.5, rk = REDUCE ? 0 : Math.sin(t / 1500 + s.id * 2) * .03;
     g.save(); g.translate(X, Y + 6 + b); g.rotate(rk); g.translate(-X, -(Y + 6 + b));   // rock gently on the swell
@@ -1237,6 +1254,10 @@ function frame(t) {
 
     const order = st.agents.slice().sort((a, b) => pos[a.name].y - pos[b.name].y), wins = [], things = [];
     for (const s of st.structures) if (vis(s.x * T, s.y * T, 130, 60, 160)) things.push([s.y, () => drawStruct(s, t, wins)]);   // off-screen things are skipped
+    { const stock = { wood: 0, stone: 0 }; for (const q of st.agents) { stock.wood += q.inv.wood; stock.stone += q.inv.stone; }
+      const wk = st.places.Workshop, qu = st.places.Quarry;
+      if (wk && stock.wood > 0 && vis(wk[0] * T, wk[1] * T, 120, 60, 80)) things.push([wk[1] + .6, () => drawLogs(wk[0] + 3.6, wk[1] + .6, Math.min(10, Math.ceil(stock.wood / 3)))]);
+      if (qu && stock.stone > 0 && vis(qu[0] * T, qu[1] * T, 120, 60, 80)) things.push([qu[1] + .6, () => drawStones(qu[0] + 3, qu[1] + .6, Math.min(12, Math.ceil(stock.stone / 25)))]); }   // the village's wood and stone, piled where they are worked
     if (!asleep) for (const a of order) if (vis(pos[a.name].x * T, pos[a.name].y * T, 70, 40, 100)) things.push([pos[a.name].y, () => { person(a, pos[a.name], t); const p = pos[a.name]; if (lamp > .3 && !INDOOR.has(a.place)) wins.push([p.x * T + (p.face || 1) * 9, p.y * T - 22, .45, '255,190,110']); }]);   // a villager out after dusk carries a small lantern glow
     const sg = st.goals && st.goals.stranger;
     if (!asleep && sg) { const sp = { x: st.places.Square[0] - 3.2, y: st.places.Square[1] + 2.6, walking: false, route: [], face: 1 };   // the stranger, waiting with a bundle
