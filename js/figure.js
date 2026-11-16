@@ -68,6 +68,7 @@ function drawArm(c, d, hand) {
   g.strokeStyle = sleeve; g.lineWidth = 3.6 * S; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.lineTo(wx, wy); g.stroke();
   if (L.sleeves) { g.strokeStyle = skin; g.lineWidth = 3.1 * S; g.beginPath(); g.moveTo(ex, ey); g.lineTo(wx, wy); g.stroke(); g.strokeStyle = shade(sleeve, 1.35); g.lineWidth = 1.5 * S; g.beginPath(); g.moveTo(ex - fy * 1.8 * S, ey + fx * 1.8 * S); g.lineTo(ex + fy * 1.8 * S, ey - fx * 1.8 * S); g.stroke(); }   // sleeves rolled to the elbow
   else { g.strokeStyle = shade(sleeve, .78); g.lineWidth = 1.2; g.beginPath(); g.moveTo(wx - fy * 1.8 * S, wy + fx * 1.8 * S); g.lineTo(wx + fy * 1.8 * S, wy - fx * 1.8 * S); g.stroke(); }   // a cuff at the wrist
+  if (c.grief && d === -1) { const bx = sx + (ex - sx) * .5, by = sy + (ey - sy) * .5, ux = (ex - sx), uy = (ey - sy), ul = Math.hypot(ux, uy) || 1; g.strokeStyle = '#1b181c'; g.lineWidth = 2.4 * S; g.lineCap = 'butt'; g.beginPath(); g.moveTo(bx - uy / ul * 2 * S, by + ux / ul * 2 * S); g.lineTo(bx + uy / ul * 2 * S, by - ux / ul * 2 * S); g.stroke(); g.lineCap = 'round'; }   // a black armband
   const hx = wx + fx * 1.1 * S, hy = wy + fy * 1.1 * S, ang = Math.atan2(fy, fx) - Math.PI / 2;   // the mitten, along the forearm, with a thumb on the inner side
   g.fillStyle = skin; g.beginPath(); g.ellipse(hx, hy, 1.35 * S, 1.9 * S, ang, 0, 7); g.fill();
   g.beginPath(); g.ellipse(hx - d * 1.2 * S * Math.cos(ang), hy - d * 1.2 * S * Math.sin(ang) - .3 * S, .7 * S, 1 * S, ang, 0, 7); g.fill();
@@ -121,6 +122,22 @@ function drawBlanket(c) {   // someone ill is wrapped in a striped blanket over 
   g.lineTo(x + (B.shW + 1.6) * S, Y(B.sh - 8)); g.quadraticCurveTo(x, Y(B.sh - 9.6), x - (B.shW + 1.6) * S, Y(B.sh - 8)); g.closePath(); g.fill(); g.stroke();
   g.strokeStyle = '#a0603a'; g.lineWidth = 1.1; for (const v of [-3.4, -5.6]) { g.beginPath(); g.moveTo(x - (B.shW + 1.9) * S, Y(B.sh + v + .2)); g.quadraticCurveTo(x, Y(B.sh + v - 1.1), x + (B.shW + 1.9) * S, Y(B.sh + v + .2)); g.stroke(); }
 }
+function drawLoadBack(c) {   // a load on the back, showing above and beside the shoulders
+  const { g, S, x, B, line, load } = c, Y = c.Y, big = load.ratio >= 1 ? 1.12 : 1, cx = x, cy = Y(B.sh - .8);
+  g.strokeStyle = line; g.lineWidth = 1.2;
+  if (load.kind === 'keg') { g.fillStyle = '#9a6a3a'; g.beginPath(); g.roundRect(cx - 6 * S * big, cy - 5.6 * S * big, 12 * S * big, 10.6 * S * big, 3 * S); g.fill(); g.stroke(); g.fillStyle = '#4a3222'; for (const v of [-2.6, 2.2]) g.fillRect(cx - 6 * S * big, cy + v * S * big, 12 * S * big, 1.1 * S); }
+  else if (load.kind === 'basket') { g.fillStyle = '#a07840'; g.beginPath(); g.moveTo(cx - 5.4 * S * big, cy - 5 * S); g.lineTo(cx + 5.4 * S * big, cy - 5 * S); g.lineTo(cx + 6.8 * S * big, cy + 5 * S); g.lineTo(cx - 6.8 * S * big, cy + 5 * S); g.closePath(); g.fill(); g.stroke(); g.strokeStyle = 'rgba(70,45,20,.55)'; g.lineWidth = .8; g.beginPath(); for (let i = -1; i <= 1; i++) { g.moveTo(cx - 6 * S, cy + i * 3 * S); g.lineTo(cx + 6 * S, cy + i * 3 * S); } g.stroke(); g.fillStyle = '#6fbf5a'; g.beginPath(); g.arc(cx - 2.4 * S, cy - 5.4 * S, 2 * S, 0, 7); g.arc(cx + 2.2 * S, cy - 5.6 * S, 2.2 * S, 0, 7); g.fill(); }
+  else if (load.kind === 'bundle') { g.strokeStyle = '#6b4a2e'; g.lineWidth = 2.2 * S; for (const [dx, tilt] of [[-3, -1.2], [-1, -.4], [1, .4], [3, 1.2]]) { g.beginPath(); g.moveTo(cx + dx * S * .6, cy + 6 * S); g.lineTo(cx + dx * S + tilt * S, cy - 8 * S); g.stroke(); } g.strokeStyle = '#d8c28a'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(cx - 5 * S, cy + 1 * S); g.lineTo(cx + 5 * S, cy + 1 * S); g.stroke(); }
+  else { g.fillStyle = '#b79b62'; g.beginPath(); g.ellipse(cx, cy, 7 * S * big, 6 * S * big, 0, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#8f7740'; g.beginPath(); g.moveTo(cx - 2 * S, cy - 5.6 * S); g.lineTo(cx, cy - 8.6 * S); g.lineTo(cx + 2 * S, cy - 5.6 * S); g.closePath(); g.fill(); g.stroke(); }   // a sack, tied at the neck
+}
+function drawLoadStraps(c) {   // the straps over the shoulders, in front
+  const { g, S, x, B, load } = c, Y = c.Y; g.strokeStyle = '#6b4a2e'; g.lineWidth = 1.3 * S + .3; g.lineCap = 'round';
+  for (const d of [-1, 1]) { g.beginPath(); g.moveTo(x + d * 3.6 * S, Y(B.sh)); g.lineTo(x + d * (B.shW - .2) * S, Y(B.sh - 7)); g.stroke(); }
+}
+function drawBelly(c) {   // a rounded belly, a shape cue as well as the heart by the name
+  const { g, S, x, B, a, line } = c, Y = c.Y, cy = Y(B.hem + 3.6), col = shade(a.color, 1.08);
+  g.fillStyle = col; g.beginPath(); g.ellipse(x, cy, (B.hemW - .4) * S, 3.9 * S, 0, 0, 7); g.fill(); g.strokeStyle = line; g.lineWidth = 1.2; g.beginPath(); g.arc(x, cy - .2 * S, (B.hemW - .4) * S, .08 * Math.PI, .92 * Math.PI); g.stroke();
+}
 function drawBook(c) {   // a ledger or a book tucked under the left arm
   const { g, S, x, B, L, line } = c, col = L.ledger || L.book; if (!col || c.z <= 1 || c.prop === 'book') return;
   g.save(); g.translate(x - (B.shW + .4) * S, c.Y(B.sh - 8.2)); g.rotate(-.12); g.fillStyle = col; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.roundRect(-1.9 * S, -3 * S, 3.8 * S, 6 * S, .6 * S); g.fill(); g.stroke();
@@ -150,11 +167,12 @@ function person(a, p, t, g = ctx) {
   }
   const w = g === ctx && st ? st.weather || '' : '', rainy = /rain|storm/.test(w) && g === ctx && !INDOOR.has(a.place);
   const flinch = rainy && /storm/.test(w) && !REDUCE ? Math.max(0, 1 - (t % 9000) / 700) : 0, hoodC = shade(a.color, .7), moodK = moodKind(a.mood);
-  const dir = f || p.face || 1, lean = old ? 1.4 * S * dir : 0, r = B.r * S, hx = x + lean + f * .5 * S, hy = y - (B.chin + B.r) * S + (old ? .9 * S : 0) + ((rainy ? 1.1 : 0) + flinch * 1.6) * S, u = r / 5.7;
+  const dir = f || p.face || 1, lean = old ? 1.4 * S * dir : 0, r = B.r * S, hx = x + lean + f * .5 * S, hy = y - (B.chin + B.r) * S + (old ? .9 * S : 0) + ((rainy ? 1.1 : 0) + flinch * 1.6 + (moodKind(a.mood).grief ? 1.5 : 0) + (a.hungry >= 2 ? .7 : 0)) * S, u = r / 5.7;
   const skin = hurt ? mix(L.skin, '#f6eee4', .16) : L.skin, line = 'rgba(30,22,16,.4)', hairC = hairColor(a), prop = standing && PROPS[a.place];
   const onBench = sit && a.place === 'Square' && SEATS.Square.some(q => Math.abs(q[0] - p.x) < .05 && Math.abs(q[1] - p.y) < .05), dress = a.sex === 'f' && a.age >= 6, z = g === ctx ? cam.z : 3;   // z: how close we are looking (scene cards are always close)
   const lantern = g === ctx && lampNow > .3 && !INDOOR.has(a.place) && !sit && z > .7, yawn = !REDUCE && moodK.tired && st && (st.minute >= 19.5 * 60 || st.minute < 6.5 * 60) && ((t / 1000 + h % 9) % 14) < 1.8;
-  const c = { g, a, p, h, z, dir, prop, onBench, hairC, S, B, L, x, y, gy, f, t, skin, line, drop, sit, step, cyc, walking, dress, sleeve: a.color, trouser: TROUSERS[(h >>> 16) % 4], sock: dress ? '#c4b8a0' : mix(TROUSERS[(h >>> 16) % 4], '#c9bda3', .3), Y: v => y - v * S };
+  const load = loadOf(a), grief = moodK.grief, belly = a.expecting && a.sex === 'f';
+  const c = { g, a, p, h, z, dir, load, grief, prop, onBench, hairC, S, B, L, x, y, gy, f, t, skin, line, drop, sit, step, cyc, walking, dress, sleeve: a.color, trouser: TROUSERS[(h >>> 16) % 4], sock: dress ? '#c4b8a0' : mix(TROUSERS[(h >>> 16) % 4], '#c9bda3', .3), Y: v => y - v * S };
   shadow(g, x - 2, base + 1, 11 * S, 4 * S, .3);
   if (selected === a.name) { const k = 1 + Math.sin(t / 300) * 0.08; g.strokeStyle = '#e8bd5f'; g.lineWidth = 2.5; g.beginPath(); g.ellipse(x, base + 1, 17 * S * k, 7.5 * S * k, 0, 0, 7); g.stroke(); }
   else if (hover === a.name) { g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 2; g.beginPath(); g.ellipse(x, base + 1, 15 * S, 6.5 * S, 0, 0, 7); g.stroke(); }
@@ -165,6 +183,7 @@ function person(a, p, t, g = ctx) {
   if (L.hair === 'long') { g.fillStyle = hairC; g.strokeStyle = line; g.beginPath(); g.roundRect(hx - r - .9 * u, hy - r * .55, 2 * r + 1.8 * u, 13 * S, [r, r, 3 * S, 3 * S]); g.fill(); g.stroke(); }   // hair falling behind the shoulders
   if (sit && !c.onBench) { g.fillStyle = '#8a6a44'; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.roundRect(x - 5.6 * S, gy - (B.hem - drop - .4) * S, 11.2 * S, (B.hem - drop - .4) * S, 1 * S); g.fill(); g.stroke(); g.fillStyle = 'rgba(255,235,190,.25)'; g.fillRect(x - 5.2 * S, gy - (B.hem - drop - .4) * S, 10.4 * S, 1.2 * S); g.lineWidth = 1.3; }   // a stool under anyone seated away from a bench
   drawLegs(c);
+  if (load) drawLoadBack(c);
   if (L.cloak) drawCloakBack(c);
   g.fillStyle = shade(skin, .86); g.fillRect(x + lean * .5 - 1.7 * S, y - (B.chin + .8) * S, 3.4 * S, (B.chin + .8 - B.sh + 1.4) * S);   // neck
   if (old) { const sd = -dir, sx = x + sd * (B.shW + 1.8) * S; g.strokeStyle = '#6b4a2e'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(sx + sd * .8 * S, gy); g.lineTo(sx, y - (B.hem + 1) * S); g.stroke(); g.lineWidth = 1.3; c.stick = sd; }   // walking stick, held in the hand on that side and ending at the ground
@@ -182,6 +201,8 @@ function person(a, p, t, g = ctx) {
     if (z > 1) { g.fillStyle = '#e8d8a0'; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(x, y - (sh - 6.4 - i * 2.6) * S, .6 * S + .1, 0, 7); g.fill(); } }
   }
   g.restore(); g.strokeStyle = line; g.lineWidth = 1.3; drawTorso(c); g.stroke();
+  if (belly) drawBelly(c);
+  if (load) drawLoadStraps(c);
   drawGear(c); if (hurt) drawBlanket(c);
   const rest = d => [d * .8, 10];   // arms hang a little away from the body
   const wl = rest(-1), wr = rest(1);
@@ -193,6 +214,10 @@ function person(a, p, t, g = ctx) {
   else if (standing && !prop && pose === 'work') { wr[0] = 3.2 + sw * 3; wr[1] = -2.5 + (sw + 1) * 3.6; }                  // the working arm swings
   else if (standing && !prop && talking && !c.stick) { wl[0] = -2.2 + sw * 2.2; wl[1] = 4.5 + Math.sin(t / 240 + h) * 3; }              // a hand gestures while they speak
   if (rainy && standing && !prop && !c.stick && pose === 'stand' && !talking) { wl[0] = 3.1; wl[1] = 6.4; wr[0] = -3.1; wr[1] = 6.4; }   // arms drawn in against the rain
+  if (standing && !prop && !c.stick && pose === 'stand' && !talking) {   // a hand on the belly: the hungry now and then, an expectant mother too
+    const cycle = REDUCE ? 1 : (t / 1000 + h % 11) % 9;
+    if (a.hungry >= 1 && cycle < (a.hungry >= 2 ? 5.5 : 2.5)) { wl[0] = 5.4; wl[1] = 6.8; } else if (belly && cycle < 5) { wr[0] = -5.2; wr[1] = 8.4; }
+  }
   if (lantern && !c.stick && !(prop === 'book')) { wl[0] = -.2; wl[1] = 7.6; }
   const [hxl, hyl] = drawArm(c, -1, wl); drawBook(c); const [hx2, hy2] = drawArm(c, 1, wr);
   if (lantern) { const lx = hxl, ly = hyl + 2.6 * S; g.strokeStyle = '#4a3222'; g.lineWidth = 1; g.beginPath(); g.moveTo(hxl, hyl); g.lineTo(lx, ly); g.stroke(); g.fillStyle = '#ffd98a'; g.strokeStyle = '#4a3222'; g.beginPath(); g.roundRect(lx - 1.7 * S, ly, 3.4 * S, 4.6 * S, .8 * S); g.fill(); g.stroke(); g.fillStyle = '#4a3222'; g.fillRect(lx - 2 * S, ly - .5 * S, 4 * S, 1.1 * S); g.fillRect(lx - 2 * S, ly + 4.2 * S, 4 * S, 1 * S); g.fillStyle = '#fff4c8'; g.beginPath(); g.ellipse(lx, ly + 2.4 * S, .8 * S, 1.2 * S, 0, 0, 7); g.fill(); p.lampAt = [lx, ly + 2.4 * S]; } else p.lampAt = null;   // a small lantern in the hand, where the glow is drawn

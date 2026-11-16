@@ -138,6 +138,12 @@ function armPoints(d, S, sx, sy, hand) {   // pure geometry: { elbow: [x, y], wr
   let nx = -uy, ny = ux; if (nx * d * .55 + ny < -nx * d * .55 - ny) { nx = -nx; ny = -ny; }   // bend towards outwards-and-down
   return { elbow: [sx + ux * along + nx * hh, sy + uy * along + ny * hh], wrist: [sx + dx, sy + dy] };
 }
+const LOAD_KINDS = { ale: 'keg', wood: 'bundle', herbs: 'basket', fish: 'basket', bread: 'basket', stone: 'sack' };
+function loadOf(a) {   // a heavy load shown on the back: the good they hold most of, as a share of what they can carry of it (a.carry is the per-good limit); null when it is light
+  if (!a.inv || !a.carry) return null; let best = null, br = 0;
+  for (const [k, q] of Object.entries(a.inv)) if (k !== 'coins' && q / a.carry > br) { br = q / a.carry; best = k; }
+  return best && br >= .7 ? { kind: LOAD_KINDS[best] || 'sack', good: best, ratio: br } : null;
+}
 const MOOD_KIND = {};      // mood word -> how the face shows it, worked out once per word
 function moodKind(m) {
   m = (m || '').toLowerCase(); if (MOOD_KIND[m]) return MOOD_KIND[m];
@@ -146,6 +152,7 @@ function moodKind(m) {
     : /irritable|sour|angry|annoyed|grumpy|stern|resolute|determined|stubborn|edgy|fierce|bitter|defiant/.test(m) ? { mouth: 'flat', brow: -1 }
     : /wary|uneasy|fretful|anxious|nervous|worried|afraid|suspic|watchful|tense|restless|jumpy|troubled/.test(m) ? { mouth: 'flat', brow: 1 }
     : { mouth: 'soft', brow: 0 };
+  if (/grie|mourn|bereft|bereave|widow/.test(m)) k.grief = true;   // wears a black armband and hangs their head
   if (/tired|weary|drained|sleepy|exhaust|worn|heavy/.test(m)) k.tired = true;   // yawns late in the day
   if (/afraid|terrif|shock|startl|surpris|alarm|fright|panic|horrif|dread/.test(m)) k.wide = true;   // eyes wide open: whites showing
   return MOOD_KIND[m] = k;
@@ -195,4 +202,4 @@ function sceneData(st, name, radius) {   // who is in a place, what was said the
     built: (st.structures || []).filter(s => s.done && Math.hypot(s.x - px, s.y - py) <= (radius || 5)),
   };
 }
-if (typeof module !== 'undefined') module.exports = { armPoints, ARM_UP, ARM_LO, affinity, hairColor, SEATS, placeLayout, jobKind, LOOK, BODY, stageOf, build, figMetrics, walkSpeed, strideLen, browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };
+if (typeof module !== 'undefined') module.exports = { loadOf, armPoints, ARM_UP, ARM_LO, affinity, hairColor, SEATS, placeLayout, jobKind, LOOK, BODY, stageOf, build, figMetrics, walkSpeed, strideLen, browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };

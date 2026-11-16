@@ -197,3 +197,9 @@ test('arms are two bones: the elbow sits at the right distances and bends outwar
   const mouth = P.armPoints(1, 1, 0, 0, [-4, -4]); assert.ok(mouth.elbow[1] > 0, 'hand to the mouth: the elbow drops below the shoulder');
   const far = P.armPoints(1, 1, 0, 0, [0, 30]); assert.ok(Math.abs(far.wrist[1] - (P.ARM_UP + P.ARM_LO)) < .02, 'out of reach is pulled in to full length');
 });
+test('heavy loads show on the back, by the good; light loads do not', () => {
+  assert.equal(P.loadOf({ carry: 120, inv: { coins: 400, ale: 106, bread: 10 } }).kind, 'keg'); assert.equal(P.loadOf({ carry: 120, inv: { stone: 120 } }).kind, 'sack');
+  assert.equal(P.loadOf({ carry: 120, inv: { herbs: 100 } }).kind, 'basket'); assert.equal(P.loadOf({ carry: 120, inv: { wood: 95 } }).kind, 'bundle');
+  assert.equal(P.loadOf({ carry: 200, inv: { bread: 118, coins: 5000 } }), null, 'coins never weigh anything'); assert.equal(P.loadOf({ name: 'x' }), null);
+});
+test('grief is its own face and body', () => { assert.ok(P.moodKind('grieving').grief && P.moodKind('bereft').grief); assert.ok(!P.moodKind('weary').grief); });
