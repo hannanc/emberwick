@@ -899,7 +899,7 @@ function syncPositions() {
 }
 
 // ================================================================ screen-space labels & bubbles
-let occ = [];
+let occ = [], bubbleTone = 1;     // bubbleTone: the cream of a speech bubble dims a little as the lamps come on
 const hits = r => occ.some(o => r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y);
 function label(text, sx, sy, o = {}) {
   const size = o.size || 12, font = `${o.weight || 600} ${size}px ${SANS}`;
@@ -939,7 +939,7 @@ function drawBubble(b) {
   const bottom = b.y + b.h, tx = clamp(b.ax, b.x + 16, b.x + b.w - 16), gap = b.ay - bottom;
   if (gap > 20) { ctx.strokeStyle = b.color; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(tx, bottom + 6); ctx.lineTo(b.ax, b.ay - 4); ctx.stroke(); ctx.setLineDash([]); }
   ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 3;
-  ctx.fillStyle = 'rgba(252,249,240,.97)'; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill();
+  ctx.fillStyle = `rgba(${Math.round(252 * bubbleTone)},${Math.round(249 * bubbleTone)},${Math.round(240 * bubbleTone)},.97)`; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill();
   ctx.shadowColor = 'transparent';
   if (gap > -4) { ctx.beginPath(); ctx.moveTo(tx - 7, bottom - 1); ctx.lineTo(tx, bottom + 8); ctx.lineTo(tx + 7, bottom - 1); ctx.fill(); }
   ctx.strokeStyle = b.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.stroke();
@@ -1097,6 +1097,7 @@ function frame(t) {
     const w = st.weather, S = sky(st.minute, w), rain = /rain|storm/.test(w), wind = /windy|storm/.test(w);
     const hrL = st.minute / 60, lampMist = /mist/.test(w) ? .6 : 1,                                         // lamps and windows come on by the clock, not only when the sky is dark
       lamp = Math.max(S.light, hrL >= 17.75 && hrL < 22 ? clamp((hrL - 17.75) / 1.25, 0, 1) * .6 : 0, hrL >= 5 && hrL < 7.25 ? clamp((7.25 - hrL) / 1.5, 0, 1) * .6 : 0);
+    bubbleTone = 1 - .2 * clamp(lamp, 0, 1);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#16241a'; ctx.fillRect(0, 0, cv.width, cv.height);
     const [shx0, shy0] = shakeOffset(t);
@@ -1150,7 +1151,7 @@ function frame(t) {
 
     const order = st.agents.slice().sort((a, b) => pos[a.name].y - pos[b.name].y), wins = [], things = [];
     for (const s of st.structures) if (vis(s.x * T, s.y * T, 130, 60, 160)) things.push([s.y, () => drawStruct(s, t, wins)]);   // off-screen things are skipped
-    if (!asleep) for (const a of order) if (vis(pos[a.name].x * T, pos[a.name].y * T, 70, 40, 100)) things.push([pos[a.name].y, () => person(a, pos[a.name], t)]);
+    if (!asleep) for (const a of order) if (vis(pos[a.name].x * T, pos[a.name].y * T, 70, 40, 100)) things.push([pos[a.name].y, () => { person(a, pos[a.name], t); const p = pos[a.name]; if (lamp > .3 && !INDOOR.has(a.place)) wins.push([p.x * T + (p.face || 1) * 9, p.y * T - 22, .45, '255,190,110']); }]);   // a villager out after dusk carries a small lantern glow
     const sg = st.goals && st.goals.stranger;
     if (!asleep && sg) { const sp = { x: st.places.Square[0] - 3.2, y: st.places.Square[1] + 2.6, walking: false, route: [], face: 1 };   // the stranger, waiting with a bundle
       things.push([sp.y, () => { person({ name: sg.name, age: sg.age, sex: sg.sex, hair: sg.hair, color: sg.color, place: 'Square', say_to: '', say_at: 0 }, sp, t);
