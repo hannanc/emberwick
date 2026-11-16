@@ -229,7 +229,7 @@
   #scene .sc-line time { color:var(--dim); margin-right:5px; font-variant-numeric:tabular-nums; }
   #scene .sc-line em { color:var(--dim); font-style:normal; }
   #scene .sc-empty, #scene .sc-built { color:var(--dim); font-size:12.5px; }
-  @media (max-width:900px) { #scene { width:calc(100% - 24px); max-height:44%; top:54px; } }
+  @media (max-width:900px) { #scene { width:calc(100% - 24px); max-height:min(40%, 280px); top:54px; overflow-y:auto; background:rgba(16,18,22,.95); padding-bottom:14px; } #scene .sc-think { display:none; } }   /* a phone: contained, solid so labels do not show through, and the long thoughts left to the feed */
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
 </style>
 </head>
