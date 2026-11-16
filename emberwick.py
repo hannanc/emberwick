@@ -473,6 +473,11 @@ def persona(n):
             "people flatter, fib, deflect and sulk. Say nothing, or only a few words, whenever that fits. Do not repeat "
             "what you already said or did. You are a person; never mention AI.")
 
+def gist(text, words=6):
+    """What a bystander retains of a line they overheard: the first few words, not the whole phrase."""
+    w = text.split()
+    return " ".join(w[:words]) + ("…" if len(w) > words else "")
+
 def remember(n, text, today=True):
     a = S["agents"][n]
     line = f"[{hhmm(S['minute'])}] {text}"
@@ -2565,7 +2570,7 @@ def agent_turn():
             to = "you"
             remember(n, f'I answered the voice: "{say}"')
             for o in here:
-                remember(o, f'At the {old}, {n} spoke to someone none of us could see: "{say}"')
+                remember(o, f'At the {old}, {n} spoke to someone none of us could see: "{gist(say)}"')
         elif here:
             to = pending["from"] if pending and pending["from"] in here else random.choice(here)
         if to == "you":
@@ -2573,7 +2578,8 @@ def agent_turn():
         elif say and to:
             remember(n, f'At the {old} I said to {to}: "{say}"')
             for o in here:
-                remember(o, f'At the {old}, {n} said to {"me" if o == to else to}: "{say}"')
+                remember(o, f'At the {old}, {n} said to me: "{say}"' if o == to else
+                            f'At the {old}, {n} said to {to}, something like: "{gist(say)}"')
             warm(n, to, 0.25); warm(to, n, 0.25)
             if bump_talk(n, to) < TALK_STOP:          # past that, they hear it but are not prompted to answer again
                 S["agents"][to]["pending"] = {"from": n, "text": say}
