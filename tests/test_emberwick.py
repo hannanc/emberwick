@@ -314,3 +314,9 @@ def test_only_page_scripts_are_served(make_world):
         assert 'src="/js/' in open(os.path.join(ROOT, "index.html"), encoding="utf-8").read()
     finally:
         srv.shutdown()
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
+def test_the_pages_pure_helpers_pass_their_node_tests():
+    result = subprocess.run(["node", "--test", os.path.join(ROOT, "tests", "js", "pure.test.js")], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-1000:]
