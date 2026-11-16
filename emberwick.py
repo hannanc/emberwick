@@ -465,13 +465,21 @@ def remember(n, text, today=True):
     if today:
         a["today"] = (a["today"] + [line])[-36:]
 
+BREAKS = ((12 * 60, 13 * 60), (19 * 60, 24 * 60))   # midday meal and the evening: the day's work is put down
+
+def off_duty(m):
+    return any(a <= m < b for a, b in BREAKS)
+
 def time_hint(m):
     h = m / 60
     if h < 8: return "It is early morning; the village is waking up."
     if h < 12: return "It is the working morning."
-    if h < 14: return "It is midday; people often eat at the Tavern or meet in the Square."
-    if h < 18: return "It is the afternoon; time for work and errands."
-    if h < 21: return "It is evening; people gather at the Tavern or the Square."
+    if h < 13: return ("It is the midday break: nobody works now. Eat, rest, sit with someone at the Tavern, the Square or "
+                       "the Bakery, and talk.")
+    if h < 14: return "It is early afternoon; people drift back to their work."
+    if h < 19: return "It is the afternoon; time for work and errands."
+    if h < 21: return ("It is evening and the day's work is done. Nobody works now: gather at the Tavern or the Square, "
+                       "share a meal, talk, tell stories, visit friends or the Shrine, or take a quiet walk.")
     return "It is late; time to head to the Cottages to sleep."
 
 # ---------------------------------------------------------------- life: age, family, birth and death
@@ -2489,7 +2497,8 @@ def agent_turn():
             if told >= TALK_WRAP:
                 u.append(f'{pending["from"]} just said to you: "{pending["text"]}" You two have already gone back and forth '
                          f'{told} times. Close the conversation now in a few words of your own (or say nothing), and get on '
-                         'with something useful: choose an action like work, build, trade or contribute, or walk somewhere else.')
+                         + ('with something else: rest, eat, or walk somewhere else.' if off_duty(S["minute"]) else
+                         'with something useful: choose an action like work, build, trade or contribute, or walk somewhere else.'))
             else:
                 u.append(f'{pending["from"]} just said to you: "{pending["text"]}" Answer them in your own words.')
         if whisper and whisper.get("all"):
@@ -2502,6 +2511,12 @@ def agent_turn():
         elif whisper:
             u.append(f'A sudden, strangely vivid thought enters your mind, as if whispered: "{whisper["text"]}" '
                      "You feel compelled to act on it now and to say something about it out loud.")
+        if off_duty(S["minute"]):
+            closed = [x for x in actions if x in ("work", "contribute") or x.startswith("build_")]
+            actions = [x for x in actions if x not in closed]
+            if closed:
+                u.append("Work, building and contributing are closed for now; it is time to rest, eat and enjoy company. "
+                         "Choose an action only if it is not work (trade, pray, mourn, treat, court and so on), or none.")
         u.append("Decide what you do in the next few minutes. Answer in JSON: "
                  '"thought" = one private sentence; "say" = one or two sentences you say out loud (at most about 40 words), or "" to stay quiet; '
                  f'"action" = one of: {", ".join(actions)}; '
@@ -2573,7 +2588,7 @@ def agent_turn():
                         + (f", because {why[0].lower() + why[1:]}" if why else "."))
             log_event(kind="vote", who=n, vote=sv, why=why,
                       text=f"{n} voted to {'welcome' if sv == 'welcome' else 'turn away'} {S['stranger']['name']}" + (f": {why}" if why else "."))
-        if act == "work":
+        if act == "work" and "work" in actions:
             item, q = work_yield(n, old)
             if q and item != "coins":
                 q = min(q, max(0, carry_limit(n) - a["inv"][item]))
@@ -2583,7 +2598,7 @@ def agent_turn():
                 a["inv"][item] += q
                 did = f"{'earned' if item == 'coins' else 'got'} {q} {item} working at the {old}"
                 remember(n, f"I worked at the {old} and got {q} {item}.")
-        elif act.startswith("build_") and act[6:] in BLUEPRINTS:
+        elif act.startswith("build_") and act[6:] in BLUEPRINTS and act in actions:
             did = do_build(n, act[6:], old)
         elif act == "offer":
             did = do_offer(n, to, r)
