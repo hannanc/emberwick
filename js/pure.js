@@ -9,6 +9,18 @@ function hash(s) { let h = 7; for (const c of s) h = Math.imul(h ^ c.charCodeAt(
 const hhmm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, k) => a + (b - a) * k;
+function rgbOf(c) {   // '#rgb', '#rrggbb' or 'rgb(r,g,b)' to [r, g, b]; unknown strings read as mid grey
+  c = String(c || ''); let m = /^#([0-9a-f]{3})$/i.exec(c);
+  if (m) return [...m[1]].map(x => parseInt(x + x, 16));
+  if ((m = /^#([0-9a-f]{6})/i.exec(c))) return [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16));
+  if ((m = /^rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/.exec(c))) return [+m[1], +m[2], +m[3]];
+  return [136, 136, 136];
+}
+const hexOf = rgb => '#' + rgb.map(v => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join('');
+const shade = (c, k) => hexOf(rgbOf(c).map(v => k <= 1 ? v * k : v + (255 - v) * (k - 1)));   // k < 1 darker, k > 1 lighter (towards white)
+const mix = (c1, c2, k) => { const a = rgbOf(c1), b = rgbOf(c2); return hexOf(a.map((v, i) => lerp(v, b[i], k))); };
+const rgbaOf = (c, a) => { const [r, g, b] = rgbOf(c); return `rgba(${r},${g},${b},${a})`; };
+const lumaOf = c => { const [r, g, b] = rgbOf(c); return (.3 * r + .59 * g + .11 * b) / 255; };
 function distSeg(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1; let t = ((px - a[0]) * dx + (py - a[1]) * dy) / L; t = clamp(t, 0, 1); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
 function inLake(x, y) { return ((x - 20) / 15.5) ** 2 + ((y - 25) / 5.4) ** 2 < 1; }
 const SKY = [[0, [72, 84, 140]], [4.6, [72, 84, 140]], [6, [190, 140, 150]], [7, [255, 212, 176]], [8.5, [255, 255, 255]], [17, [255, 255, 255]],
@@ -44,6 +56,10 @@ function look(a) {   // cached per name and life stage
     else if (ac === 4 && !f && !kid && (h >> 15) % 2) L.cap = ['#7a5a3a', '#4f6b8a', '#6b4f4f'][(h >> 12) % 3];
   }
   return LOOKS[key] = L;
+}
+function browPoints(brow, d, cx, ey, S) {   // one brow as { outer, inner } points; d = -1 left eye, 1 right. Both eyes mirror: stern (-1) drops the inner ends, worried (1) lifts them
+  const bx = cx + d * .3 * S, by = ey - 2.5 * S - (brow === 1 ? .3 * S : 0), tilt = brow * 1.1 * S;
+  return { outer: [bx + d * 1.6 * S, by + tilt * .45], inner: [bx - d * 1.5 * S, by - tilt] };
 }
 const MOOD_KIND = {};      // mood word -> how the face shows it, worked out once per word
 function moodKind(m) {
@@ -100,4 +116,4 @@ function sceneData(st, name, radius) {   // who is in a place, what was said the
     built: (st.structures || []).filter(s => s.done && Math.hypot(s.x - px, s.y - py) <= (radius || 5)),
   };
 }
-if (typeof module !== 'undefined') module.exports = { hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };
+if (typeof module !== 'undefined') module.exports = { browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };

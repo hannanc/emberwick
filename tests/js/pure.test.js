@@ -76,3 +76,20 @@ test('sceneData selects who is in a place, recent talk, and what stands nearby',
   assert.ok(P.sceneData({ ...st, events: [{ kind: 'turn', place: 'Tavern', say: 'old', day: 1, minute: 0 }] }, 'Tavern').talk.length === 0);
   assert.ok(P.sceneData(st, 'Dock').here.every(a => a.place === 'Dock'));
 });
+
+test('brows mirror each other and tilt the right way', () => {
+  for (const brow of [-1, 0, 1]) {
+    const L = P.browPoints(brow, -1, 10, 20, 1), R = P.browPoints(brow, 1, 30, 20, 1);
+    assert.ok(Math.abs((L.inner[1] - L.outer[1]) - (R.inner[1] - R.outer[1])) < 1e-9);   // same slope on both eyes
+    assert.ok(L.inner[0] > L.outer[0] && R.inner[0] < R.outer[0]);                       // inner ends point at the nose
+  }
+  const stern = P.browPoints(-1, -1, 0, 0, 1), worried = P.browPoints(1, 1, 0, 0, 1), calm = P.browPoints(0, 1, 0, 0, 1);
+  assert.ok(stern.inner[1] > stern.outer[1]);       // y grows downwards: inner end lower than outer = stern
+  assert.ok(worried.inner[1] < worried.outer[1]);   // inner end higher = worried
+  assert.equal(calm.inner[1], calm.outer[1]);
+});
+test('colour helpers', () => {
+  assert.equal(P.hexOf(P.rgbOf('#fff')), '#ffffff'); assert.equal(P.shade('#808080', .5), '#404040'); assert.equal(P.shade('#000000', 2), '#ffffff'.replace(/f/g, 'f'));
+  assert.equal(P.mix('#000000', '#ffffff', .5), '#808080'); assert.deepEqual(P.rgbOf('nonsense'), [136, 136, 136]);
+  assert.equal(P.rgbaOf('#ff0000', .5), 'rgba(255,0,0,0.5)'); assert.ok(P.lumaOf('#fff') > .99);
+});

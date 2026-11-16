@@ -8,9 +8,9 @@ function drawFace(g, o) {   // eyes with whites and pupils, brows, a nose and a 
     const cx = ex + d * es;
     g.fillStyle = '#f7f2e8'; g.beginPath(); g.ellipse(cx, ey, ew, eh, 0, 0, 7); g.fill();
     if (!blink) { g.fillStyle = '#1f1812'; g.beginPath(); g.arc(cx + f * .5 * S, ey + .1 * S, .8 * S, 0, 7); g.fill(); }
-    if (!baby && !hurt) {   // brows: inner ends down when stern, up when worried
-      const bx = cx + d * .3 * S, by = ey - 2.5 * S - (k.brow === 1 ? .3 * S : 0), tilt = k.brow * 1.1 * S;
-      g.strokeStyle = a.hair && a.age >= 60 ? '#cfcfc8' : 'rgba(40,28,20,.8)'; g.lineWidth = 1 * S; g.beginPath(); g.moveTo(bx - d * 1.5 * S, by + tilt * (d < 0 ? 1 : 1) * -d * .5 + tilt * .35); g.lineTo(bx + d * 1.6 * S, by - tilt * .55); g.stroke();
+    if (!baby && !hurt) {   // brows, mirrored: inner ends (towards the nose) drop when stern, rise when worried; drawn in a darker shade of the hair
+      const { outer, inner } = browPoints(k.brow, d, cx, ey, S);
+      g.strokeStyle = shade(a.hair || '#3a2a1c', a.hair && a.age >= 60 ? .8 : .55); g.lineWidth = 1 * S + .15; g.beginPath(); g.moveTo(outer[0], outer[1]); g.lineTo(inner[0], inner[1]); g.stroke();
     }
   }
   const nx = hx + f * 3.4 * S, ny = hy + 2.2 * S; g.strokeStyle = 'rgba(120,70,50,.45)'; g.lineWidth = .9; g.beginPath(); g.moveTo(nx - f * .2 * S, ny - .8 * S); g.lineTo(nx + (f || .4) * .8 * S, ny + .6 * S); g.stroke();   // a nose, turned the way they face
