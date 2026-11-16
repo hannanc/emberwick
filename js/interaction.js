@@ -35,12 +35,37 @@ cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', e
 cv.addEventListener('pointerleave', () => { if (hover) { hover = null; cv.classList.remove('hot'); } });
 cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(Math.exp(-(e.deltaMode ? e.deltaY * 16 : e.deltaY) * 0.0016), e.offsetX, e.offsetY); }, { passive: false });
 cv.addEventListener('dblclick', e => zoomAt(1.8, e.offsetX, e.offsetY));
+let kfocus = null;   // keyboard focus on the map: { kind: 'villager' | 'place', name }
+function kbdItems() { return st ? [...(st.phase === 'night' ? [] : st.agents.filter(a => pos[a.name]).map(a => ({ kind: 'villager', name: a.name }))), ...Object.keys(st.places).map(n => ({ kind: 'place', name: n }))] : []; }
+function kbdPoint(k) { if (k.kind === 'villager') { const p = pos[k.name]; return p ? [p.x * T, p.y * T] : null; } const q = st.places[k.name]; return q ? [q[0] * T, q[1] * T] : null; }
+function kbdMove(dir, wrap) {   // step to the next or previous villager or place; false when a Tab runs off either end (so focus can leave the map)
+  const items = kbdItems(); if (!items.length) return false;
+  let i = kfocus ? items.findIndex(k => k.kind === kfocus.kind && k.name === kfocus.name) : -1;
+  i = i < 0 ? (dir > 0 ? 0 : items.length - 1) : i + dir;
+  if (i < 0 || i >= items.length) { if (!wrap) { kfocus = null; return false; } i = (i + items.length) % items.length; }
+  kfocus = items[i]; const pt = kbdPoint(kfocus);
+  if (pt) { const [sx, sy] = toScreen(pt[0], pt[1]); if (sx < 60 || sx > vw - 60 || sy < 60 || sy > vh - 60) { cam.follow = false; syncFocus(); cam.tx = pt[0]; cam.ty = pt[1]; clampT(); userMoved = true; } }
+  $('kbd').textContent = kfocus.kind === 'villager' ? `${kfocus.name}, ${(st.agents.find(a => a.name === kfocus.name) || {}).activity || 'in the village'}. Press Enter to select.` : `${PLACE_NAME[kfocus.name] || kfocus.name}. Press Enter to visit.`;
+  return true;
+}
+function drawKbdFocus() {   // a gold ring and a forced name label on whatever the keyboard has reached
+  if (!kfocus || document.activeElement !== cv || !st) return;
+  const pt = kbdPoint(kfocus); if (!pt) return; const [sx, sy] = toScreen(pt[0], pt[1]), z = cam.z, v = kfocus.kind === 'villager';
+  ctx.save(); ctx.beginPath(); if (v) ctx.ellipse(sx, sy - 2 * z, 17 * z * FIG / .85, 7 * z * FIG / .85, 0, 0, 7); else ctx.arc(sx, sy, Math.max(22, 30 * z), 0, 7);
+  ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(14,16,20,.8)'; ctx.stroke(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#ffd36b'; ctx.stroke(); ctx.restore();
+  label(kfocus.kind === 'place' ? (PLACE_NAME[kfocus.name] || kfocus.name) : kfocus.name, sx, v ? sy - 46 * FIG * z - 8 : sy - Math.max(22, 30 * z) - 8, { color: '#ffd36b', size: 13, force: true });
+}
+cv.addEventListener('pointerdown', () => { kfocus = null; }, true);
+cv.addEventListener('blur', () => { kfocus = null; });
 cv.addEventListener('keydown', e => {
   const step = 80 / cam.tz, keys = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
   if (e.key === '+' || e.key === '=') zoomAt(1.25);
   else if (e.key === '-' || e.key === '_') zoomAt(0.8);
   else if (e.key === '0') showWholeVillage();
-  else if (e.key === 'Escape') { if (sceneAt) closeScene(); else select(null); }
+  else if (e.key === 'Escape') { kfocus = null; if (sceneAt) closeScene(); else select(null); }
+  else if (e.key === ']' || e.key === '[') kbdMove(e.key === ']' ? 1 : -1, true);
+  else if (e.key === 'Tab') { if (!e.ctrlKey && !e.altKey && !e.metaKey && kbdMove(e.shiftKey ? -1 : 1, false)) { /* handled: the ring moved */ } else return; }
+  else if (e.key === 'Enter' && kfocus) { const k = kfocus; if (k.kind === 'place') focusPlace(k.name); else select(k.name, true); }
   else if (keys[e.key]) { cam.follow = false; syncFocus(); cam.tx += keys[e.key][0]; cam.ty += keys[e.key][1]; clampT(); userMoved = true; }
   else return;
   e.preventDefault();

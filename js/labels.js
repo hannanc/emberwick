@@ -95,4 +95,5 @@ function drawOverlay(t, asleep, order) {
   }
   if (hear.now) { const i = bubbles.findIndex(b => b.name === hear.now.who); if (i >= 0) { const [b] = bubbles.splice(i, 1); b.alpha = 1; bubbles.push(b); } }
   bubbles.forEach(drawBubble);
+  drawKbdFocus();
 }
