@@ -702,6 +702,41 @@ function look(a) {   // cached per name and life stage
   return LOOKS[key] = L;
 }
 const PROPS = { Woods: 'axe', Dock: 'rod', Garden: 'basket', Bakery: 'loaf', Library: 'book', Quarry: 'pick', Cemetery: 'flowers' };
+const MOOD_KIND = {};      // mood word -> how the face shows it, worked out once per word
+function moodKind(m) {
+  m = (m || '').toLowerCase(); if (MOOD_KIND[m]) return MOOD_KIND[m];
+  const k = /joy|jovial|cheer|glad|content|happy|hopeful|amus|warm|grateful|giddy|playful|relieved|proud|delight|merry|eager|fond|pleased|affection|wry|smug/.test(m) ? { mouth: 'smile', brow: 0 }
+    : /sad|grie|mourn|wistful|weary|tired|melanchol|lonely|sorrow|heavy|gloom|bereft|guilt|sore|drained|numb/.test(m) ? { mouth: 'frown', brow: 1 }
+    : /irritable|sour|angry|annoyed|grumpy|stern|resolute|determined|stubborn|edgy|fierce|bitter|defiant/.test(m) ? { mouth: 'flat', brow: -1 }
+    : /wary|uneasy|fretful|anxious|nervous|worried|afraid|suspic|watchful|tense|restless|jumpy|troubled/.test(m) ? { mouth: 'flat', brow: 1 }
+    : { mouth: 'soft', brow: 0 };
+  return MOOD_KIND[m] = k;
+}
+function drawFace(g, o) {   // eyes with whites and pupils, brows, a nose and a mouth that follows the mood and moves when speaking
+  const { a, S, hx, hy, r, f, t, talking, hurt, baby, beard, skin, h } = o, k = moodKind(a.mood), af = Math.abs(f);
+  const ex = hx + f * 2.6 * S, es = 2.15 * S * (1 - .3 * af), ey = hy + .3 * S, blink = !REDUCE && ((t / 1000 + h % 5) % 4.3) < .13;
+  const ew = (baby ? 1.7 : 1.45) * S, eh = (blink ? .25 : (baby ? 1.7 : 1.35)) * S;
+  for (const d of [-1, 1]) {
+    const cx = ex + d * es;
+    g.fillStyle = '#f7f2e8'; g.beginPath(); g.ellipse(cx, ey, ew, eh, 0, 0, 7); g.fill();
+    if (!blink) { g.fillStyle = '#1f1812'; g.beginPath(); g.arc(cx + f * .5 * S, ey + .1 * S, .8 * S, 0, 7); g.fill(); }
+    if (!baby && !hurt) {   // brows: inner ends down when stern, up when worried
+      const bx = cx + d * .3 * S, by = ey - 2.5 * S - (k.brow === 1 ? .3 * S : 0), tilt = k.brow * 1.1 * S;
+      g.strokeStyle = a.hair && a.age >= 60 ? '#cfcfc8' : 'rgba(40,28,20,.8)'; g.lineWidth = 1 * S; g.beginPath(); g.moveTo(bx - d * 1.5 * S, by + tilt * (d < 0 ? 1 : 1) * -d * .5 + tilt * .35); g.lineTo(bx + d * 1.6 * S, by - tilt * .55); g.stroke();
+    }
+  }
+  const nx = hx + f * 3.4 * S, ny = hy + 2.2 * S; g.strokeStyle = 'rgba(120,70,50,.45)'; g.lineWidth = .9; g.beginPath(); g.moveTo(nx - f * .2 * S, ny - .8 * S); g.lineTo(nx + (f || .4) * .8 * S, ny + .6 * S); g.stroke();   // a nose, turned the way they face
+  const mx = hx + f * 2.2 * S, my = hy + 4 * S;
+  if (talking) { const open = .5 + .5 * Math.sin(t / 85 + h); g.fillStyle = '#5a2a22'; g.beginPath(); g.ellipse(mx, my + .2 * S, (1.5 - .3 * af) * S, (.5 + open * 1.5) * S, 0, 0, 7); g.fill(); }
+  else if (!beard && !hurt) {
+    g.strokeStyle = 'rgba(130,55,45,.8)'; g.lineWidth = 1; g.beginPath();
+    if (k.mouth === 'smile') g.arc(mx, my - 1.3 * S, 2.2 * S, .18 * Math.PI, .82 * Math.PI);
+    else if (k.mouth === 'frown') g.arc(mx, my + 2.6 * S, 2 * S, 1.2 * Math.PI, 1.8 * Math.PI);
+    else if (k.mouth === 'soft') g.arc(mx, my - .5 * S, 1.8 * S, .2 * Math.PI, .8 * Math.PI);
+    else { g.moveTo(mx - 1.7 * S, my + .5 * S); g.lineTo(mx + 1.7 * S, my + .5 * S); }
+    g.stroke();
+  }
+}
 function person(a, p, t) {
   const S = 1.35 * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1), x = p.x * T, base = p.y * T, step = p.walking ? Math.sin(t / 95) : 0, h = hash(a.name), g = ctx, L = look(a);
   const breath = p.walking || REDUCE ? 0 : Math.sin(t / 900 + h % 100) * 0.5, y = base - (p.walking ? Math.abs(step) * 2.5 : 0) + breath;
@@ -712,13 +747,14 @@ function person(a, p, t) {
     if (op && Math.abs(op.x - p.x) > .05) f = Math.sign(op.x - p.x);
     else if (!REDUCE) { const ph = t / 1000 + h % 7; if (ph % 6 < .9) f = (Math.floor(ph / 6) + h) & 1 ? 1 : -1; }   // now and then a glance to the side
   }
-  const lean = old ? 1.5 * S * (f || p.face || 1) : 0, hx = x + lean + f * .5 * S, hy = y - 27 * S, r = (baby ? 8.6 : 7.2) * S, skin = hurt ? '#e2dac2' : L.skin, line = 'rgba(20,16,10,.45)';
+  const lean = old ? 1.5 * S * (f || p.face || 1) : 0, hx = x + lean + f * .5 * S, hy = y - 26 * S, r = (baby ? 8.2 : a.age < 18 ? 6.4 : 5.7) * S, skin = hurt ? '#e2dac2' : L.skin, line = 'rgba(30,22,16,.4)', ST = baby ? 1 : a.age < 18 ? 1.04 : 1.14;      // ST: grown-ups are drawn a little taller
   const prop = !p.walking && !p.route.length && PROPS[a.place], hairC = a.hair;
   shadow(g, x - 2, base + 1, 11 * S, 4 * S, .3);
   if (selected === a.name) { const k = 1 + Math.sin(t / 300) * 0.08; g.strokeStyle = '#e8bd5f'; g.lineWidth = 2.5; g.beginPath(); g.ellipse(x, base + 1, 17 * S * k, 7.5 * S * k, 0, 0, 7); g.stroke(); }
   else if (hover === a.name) { g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 2; g.beginPath(); g.ellipse(x, base + 1, 15 * S, 6.5 * S, 0, 0, 7); g.stroke(); }
   if (hurt) { const k = REDUCE ? .6 : .5 + .3 * Math.sin(t / 700 + h % 9); g.fillStyle = `rgba(140,215,120,${.16 * k})`; g.beginPath(); g.ellipse(x, base - 15 * S, 15 * S, 25 * S, 0, 0, 7); g.fill(); g.fillStyle = `rgba(140,215,120,${.2 * k})`; g.beginPath(); g.ellipse(x, base + 1, 13 * S, 5 * S, 0, 0, 7); g.fill(); }   // a faint green aura while ill
   g.lineWidth = 1.3; g.lineJoin = 'round'; g.lineCap = 'round';
+  g.save(); g.translate(0, base); g.scale(1, ST); g.translate(0, -base);      // the figure itself, stretched up from the feet
   if (old) { const sx = x - (f || p.face || 1) * 10.5 * S; g.strokeStyle = '#6b4a2e'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(sx + (f || 1) * 1.6 * S, y - 12 * S + 0); g.lineTo(sx, y - 11 * S); g.lineTo(sx, base + .5); g.stroke(); g.lineWidth = 1.3; }   // walking stick
   if (L.hair === 'long') { g.fillStyle = hairC; g.strokeStyle = line; g.beginPath(); g.roundRect(hx - r - .9 * S, hy - r * .55, 2 * r + 1.8 * S, 15 * S, [r, r, 3 * S, 3 * S]); g.fill(); g.stroke(); }   // hair falling behind the shoulders
   g.fillStyle = L.leather ? '#4a3626' : '#3a3029';                                                               // legs and feet
@@ -735,7 +771,7 @@ function person(a, p, t) {
     g.fillStyle = skin; g.beginPath(); g.arc(ex, ey + .6 * S, 1.9 * S, 0, 7); g.fill(); return [ex, ey + .6 * S];
   };
   g.fillStyle = a.color; torso(); g.fill();
-  g.save(); torso(); g.clip(); g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(x, y - 22 * S, 10 * S, 20 * S);
+  g.save(); torso(); g.clip(); { const tg = g.createLinearGradient(x - 9 * S, 0, x + 9 * S, 0); tg.addColorStop(0, 'rgba(255,255,255,.16)'); tg.addColorStop(.55, 'rgba(255,255,255,0)'); tg.addColorStop(1, 'rgba(0,0,0,.2)'); g.fillStyle = tg; g.fillRect(x - 10 * S, y - 23 * S, 20 * S, 22 * S); }
   if (L.accent === 'apron') {   // apron over the lower body, with straps
     g.fillStyle = L.apron; g.beginPath(); g.roundRect(x - 5.2 * S, y - 16.5 * S, 10.4 * S, 13 * S, 2 * S); g.fill(); g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x + .5 * S, y - 16.5 * S, 5 * S, 13 * S);
     g.strokeStyle = L.leather ? '#5a3a1c' : 'rgba(150,140,120,.8)'; g.lineWidth = 1.1; g.beginPath(); g.moveTo(x - 3.6 * S, y - 16.5 * S); g.lineTo(x - 5 * S, y - 21.4 * S); g.moveTo(x + 3.6 * S, y - 16.5 * S); g.lineTo(x + 5 * S, y - 21.4 * S); g.stroke();
@@ -763,8 +799,7 @@ function person(a, p, t) {
     if (L.hair === 'bun') { g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.arc(hx, hy - r - 1.3 * S, 3.6 * S, 0, 7); g.fill(); g.stroke(); }
   }
   if (L.beard && a.age >= 18) { g.fillStyle = L.beard; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.moveTo(hx - r * .98, hy + 1.6 * S); g.quadraticCurveTo(hx - r * 1.05, hy + r + 2.4 * S, hx, hy + r + 2.8 * S); g.quadraticCurveTo(hx + r * 1.05, hy + r + 2.4 * S, hx + r * .98, hy + 1.6 * S); g.quadraticCurveTo(hx, hy + 3.4 * S, hx - r * .98, hy + 1.6 * S); g.fill(); g.stroke(); }
-  else if (!hurt && !baby) { g.strokeStyle = 'rgba(120,50,40,.7)'; g.lineWidth = 1; g.beginPath(); g.arc(ex, hy + 2.2 * S, 1.8 * S, .15 * Math.PI, .85 * Math.PI); g.stroke(); }
-  g.fillStyle = '#1f1812'; g.beginPath(); g.arc(ex - es, ey, er, 0, 7); g.arc(ex + es + 0.01, ey, er, 0, 7); g.fill();
+  drawFace(g, { a, S, hx, hy, r, f, t, talking: !!a.say && now - a.say_at < 5.5 && !p.walking, hurt, baby, beard: !!(L.beard && a.age >= 18), skin, h });
   if (L.cap && a.age >= 6) {   // cap with a brim towards the facing direction
     g.fillStyle = L.cap; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.arc(hx, hy - 1.2 * S, r + .8 * S, Math.PI * 1.0, Math.PI * 2); g.closePath(); g.fill(); g.stroke();
     g.beginPath(); g.roundRect(hx - r - 1.2 * S + f * 2.5 * S, hy - 2.4 * S, 2 * r + 2.4 * S, 2.4 * S, 1.2 * S); g.fill(); g.stroke();
@@ -779,6 +814,7 @@ function person(a, p, t) {
     else if (prop === 'pick') { g.strokeStyle = '#6b4a2e'; g.lineWidth = 2; g.beginPath(); g.moveTo(px - .5 * S, py + 4 * S); g.lineTo(px + 3.5 * S, py - 11 * S); g.stroke(); g.strokeStyle = '#9aa0a6'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(px - 3 * S, py - 11 * S); g.quadraticCurveTo(px + 3.5 * S, py - 15 * S, px + 10 * S, py - 10 * S); g.stroke(); }
     else if (prop === 'flowers') { g.strokeStyle = '#4f8a3c'; g.lineWidth = 1.2; g.beginPath(); for (const d of [-2, 0, 2]) { g.moveTo(px + d * .5 * S, py + 1 * S); g.lineTo(px + d * S, py - 5 * S); } g.stroke(); ['#f4e36b', '#e98bb0', '#f6f2ea'].forEach((c, i) => { g.fillStyle = c; g.beginPath(); g.arc(px + (i - 1) * 2 * S, py - 5.6 * S - (i % 2) * S, 1.6 * S, 0, 7); g.fill(); }); }
   }
+  g.restore();
   if (hurt && !REDUCE && (t / 1000) % 5 < 1.8) {   // a faint green "≈" above the head now and then
     const k = ((t / 1000) % 5) / 1.8, ox = hx, oy = hy - r - 6 * S - k * 5; g.strokeStyle = `rgba(190,235,170,${1 - k * .8})`; g.lineWidth = 1.6;
     for (const d of [0, 3]) { g.beginPath(); g.moveTo(ox - 4, oy + d - 1); g.quadraticCurveTo(ox - 2, oy + d - 3.5, ox, oy + d - 1); g.quadraticCurveTo(ox + 2, oy + d + 1.5, ox + 4, oy + d - 1); g.stroke(); }
