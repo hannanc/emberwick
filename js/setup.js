@@ -1,4 +1,5 @@
 // ================================================================ setup
+const FIG = 0.85;   // villager scale: an adult stands about 1.2 doors tall; bubbles, labels, hit areas and the lantern follow it
 const T = 32, H = 24, WH = H * T, M = 8 * T, SQ = [20, 13.4];
 let W = 58, WW = W * T;                                   // grows east as the village opens new lanes
 const SERIF = getComputedStyle(document.documentElement).getPropertyValue('--serif'), SANS = getComputedStyle(document.documentElement).getPropertyValue('--sans');

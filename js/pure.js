@@ -86,10 +86,10 @@ function placeNear(places, wx, wy) {   // which place a point (in tiles) belongs
   for (const [n, [x, y]] of Object.entries(places)) { if (n === 'Square') continue; const d = Math.hypot(wx - x, wy - y - 0.5); if (d < bd) { bd = d; best = n; } }
   return best;
 }
-function villagerNear(st, pos, wx, wy, z, T = 32) {   // the villager under a point in world pixels, or null (nobody can be picked at night)
+function villagerNear(st, pos, wx, wy, z, T = 32, fig = 1.35) {   // the villager under a point in world pixels, or null (nobody can be picked at night)
   if (!st || st.phase === 'night') return null;
-  const rad = Math.max(24, 16 / z); let best = null, bd = rad;
-  for (const a of st.agents) { const p = pos[a.name]; if (!p) continue; const d = Math.hypot(p.x * T - wx, p.y * T - 24 - wy); if (d < bd) { bd = d; best = a.name; } }
+  const rad = Math.max(18 * fig, 16 / z); let best = null, bd = rad;
+  for (const a of st.agents) { const p = pos[a.name]; if (!p) continue; const d = Math.hypot(p.x * T - wx, p.y * T - 18 * fig - wy); if (d < bd) { bd = d; best = a.name; } }
   return best;
 }
 function sceneData(st, name, radius) {   // who is in a place, what was said there in the last 90 minutes, what stands nearby

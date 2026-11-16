@@ -26,7 +26,7 @@ function drawFace(g, o) {   // eyes with whites and pupils, brows, a nose and a 
   }
 }
 function person(a, p, t) {
-  const S = 1.35 * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1), x = p.x * T, base = p.y * T, step = p.walking ? Math.sin(t / 95) : 0, h = hash(a.name), g = ctx, L = look(a);
+  const S = FIG * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1), x = p.x * T, base = p.y * T, step = p.walking ? Math.sin(t / 95) : 0, h = hash(a.name), g = ctx, L = look(a);
   const standing = !p.walking && !p.route.length, pose = standing ? poseOf(a) : 'walk', sit = pose === 'sit';
   const breath = p.walking || REDUCE ? 0 : Math.sin(t / 900 + h % 100) * 0.5, y = base - (p.walking ? Math.abs(step) * 2.5 : 0) + breath + (sit ? 3.2 * S : 0);
   const now = Date.now() / 1000 + skew, old = a.age >= 65, baby = a.age < 6, hurt = a.sick;

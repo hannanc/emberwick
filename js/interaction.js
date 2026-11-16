@@ -1,6 +1,6 @@
 // ================================================================ map interaction
 const ptrs = new Map(); let drag = null, pinch = null;
-function villagerAt(sx, sy) { const [wx, wy] = toWorld(sx, sy); return villagerNear(st, pos, wx, wy, cam.z, T); }
+function villagerAt(sx, sy) { const [wx, wy] = toWorld(sx, sy); return villagerNear(st, pos, wx, wy, cam.z, T, FIG); }
 function dismissHint() { $('hint').classList.add('gone'); store.set('ew-hint', '1'); }
 if (store.get('ew-hint')) $('hint').classList.add('gone'); else setTimeout(dismissHint, 12000);
 cv.addEventListener('pointerdown', e => {

@@ -49,7 +49,7 @@ function speakerSpot() {   // where the voice being played comes from: [x, headY
   if (!hear.now) return null; const who = hear.now.who;
   if (who === 'The Oracle') { const [ox, oy] = st.places.Oracle; return [ox * T, oy * T - 26, oy * T + 12, 1.9, 1, '#a98cf0']; }
   const a = st.agents.find(q => q.name === who), p = pos[who]; if (!a || !p) return null;
-  const S = 1.35 * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1); return [p.x * T, p.y * T - 27 * S, p.y * T, S, p.face < 0 ? -1 : 1, a.color];
+  const S = FIG * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1); return [p.x * T, p.y * T - 27 * S, p.y * T, S, p.face < 0 ? -1 : 1, a.color];
 }
 function drawSpeaking(t) {   // a pulsing ring at the feet and three sound-wave arcs beside the head of whoever is being heard
   const sp = speakerSpot(); if (!sp) return; const [x, hy, by, S, side, col] = sp, k = REDUCE ? .4 : (t / 800) % 1, g = ctx;
@@ -157,7 +157,7 @@ function frame(t) {
       const wk = st.places.Workshop, qu = st.places.Quarry;
       if (wk && stock.wood > 0 && vis(wk[0] * T, wk[1] * T, 120, 60, 80)) things.push([wk[1] + .6, () => drawLogs(wk[0] + 3.6, wk[1] + .6, Math.min(10, Math.ceil(stock.wood / 3)))]);
       if (qu && stock.stone > 0 && vis(qu[0] * T, qu[1] * T, 120, 60, 80)) things.push([qu[1] + .6, () => drawStones(qu[0] + 3, qu[1] + .6, Math.min(12, Math.ceil(stock.stone / 25)))]); }   // the village's wood and stone, piled where they are worked
-    if (!asleep) for (const a of order) if (vis(pos[a.name].x * T, pos[a.name].y * T, 70, 40, 100)) things.push([pos[a.name].y, () => { person(a, pos[a.name], t); const p = pos[a.name]; if (lamp > .3 && !INDOOR.has(a.place)) wins.push([p.x * T + (p.face || 1) * 9, p.y * T - 22, .45, '255,190,110']); }]);   // a villager out after dusk carries a small lantern glow
+    if (!asleep) for (const a of order) if (vis(pos[a.name].x * T, pos[a.name].y * T, 70, 40, 100)) things.push([pos[a.name].y, () => { person(a, pos[a.name], t); const p = pos[a.name]; if (lamp > .3 && !INDOOR.has(a.place)) wins.push([p.x * T + (p.face || 1) * 9 * FIG / 1.35, p.y * T - 22 * FIG / 1.35, .45, '255,190,110']); }]);   // a villager out after dusk carries a small lantern glow
     const sg = st.goals && st.goals.stranger;
     if (!asleep && sg) { const sp = { x: st.places.Square[0] - 3.2, y: st.places.Square[1] + 2.6, walking: false, route: [], face: 1 };   // the stranger, waiting with a bundle
       things.push([sp.y, () => { person({ name: sg.name, age: sg.age, sex: sg.sex, hair: sg.hair, color: sg.color, place: 'Square', say_to: '', say_at: 0 }, sp, t);
