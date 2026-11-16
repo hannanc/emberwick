@@ -275,3 +275,15 @@ def test_http_compresses_state_only_when_asked(make_world):
         assert json.loads(gz.decompress(bad))["partial"] is False
     finally:
         srv.shutdown()
+
+
+def test_unchanged_lists_are_skipped_by_hash(make_world):
+    import json
+    w = make_world()
+    full = json.loads(w.state_json())
+    assert "structures" in full and "wishes" in full and set(full["hashes"]) == {"structures", "wishes"}
+    top = full["events"][-1]["id"] if full["events"] else 0
+    part = json.loads(w.state_json(top, full["chron_day"], full["oracle_id"], full["hashes"]))
+    assert "structures" not in part and "wishes" not in part and part["hashes"] == full["hashes"]
+    stale = json.loads(w.state_json(top, full["chron_day"], full["oracle_id"], {"structures": "0" * 10, "wishes": "0" * 10}))
+    assert "structures" in stale and "wishes" in stale

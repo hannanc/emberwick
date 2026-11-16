@@ -6,7 +6,7 @@ and reflect. Every night a larger model writes the day's chronicle and invents
 tomorrow's twist. Standard library only.  Open http://<server>:8377/
 """
 import difflib
-import collections, contextlib, gzip, json, math, os, random, re, sqlite3, threading, time, urllib.error, urllib.parse, urllib.request
+import collections, contextlib, gzip, hashlib, json, math, os, random, re, sqlite3, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 try:                      # optional: only the Oracle needs the Anthropic SDK (pip install anthropic)
@@ -3476,10 +3476,11 @@ def gzip_if_accepted(body, accept, ctype="application/json"):
         return body, False
     return gzip.compress(body, 5, mtime=0), True
 
-def state_json(since=None, chron=None, oracle=None):
+def state_json(since=None, chron=None, oracle=None, hashes=None):
     """The whole state, or with since (last event id the client holds), chron (latest chronicle day it holds) and
     oracle (latest Oracle consult id it holds) only what changed: newer events, and no chronicle or Oracle history
-    when unchanged. A cursor that is ahead of the server (a restart) gets the full state."""
+    when unchanged; hashes (a dict from the keys structures and wishes to the short hash the client holds) skips those
+    lists when they have not changed. A cursor that is ahead of the server (a restart) gets the full state."""
     with db() as c:
         ev = [dict(json.loads(d), id=i) for i, d in c.execute("SELECT id, data FROM events ORDER BY id DESC LIMIT 80")]
         top_ev = ev[0]["id"] if ev else 0
@@ -3544,6 +3545,10 @@ def state_json(since=None, chron=None, oracle=None):
                                models=dict(actor=ACTOR, narrator=NARRATOR, oracle=ORACLE_MODEL), usage=usage_report(), goals=goals,
                                world=dict(w=world_w(), h=24)))
         if chron_rows is not None: out["chronicle"] = chron_rows
+        out["hashes"] = {}
+        for k in ("structures", "wishes"):
+            out["hashes"][k] = hashlib.md5(json.dumps(out[k]).encode()).hexdigest()[:10]
+            if part and (hashes or {}).get(k) == out["hashes"][k]: del out[k]
         return json.dumps(out)
 
 class Handler(BaseHTTPRequestHandler):
@@ -3569,7 +3574,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/state":
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             num = lambda k: int(q[k][0]) if k in q and re.fullmatch(r"\d{1,12}", q[k][0]) else None
-            self.send(200, state_json(num("since"), num("chron"), num("oracle")))
+            hs = {k: q[k][0] for k in ("structures", "wishes") if k in q and re.fullmatch(r"[0-9a-f]{10}", q[k][0])}
+            self.send(200, state_json(num("since"), num("chron"), num("oracle"), hs))
         elif m := re.fullmatch(r"/api/tts/(\d{1,12})\.wav", path):
             try:
                 wav = tts_wav(int(m.group(1))) if tts_available() else None
