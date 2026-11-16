@@ -202,3 +202,76 @@ def test_the_page_script_parses(tmp_path):
     path.write_text(script, encoding="utf-8")
     result = subprocess.run(["node", "--check", str(path)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------- compression and incremental state
+def test_gzip_choice():
+    import gzip as gz
+    from tests.helpers import module
+    m = module()
+    big = b"x" * 5000
+    out, zipped = m.gzip_if_accepted(big, "gzip, deflate, br")
+    assert zipped and gz.decompress(out) == big and len(out) < 200
+    assert m.gzip_if_accepted(big, "") == (big, False)
+    assert m.gzip_if_accepted(big, None) == (big, False)
+    assert m.gzip_if_accepted(big, "gzip;q=0") == (big, False)
+    assert m.gzip_if_accepted(b"small", "gzip") == (b"small", False)
+    assert m.gzip_if_accepted(big, "gzip", "audio/wav") == (big, False)
+
+
+def test_state_is_full_by_default_and_incremental_on_request(make_world):
+    import json
+    w = make_world()
+    w.log_event(kind="note", text="one")
+    w.log_event(kind="note", text="two")
+    full = json.loads(w.state_json())
+    assert full["partial"] is False and "chronicle" in full and "log" in full["oracle"]
+    ids = [e["id"] for e in full["events"]]
+    assert ids == sorted(ids) and len(ids) >= 2
+    top = ids[-1]
+    same = json.loads(w.state_json(top, full["chron_day"], full["oracle_id"]))
+    assert same["partial"] is True and same["events"] == []
+    assert "chronicle" not in same and "log" not in same["oracle"]
+    assert same["agents"] and same["day"] == full["day"]
+    w.log_event(kind="note", text="three")
+    more = json.loads(w.state_json(top, full["chron_day"], full["oracle_id"]))
+    assert [e["text"] for e in more["events"]] == ["three"]
+    assert json.loads(w.state_json(top, None, None))["chronicle"] == full["chronicle"]
+    ahead = json.loads(w.state_json(top + 1000, full["chron_day"], full["oracle_id"]))
+    assert ahead["partial"] is False and "chronicle" in ahead and len(ahead["events"]) == len(full["events"]) + 1
+
+
+def test_a_partial_poll_is_small_when_gzipped(make_world):
+    import json
+    w = make_world()
+    full = json.loads(w.state_json())
+    body2 = w.state_json(full["events"][-1]["id"] if full["events"] else 0, full["chron_day"], full["oracle_id"]).encode()
+    assert len(w.gzip_if_accepted(body2, "gzip")[0]) < 10_000
+
+
+def _serve(m):
+    import threading
+    from http.server import ThreadingHTTPServer
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), m.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def test_http_compresses_state_only_when_asked(make_world):
+    import gzip as gz, http.client, json
+    w = make_world()
+    srv = _serve(w)
+    try:
+        def get(path, **hdr):
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_port)
+            c.request("GET", path, headers=hdr)
+            r = c.getresponse()
+            return r, r.read()
+        r, raw = get("/api/state")
+        assert r.getheader("Content-Encoding") is None and json.loads(raw)["partial"] is False
+        r, z = get("/api/state?since=0&chron=0&oracle=0", **{"Accept-Encoding": "gzip"})
+        assert r.getheader("Content-Encoding") == "gzip" and json.loads(gz.decompress(z))["agents"]
+        r, bad = get("/api/state?since=abc", **{"Accept-Encoding": "gzip"})
+        assert json.loads(gz.decompress(bad))["partial"] is False
+    finally:
+        srv.shutdown()

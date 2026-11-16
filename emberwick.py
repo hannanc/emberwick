@@ -6,7 +6,7 @@ and reflect. Every night a larger model writes the day's chronicle and invents
 tomorrow's twist. Standard library only.  Open http://<server>:8377/
 """
 import difflib
-import collections, contextlib, json, math, os, random, re, sqlite3, threading, time, urllib.error, urllib.request
+import collections, contextlib, gzip, json, math, os, random, re, sqlite3, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 try:                      # optional: only the Oracle needs the Anthropic SDK (pip install anthropic)
@@ -3468,13 +3468,31 @@ def tts_wav(event_id):
         return _tts_cache[event_id]
 
 # ---------------------------------------------------------------- web
-def state_json():
+GZIP_MIN = 1000
+
+def gzip_if_accepted(body, accept, ctype="application/json"):
+    """(body, encoded): gzip a body over about 1 KB for a client that accepts it; never audio or other binary."""
+    if len(body) < GZIP_MIN or ctype.startswith("audio/") or not re.search(r"(^|[\s,])gzip\s*(,|;(?!\s*q=0\s*(,|$))|$)", accept or ""):
+        return body, False
+    return gzip.compress(body, 5, mtime=0), True
+
+def state_json(since=None, chron=None, oracle=None):
+    """The whole state, or with since (last event id the client holds), chron (latest chronicle day it holds) and
+    oracle (latest Oracle consult id it holds) only what changed: newer events, and no chronicle or Oracle history
+    when unchanged. A cursor that is ahead of the server (a restart) gets the full state."""
     with db() as c:
         ev = [dict(json.loads(d), id=i) for i, d in c.execute("SELECT id, data FROM events ORDER BY id DESC LIMIT 80")]
-        consults = [dict(day=d, minute=m, who=w, question=q, speech=sp, answer=an, plan=json.loads(pl))
+        top_ev = ev[0]["id"] if ev else 0
+        chron_day = (c.execute("SELECT MAX(day) FROM chronicle").fetchone() or [None])[0] or 0
+        oracle_id = (c.execute("SELECT MAX(id) FROM oracle").fetchone() or [None])[0] or 0
+        part = since is not None and since <= top_ev
+        if part: ev = [e for e in ev if e["id"] > since]
+        skip_chron = part and chron == chron_day
+        skip_oracle = part and oracle == oracle_id
+        consults = None if skip_oracle else [dict(day=d, minute=m, who=w, question=q, speech=sp, answer=an, plan=json.loads(pl))
                     for d, m, w, q, sp, an, pl in c.execute(
                         "SELECT day, minute, who, question, speech, answer, plan FROM oracle ORDER BY id DESC LIMIT 20")]
-        chron = [dict(day=d, title=t, body=b, weather=w) for d, t, b, w in
+        chron_rows = None if skip_chron else [dict(day=d, title=t, body=b, weather=w) for d, t, b, w in
                  c.execute("SELECT day, title, body, weather FROM chronicle ORDER BY day DESC LIMIT 30")]
     with lock:
         agents = [dict(name=n, job=who(n)["job"], color=who(n)["color"], hair=who(n)["hair"], age=age(n),
@@ -3517,20 +3535,26 @@ def state_json():
         ost = oracle_state()
         orc = dict(state=ost, model=S["oracle"].get("model") or "/".join(providers()) or ORACLE_MODEL, speech=S["oracle"]["speech"], at=S["oracle"]["at"], log=consults,
                    wait=max(0, int((ORACLE_COOLDOWN - (time.time() - S["oracle"]["last"])) / 60)) if ost == "resting" else 0)
-        return json.dumps(dict(now=time.time(), structures=structs, oracle=orc, voice=S.get("voice"), day=S["day"], minute=S["minute"], weather=S["weather"],
+        if consults is None: del orc["log"]
+        out = dict(partial=part, chron_day=chron_day, oracle_id=oracle_id, **dict(now=time.time(), structures=structs, oracle=orc, voice=S.get("voice"), day=S["day"], minute=S["minute"], weather=S["weather"],
                                news=S["news"], tts=tts_available(), fair=dict(day=S.get("fair", {}).get("day"), today=fair_today(),
                                entries=len(S.get("fair", {}).get("entries", [])), results=S.get("fair", {}).get("results", [])), merchant=S.get("merchant", 0), dead=S.get("dead", []), phase=S["phase"], status=status, agents=agents,
-                               places={k: v[:2] for k, v in PLACES.items()}, events=ev[::-1], chronicle=chron,
+                               places={k: v[:2] for k, v in PLACES.items()}, events=ev[::-1],
                                prayers=[p for p in S["prayers"] if p["day"] == S["day"]], wishes=S["wishes"][-12:][::-1],
                                models=dict(actor=ACTOR, narrator=NARRATOR, oracle=ORACLE_MODEL), usage=usage_report(), goals=goals,
                                world=dict(w=world_w(), h=24)))
+        if chron_rows is not None: out["chronicle"] = chron_rows
+        return json.dumps(out)
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
     def send(self, code, body, ctype="application/json", cache="no-store"):
         body = body.encode() if isinstance(body, str) else body
+        body, zipped = gzip_if_accepted(body, self.headers.get("Accept-Encoding"), ctype)
         self.send_response(code)
+        if zipped: self.send_header("Content-Encoding", "gzip")
+        self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Type", ctype + ("" if ctype.startswith("audio/") else "; charset=utf-8"))
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", cache)
@@ -3543,7 +3567,9 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(HERE, "index.html"), "rb") as f:
                 self.send(200, f.read(), "text/html")
         elif path == "/api/state":
-            self.send(200, state_json())
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            num = lambda k: int(q[k][0]) if k in q and re.fullmatch(r"\d{1,12}", q[k][0]) else None
+            self.send(200, state_json(num("since"), num("chron"), num("oracle")))
         elif m := re.fullmatch(r"/api/tts/(\d{1,12})\.wav", path):
             try:
                 wav = tts_wav(int(m.group(1))) if tts_available() else None
