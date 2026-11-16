@@ -955,8 +955,9 @@ function drawOverlay(t, asleep, order) {
     const hs = hear.now && st.agents.find(q => q.name === hear.now.who && q.say);   // whoever is being heard keeps a bubble, opaque and on top
     if (hs) latest[hs.place] = hs;
     const speakers = Object.values(latest).sort((a, b) => (b.name === selected) - (a.name === selected) || b.say_at - a.say_at);
-    for (const a of speakers) { const p = pos[a.name], [sx, sy] = toScreen(p.x * T, p.y * T - 40 * 1.35); bubbles.push(layoutBubble(a.say, a.name, a.color, sx, sy, clamp((26 - (now - a.say_at)) / 4, 0, 1))); }
-    if (st.oracle.speech && now - st.oracle.at < 60) { const [ox, oy] = st.places.Oracle, [sx, sy] = toScreen(ox * T, oy * T - 34); bubbles.push(layoutBubble(st.oracle.speech, 'The Oracle', '#a98cf0', sx, sy, clamp((60 - (now - st.oracle.at)) / 5, 0, 1))); }
+    const onScreen = (sx, sy) => sx > -40 && sx < vw + 40 && sy > -40 && sy < vh + 40;     // a speaker out of view gets no bubble pinned to a corner
+    for (const a of speakers) { const p = pos[a.name], [sx, sy] = toScreen(p.x * T, p.y * T - 40 * 1.35); if (!onScreen(sx, sy)) continue; bubbles.push(layoutBubble(a.say, a.name, a.color, sx, sy, clamp((26 - (now - a.say_at)) / 4, 0, 1))); }
+    if (st.oracle.speech && now - st.oracle.at < 60) { const [ox, oy] = st.places.Oracle, [sx, sy] = toScreen(ox * T, oy * T - 34); if (onScreen(sx, sy)) bubbles.push(layoutBubble(st.oracle.speech, 'The Oracle', '#a98cf0', sx, sy, clamp((60 - (now - st.oracle.at)) / 5, 0, 1))); }
     for (const a of order) {                             // villager names: below the feet, else above the head
       const p = pos[a.name], [sx, sy] = toScreen(p.x * T, p.y * T), sel = a.name === selected, o = { color: sel ? '#e8bd5f' : '#fff', size: sel ? 13 : 12, force: sel };
       let ly = sy + 15, ok = label(a.name, sx, ly, o);
