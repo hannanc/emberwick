@@ -282,7 +282,7 @@ def migrate():
         a.setdefault("plan_at", 0)
         a.setdefault("plan_work", 0)
         a.setdefault("self", "")
-        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("inner", ""), ("trail", []), ("grudges", []), ("wake", {})):
+        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("inner", ""), ("worn", ""), ("grudges", []), ("wake", {})):
             a.setdefault(k, v)
         for k, v in (("expecting", None), ("proposal", None), ("partner", None), ("hungry", 0), ("rest_until", 0),
                      ("sick", None), ("care_until", 0)):
@@ -474,37 +474,12 @@ def persona(n):
             "people flatter, fib, deflect and sulk. Say nothing, or only a few words, whenever that fits. Do not repeat "
             "what you already said or did. You are a person; never mention AI.")
 
-RECENT_SAY = []          # the village's last lines of speech, to notice a word everyone is wearing out
-OVERUSED_AT = 8          # a word heard this many times among the last 40 lines is tired
-COMMON = set("about after again against always around because before being between could every first great would there their "
-             "these those which while where should still other under until though through today tomorrow tonight really "
-             "something nothing anyone everyone someone little going being doing having maybe never already again "
-             "that with this have will they them your from what when then than were been also just only more much some "
-             "such very well like into over here said says come back each know make name need once take told want "
-             "yours mine does done gone left right still".split())
-
-def tired_words():
-    names = {x.lower() for x in list(CAST) + list(S.get("born", {}))} | {p.lower() for p in PLACES}
-    seen = {}
-    for line in RECENT_SAY:
-        for w in set(re.findall(r"[a-z']{4,}", line.lower())):
-            w = w.strip("'")
-            if w not in COMMON and w not in names and not w.endswith("'s"):
-                seen[w] = seen.get(w, 0) + 1
-    return [w for w, c in sorted(seen.items(), key=lambda x: -x[1]) if c >= OVERUSED_AT][:2]
-
-def loop_notes(n):
-    """Cheap nudges when a villager is stuck in a rut, repeating themselves, or the village is wearing out a word."""
-    a, out = S["agents"][n], []
-    trail = a.get("trail", [])
-    if len(trail) >= 6 and max(trail.count(x) for x in set(trail)) >= 4:
-        out.append("You have been doing much the same thing in the same place for a long while, and you are fed up with "
-                   "it. Do something different, or go somewhere else.")
-    lines = a.get("lines", [])
-    if len(lines) >= 2 and max(difflib.SequenceMatcher(None, x.lower(), y.lower()).ratio()
-                               for i, x in enumerate(lines[-4:]) for y in lines[-4:][i + 1:]) > 0.5:
-        out.append("You have been saying nearly the same thing over and over. Say something new, or keep quiet.")
-    return out
+def repeat_note(n):
+    """A plain fact, not a mood: the villager just said, nearly word for word, what they said before."""
+    lines = S["agents"][n].get("lines", [])
+    if len(lines) >= 2 and difflib.SequenceMatcher(None, lines[-1].lower(), lines[-2].lower()).ratio() > 0.9:
+        return ["You just said almost exactly that again."]
+    return []
 
 # ---------------------------------------------------------------- how the day starts, in the villager's own words
 def wake_text(n):
@@ -520,6 +495,8 @@ def wake_text(n):
         if w.get("seek"):
             bits.append(f"You want {w['seek']}.")
         out.append(" ".join(b for b in bits if b))
+    if a.get("worn"):
+        out.append(f"Yesterday you noticed you kept falling back on {a['worn'].rstrip('.')}; you are tired of hearing yourself.")
     if a.get("inner"):
         out.append(f"A moment ago you felt: {a['inner']}")
     return out
@@ -2411,7 +2388,7 @@ def agent_turn():
              f"Village news today: {S['news']}",
              "Your recent memories:\n" + "\n".join("- " + m for m in a["memories"][-6:])]
         if a.get("lines"):
-            u.append("Things you said recently (keep sounding like yourself, but never repeat these):\n"
+            u.append("Things you said recently (if you hear yourself circling the same words or subject, drop it mid-thought, as people do):\n"
                      + "\n".join(f'- "{x}"' for x in a["lines"][-5:]))
         if a["reflections"]:
             u.append("What you concluded on earlier nights:\n" + "\n".join("- " + r for r in a["reflections"][-2:]))
@@ -2608,7 +2585,7 @@ def agent_turn():
                          "Choose an action only if it is not work (trade, pray, mourn, treat, court and so on), or none.")
         u += [f"You still hold it against {g['who']}: {g['why']}" for g in a.get("grudges", []) if g["who"] in S["agents"]]
         u += wake_text(n)
-        u += loop_notes(n)
+        u += repeat_note(n)
         u.append("Decide what you do in the next few minutes. Answer in JSON: "
                  '"thought" = one private sentence; "say" = what you say out loud, often nothing or just a few words (at most about 40 words); use "" whenever you would rather not talk; '
                  f'"action" = one of: {", ".join(actions)}; '
@@ -2639,7 +2616,6 @@ def agent_turn():
         a["activity"] = clip(r.get("activity"), 70).rstrip(".") or "idling"
         if a["activity"][:1].isupper() and not a["activity"].startswith("I "):
             a["activity"] = a["activity"][0].lower() + a["activity"][1:]
-        a["trail"] = (a.get("trail", []) + [f"{old}|{' '.join(a['activity'].lower().split()[:2])}"])[-6:]
         to = ""
         if whisper and whisper.get("speak") and say:      # answering the listener's voice, not a neighbour
             to = "you"
@@ -2663,8 +2639,6 @@ def agent_turn():
         a["say"], a["say_to"], a["say_at"] = say, to, time.time() if say else a["say_at"]
         if say:
             a["lines"] = (a.get("lines", []) + [say])[-8:]
-            RECENT_SAY.append(say)
-            del RECENT_SAY[:-40]
 
         act, did, petition, prayer = str(r.get("action") or "none"), "", "", ""
         st_ = S.get("stranger") if lines_st else None
@@ -3007,10 +2981,11 @@ def night():
                      '"wake" = how you will wake tomorrow, in your own words: "mood" (a few words), "body" (how you slept, '
                      'what aches, how hungry or tired you are), "on_mind" (the worry or hope you cannot shake), "avoid" (a '
                      'person, place or chore you mean to dodge, or ""), "seek" (who or what you want, or ""). Be petty and '
-                     'particular; not every day is meaningful, and you may simply be tired.',
+                     'particular; not every day is meaningful, and you may simply be tired. "worn" = a phrase, topic or habit '
+                     'you caught yourself falling back on today, or "".',
                      obj({"reflection": STR, "growth": STR, "milestone": STR,
                           "grudge_who": {"type": "string", "enum": ["nobody"] + others}, "grudge": STR,
-                          "wake": obj({"mood": STR, "body": STR, "on_mind": STR, "avoid": STR, "seek": STR}),
+                          "wake": obj({"mood": STR, "body": STR, "on_mind": STR, "avoid": STR, "seek": STR}), "worn": STR,
                           "feelings": {"type": "array", "items": obj(
                          {"name": {"type": "string", "enum": others or ["nobody"]}, "feeling": STR})}}),
                      num_predict=700, temperature=0.7)
@@ -3027,6 +3002,7 @@ def night():
             if gw in others and gt:
                 a["grudges"] = [g for g in a.get("grudges", []) if g["who"] != gw][-2:] + [dict(who=gw, why=gt, day=day)]
                 warm(n, gw, -1)
+            a["worn"] = clip(r.get("worn"), 120)
             wk = r.get("wake") or {}
             if isinstance(wk, dict) and any(wk.get(k) for k in ("mood", "body", "on_mind")):
                 a["wake"] = {k: clip(wk.get(k), 140) for k in ("mood", "body", "on_mind", "avoid", "seek")}
