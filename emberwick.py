@@ -285,7 +285,7 @@ def migrate():
         a.setdefault("plan_at", 0)
         a.setdefault("plan_work", 0)
         a.setdefault("self", "")
-        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("inner", ""), ("worn", ""), ("recall", []), ("grudges", []), ("wake", {})):
+        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("inner", ""), ("worn", ""), ("recall", []), ("habits", ""), ("grudges", []), ("wake", {})):
             a.setdefault(k, v)
         for k, v in (("expecting", None), ("proposal", None), ("partner", None), ("hungry", 0), ("rest_until", 0),
                      ("sick", None), ("care_until", 0)):
@@ -460,6 +460,7 @@ def persona(n):
     c = who(n)
     grown = S["agents"][n].get("self", "") if S.get("agents") else ""
     story = S["agents"][n].get("story", "") if S.get("agents") and n in S["agents"] else ""
+    habits = S["agents"][n].get("habits", "") if S.get("agents") and n in S["agents"] else ""
     legacy = S["agents"][n].get("legacy", [])[-LEGACY_SHOWN:] if S.get("agents") and n in S["agents"] else []
     fam = family_text(n) if n in S.get("agents", {}) else ""
     return (f"You are {n}, a {age(n)}-year-old {word(n)}, {c['job']} of Emberwick, a small lakeside village. "
@@ -470,6 +471,7 @@ def persona(n):
             + f"How you talk: {speech_style(n)}. " +
             f"You dream of {'building ' if n in CAST else ''}{c['dream']}. Villagers gather materials, trade with each other and build things. "
             + (f"Your life so far: {story} " if story else "")
+            + (f"Small habits and quirks you have picked up: {habits} " if habits else "")
             + (("Moments you will never forget: " + " ".join(legacy) + " ") if legacy else "")
             + (f"How living here has changed you so far: {grown} Let that show in how you act and speak. " if grown else "")
             + "Stay in character and speak in first person. You are an ordinary person, not a hero. Most moments are "
@@ -3052,13 +3054,17 @@ def night():
                      'Answer in JSON: "story" = 3 or 4 first-person sentences (about 80 words) telling who you are NOW and '
                      "how you came to be this person: what you value, fear and hold dear, how you treat people, the habits "
                      "and sore spots you have picked up, and who matters most to you. Keep what is still true of the earlier "
-                     "telling, let what has changed show, and stay recognisably yourself.",
-                     obj({"story": STR}), num_predict=300, temperature=0.7)
+                     "telling, let what has changed show, and stay recognisably yourself. "
+                     f'"habits" = two or three small habits, quirks or contradictions you have picked up, building on these: '
+                     f"{S['agents'][n].get('habits') or 'none yet'}; they can be endearing, petty or silly, and you may drop old ones.",
+                     obj({"story": STR, "habits": STR}), num_predict=420, temperature=0.7)
         except Exception:
             continue
         with lock:
             if n in S["agents"] and r.get("story"):
                 S["agents"][n]["story"] = clip(r["story"], 600)
+                if r.get("habits"):
+                    S["agents"][n]["habits"] = clip(r["habits"], 200)
                 S["agents"][n]["story_day"] = day
                 save()
 
