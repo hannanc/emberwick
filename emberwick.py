@@ -715,8 +715,12 @@ def die(n, cause):
                 S["agents"][h]["inv"][i] += share + (1 if k < rest else 0)
         for s in S["structures"]:
             if s["owner"] == n:
-                s["owner"] = heirs[0] if len(heirs) == 1 or children(n) == heirs and s["type"] == "house" \
+                pick = heirs[0] if len(heirs) == 1 or children(n) == heirs and s["type"] == "house" \
                     else random.choice(heirs)
+                if owned(pick, s["type"]) >= OWN_LIMIT:       # an heir may not hoard: pass it to another heir, or to anyone with room
+                    room = [o for o in heirs + [x for x in S["agents"] if acting(x)] if owned(o, s["type"]) < OWN_LIMIT]
+                    pick = room[0] if room else pick
+                s["owner"] = pick
     else:
         S["structures"] = [s for s in S["structures"] if s["owner"] != n]
     S["queue"] = [q for q in S["queue"] if q != n]
