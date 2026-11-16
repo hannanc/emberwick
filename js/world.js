@@ -25,8 +25,8 @@ function drawFace(g, o) {   // eyes with whites and pupils, brows, a nose and a 
     g.stroke();
   }
 }
-function person(a, p, t) {
-  const S = FIG * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1), x = p.x * T, base = p.y * T, step = p.walking ? Math.sin(t / 95) : 0, h = hash(a.name), g = ctx, L = look(a);
+function person(a, p, t, g = ctx) {   // draws onto any 2d context (the map by default, a scene card's interior strip otherwise)
+  const S = FIG * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1), x = p.x * T, base = p.y * T, step = p.walking ? Math.sin(t / 95) : 0, h = hash(a.name), L = look(a);
   const standing = !p.walking && !p.route.length, pose = standing ? poseOf(a) : 'walk', sit = pose === 'sit';
   const breath = p.walking || REDUCE ? 0 : Math.sin(t / 900 + h % 100) * 0.5, y = base - (p.walking ? Math.abs(step) * 2.5 : 0) + breath + (sit ? 3.2 * S : 0);
   const now = Date.now() / 1000 + skew, old = a.age >= 65, baby = a.age < 6, hurt = a.sick;
@@ -113,7 +113,7 @@ function person(a, p, t) {
     else if (prop === 'flowers') { g.strokeStyle = '#4f8a3c'; g.lineWidth = 1.2; g.beginPath(); for (const d of [-2, 0, 2]) { g.moveTo(px + d * .5 * S, py + 1 * S); g.lineTo(px + d * S, py - 5 * S); } g.stroke(); ['#f4e36b', '#e98bb0', '#f6f2ea'].forEach((c, i) => { g.fillStyle = c; g.beginPath(); g.arc(px + (i - 1) * 2 * S, py - 5.6 * S - (i % 2) * S, 1.6 * S, 0, 7); g.fill(); }); }
   }
   g.restore();
-  if (cam.z < 0.8) { const pr = 3.2 / Math.max(cam.z, .3); g.fillStyle = a.color; g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 1.2 / Math.max(cam.z, .3); g.beginPath(); g.arc(hx, hy - r - 5 * S - pr, pr, 0, 7); g.fill(); g.stroke(); }   // zoomed out, a colour pip over the head says who is who
+  if (cam.z < 0.8 && g === ctx) { const pr = 3.2 / Math.max(cam.z, .3); g.fillStyle = a.color; g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 1.2 / Math.max(cam.z, .3); g.beginPath(); g.arc(hx, hy - r - 5 * S - pr, pr, 0, 7); g.fill(); g.stroke(); }   // zoomed out, a colour pip over the head says who is who
   if (hurt && !REDUCE && (t / 1000) % 5 < 1.8) {   // a faint green "≈" above the head now and then
     const k = ((t / 1000) % 5) / 1.8, ox = hx, oy = hy - r - 6 * S - k * 5; g.strokeStyle = `rgba(190,235,170,${1 - k * .8})`; g.lineWidth = 1.6;
     for (const d of [0, 3]) { g.beginPath(); g.moveTo(ox - 4, oy + d - 1); g.quadraticCurveTo(ox - 2, oy + d - 3.5, ox, oy + d - 1); g.quadraticCurveTo(ox + 2, oy + d + 1.5, ox + 4, oy + d - 1); g.stroke(); }
