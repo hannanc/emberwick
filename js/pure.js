@@ -34,28 +34,46 @@ function sky(minute, w) {
   const lum = (0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]) / 255;
   return { c: c.map(Math.round), light: clamp((0.86 - lum) * 1.9, 0, 1) };
 }
-const LOOK = {   // hand-made founders; everyone else is derived from hash(name) in look()
-  Mira: { hair: 'braid', accent: 'apron', apron: '#f7f3ea' },
+const LOOK = {   // hand-made people; everyone else is derived from the name hash and the job in look(). Anything set here wins over the derived look.
+  Mira: { hair: 'braid', accent: 'apron', apron: '#f7f3ea', flour: 1 },
   Tobias: { hair: 'bald+beard', beard: '#b9b9b0', accent: 'apron', apron: '#8a5a32', leather: 1 },
-  Isolde: { hair: 'long', accent: 'scarf', scarf: '#b8404f' },
-  Bram: { hair: 'short', beard: '#2b1b10', sleeves: 1 },
-  Wren: { hair: 'short', cap: '#2f5e5b' },
+  Isolde: { hair: 'long', accent: 'scarf', scarf: '#b8404f', glasses: 1, book: '#2f5a6a' },
+  Bram: { hair: 'short', beard: '#2b1b10', sleeves: 1, accent: 'apron', apron: '#3a2e28', towel: 1 },
+  Wren: { hair: 'short', cap: '#2f5e5b', boot: '#c89a2a', net: 1 },
   Hesper: { hair: 'bun', accent: 'shawl', shawl: '#d9a0b4' },
+  Ansel: { hair: 'neat', accent: 'waistcoat', glasses: 1, ledger: '#7a3b2e' },
+  Odile: { hair: 'short', kerchief: '#b8503a', sleeves: 1, accent: 'apron', apron: '#8c8a84', leather: 1, tool: 'mallet' },
+  Garrick: { hair: 'short', beard: null, accent: null, cloak: '#5a4a32', satchel: '#7a5a34', leather: 0, tool: 'axe' },
 };
 const SKIN = ['#f0c9a0', '#f0c9a0', '#e8b98c', '#d9a678', '#c58c5f', '#9a6a45'], LOOKS = {};
-function look(a) {   // cached per name and life stage
-  const key = a.name + (a.age < 18 ? 'k' : ''); if (LOOKS[key]) return LOOKS[key];
-  const h = hash(a.name), f = a.sex === 'f', kid = a.age < 18, L = { skin: SKIN[h % 6], ...(LOOK[a.name] || {}) };
-  if (!LOOK[a.name]) {
-    L.hair = f ? (kid ? ['long', 'braid', 'short'][(h >>> 3) % 3] : ['long', 'bun', 'braid', 'short'][(h >>> 3) % 4]) : kid || a.age < 40 || (h >>> 3) % 4 ? 'short' : 'bald+beard';
-    if (!f && !kid && (h >>> 6) % 3 === 0 && L.hair !== 'bald+beard') L.beard = a.hair;
-    if (L.hair === 'bald+beard') L.beard = a.hair;
+const JOB_KINDS = [[/baker/, 'baker'], [/tavern|brewer|innkeep|publican/, 'tavern'], [/fisher/, 'fisher'], [/librar|scribe|clerk/, 'scribe'], [/bank|treasur|merchant/, 'banker'],
+  [/mason|quarr/, 'mason'], [/wood ?cutter|carpent|joiner|wright|lumber/, 'wood'], [/garden|herbal|farm|beekeep/, 'garden'], [/shrine|priest/, 'shrine']];
+function jobKind(job) {   // what work a job phrase means for dress: baker, tavern, fisher, scribe, banker, mason, wood, garden, shrine, or 'none' (children and anyone without a trade)
+  const j = (job || '').toLowerCase(); for (const [re, k] of JOB_KINDS) if (re.test(j)) return k; return 'none';
+}
+function look(a) {   // cached per name, life stage and kind of work, so a newcomer who is given a job changes into its clothes
+  const kind = a.age < 18 ? 'none' : jobKind(a.job), key = a.name + (a.age < 18 ? 'k' : '') + '|' + kind; if (LOOKS[key]) return LOOKS[key];
+  const h = hash(a.name), f = a.sex === 'f', kid = a.age < 18, L = { skin: SKIN[h % 6] };
+  L.hair = f ? (kid ? ['long', 'braid', 'short'][(h >>> 3) % 3] : ['long', 'bun', 'braid', 'short'][(h >>> 3) % 4]) : !kid && a.age >= 55 && (h >>> 3) % 3 === 0 ? 'bald+beard' : 'short';   // only the old go bald
+  if (!f && !kid && (h >>> 6) % 3 === 0 && L.hair !== 'bald+beard') L.beard = a.hair;
+  if (L.hair === 'bald+beard') L.beard = a.hair;
+  const pick = (arr, s) => arr[(h >>> s) % arr.length];
+  if (kind === 'baker') Object.assign(L, { accent: 'apron', apron: '#f7f3ea', flour: 1 });
+  else if (kind === 'tavern') Object.assign(L, { accent: 'apron', apron: '#3a2e28', towel: 1, sleeves: 1 });
+  else if (kind === 'fisher') { Object.assign(L, { boot: '#c89a2a', net: 1 }); if (!f && (h >>> 12) % 2) L.cap = '#2f5e5b'; }
+  else if (kind === 'scribe') Object.assign(L, { glasses: 1, book: pick(['#2f5a6a', '#5a3a6a', '#3a5a3a'], 12) });
+  else if (kind === 'banker') Object.assign(L, { hair: f ? L.hair : 'neat', accent: 'waistcoat', glasses: 1, ledger: '#7a3b2e' });
+  else if (kind === 'mason') Object.assign(L, { kerchief: pick(['#b8503a', '#4a6a8a', '#8a6a3a'], 12), sleeves: 1, accent: 'apron', apron: '#8c8a84', leather: 1, tool: 'mallet' });
+  else if (kind === 'wood') Object.assign(L, { accent: 'apron', apron: '#8a5a32', leather: 1, tool: 'axe' });
+  else if (kind === 'garden') Object.assign(L, { cap: '#d9c07a', accent: 'apron', apron: '#9ab077' });
+  else if (kind === 'shrine') Object.assign(L, f ? { hair: 'bun', accent: 'shawl', shawl: pick(['#d9a0b4', '#b6c7a4', '#c9b6e0'], 12) } : {});
+  else {   // no trade: a scarf, a shawl or a cap, never an apron
     const ac = (h >>> 9) % 5;
-    if (ac === 1 && !kid) { L.accent = 'apron'; L.apron = ['#f7f3ea', '#8a5a32', '#c9b88a'][(h >>> 12) % 3]; } else if (ac === 2) { L.accent = 'scarf'; L.scarf = ['#b8404f', '#e0a23a', '#4a8fc2', '#6fa04a'][(h >>> 12) % 4]; }
-    else if (ac === 3 && f && !kid) { L.accent = 'shawl'; L.shawl = ['#d9a0b4', '#b6c7a4', '#c9b6e0'][(h >>> 12) % 3]; }
-    else if (ac === 4 && !f && !kid && (h >>> 15) % 2) L.cap = ['#7a5a3a', '#4f6b8a', '#6b4f4f'][(h >>> 12) % 3];
+    if (ac === 2) { L.accent = 'scarf'; L.scarf = pick(['#b8404f', '#e0a23a', '#4a8fc2', '#6fa04a'], 12); }
+    else if (ac === 3 && f && !kid) { L.accent = 'shawl'; L.shawl = pick(['#d9a0b4', '#b6c7a4', '#c9b6e0'], 12); }
+    else if (ac === 4 && !f && !kid && (h >>> 15) % 2) L.cap = pick(['#7a5a3a', '#4f6b8a', '#6b4f4f'], 12);
   }
-  return LOOKS[key] = L;
+  return LOOKS[key] = { ...L, ...(LOOK[a.name] || {}) };
 }
 function browPoints(brow, d, cx, ey, S) {   // one brow as { outer, inner } points; d = -1 left eye, 1 right. Both eyes mirror: stern (-1) drops the inner ends, worried (1) lifts them
   const bx = cx + d * .3 * S, by = ey - 2.5 * S - (brow === 1 ? .3 * S : 0), tilt = brow * 1.1 * S;
@@ -141,4 +159,4 @@ function sceneData(st, name, radius) {   // who is in a place, what was said the
     built: (st.structures || []).filter(s => s.done && Math.hypot(s.x - px, s.y - py) <= (radius || 5)),
   };
 }
-if (typeof module !== 'undefined') module.exports = { BODY, stageOf, build, figMetrics, walkSpeed, strideLen, browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };
+if (typeof module !== 'undefined') module.exports = { jobKind, LOOK, BODY, stageOf, build, figMetrics, walkSpeed, strideLen, browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };

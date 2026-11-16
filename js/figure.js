@@ -26,6 +26,8 @@ function drawFace(g, o) {   // small dark eyes with a highlight (whites only for
     }
   }
   if (z < 1) return;
+  if (o.glasses) { g.strokeStyle = '#3a2e28'; g.lineWidth = .75 * S + .1; g.beginPath(); for (const d of [-1, 1]) { const cx = ex + d * es; g.moveTo(cx + 1.9 * S, ey); g.arc(cx, ey, 1.9 * S, 0, 7); } g.moveTo(ex - es + 1.9 * S, ey); g.lineTo(ex + es - 1.9 * S, ey); g.stroke(); }   // small round glasses
+  if (o.flour && z >= 1.5) { g.fillStyle = 'rgba(255,255,255,.6)'; g.beginPath(); g.ellipse(hx + (f || -1) * 3.6 * S, hy + 2.6 * S, 1 * S, .7 * S, .4, 0, 7); g.fill(); }   // a smudge of flour on the cheek
   if (z >= 1.5) { const nx = hx + f * 3.4 * S, ny = hy + 2.4 * S; g.strokeStyle = 'rgba(120,70,50,.45)'; g.lineWidth = .9; g.beginPath(); g.moveTo(nx - f * .2 * S, ny - .8 * S); g.lineTo(nx + (f || .4) * .8 * S, ny + .6 * S); g.stroke(); }   // a nose, turned the way they face
   const mx = hx + f * 2.2 * S, my = hy + 4 * S;
   if (talking) { const open = .5 + .5 * Math.sin(t / 85 + h); g.fillStyle = '#5a2a22'; g.beginPath(); g.ellipse(mx, my + .2 * S, (1.5 - .3 * af) * S, (.5 + open * 1.5) * S, 0, 0, 7); g.fill(); }
@@ -40,8 +42,10 @@ function drawFace(g, o) {   // small dark eyes with a highlight (whites only for
 }
 
 function hairCap(c, hx, hy, r, u) {   // the hair in front: a cap on the top of the head with a hairline that leaves the forehead bare, shaped per style
-  const { g, L, a, h, f, line } = c, ps = h & 1 ? 1 : -1, R = r + .4 * u, long = L.hair === 'long' || L.hair === 'braid', bun = L.hair === 'bun';
+  const { g, L, a, h, f, line } = c, ps = L.hair === 'neat' ? 1 : h & 1 ? 1 : -1, R = r + .4 * u, long = L.hair === 'long' || L.hair === 'braid', bun = L.hair === 'bun';
   const tl = long ? .1 : -.12, tx = long ? .96 : .93;   // long hair comes lower at the temples, over the ears
+  if (L.kerchief) { const kd = -(f || c.dir); g.fillStyle = L.kerchief; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.arc(hx, hy - .1 * u, r + .8 * u, Math.PI * .96, Math.PI * 2.04); g.quadraticCurveTo(hx + .7 * r, hy - .62 * r, hx, hy - .66 * r); g.quadraticCurveTo(hx - .7 * r, hy - .62 * r, hx - r - .8 * u, hy - .1 * u); g.closePath(); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(hx + kd * (r + .4 * u), hy - .5 * u); g.lineTo(hx + kd * (r + 4.2 * u), hy - 2 * u); g.lineTo(hx + kd * (r + 3.4 * u), hy + 1.6 * u); g.closePath(); g.fill(); g.stroke(); return; }   // a kerchief tied at the back, hiding the hair
   g.fillStyle = c.hairC; g.strokeStyle = line; g.lineWidth = 1;
   g.beginPath(); g.moveTo(hx - tx * r, hy + tl * r); g.arc(hx, hy - .15 * u, R, Math.PI * (1 + .06), Math.PI * (2 - .06)); g.lineTo(hx + tx * r, hy + tl * r);
   if (bun) { g.quadraticCurveTo(hx + .8 * r, hy - .55 * r, hx, hy - .6 * r); g.quadraticCurveTo(hx - .8 * r, hy - .55 * r, hx - tx * r, hy + tl * r); }   // pulled back from the forehead
@@ -77,8 +81,37 @@ function drawLegs(c) {   // trousers to the knee, socks, boots; a skirt hides th
             g.strokeStyle = line; g.lineWidth = w * S + 1.3; g.beginPath(); g.moveTo(x + x1 * S, G(v1)); g.lineTo(x + x2 * S, G(v2)); g.stroke();
       g.strokeStyle = fill; g.lineWidth = w * S; g.beginPath(); g.moveTo(x + x1 * S, G(v1)); g.lineTo(x + x2 * S, G(v2)); g.stroke();
     }
-    g.fillStyle = BOOT; g.beginPath(); g.ellipse(x + (ankX + dir * .9) * S, G(ankV - 1.1), 2.6 * S, 1.6 * S, 0, 0, 7); g.fill();
+    g.fillStyle = c.L.boot || BOOT; g.beginPath(); g.ellipse(x + (ankX + dir * .9) * S, G(ankV - 1.1), 2.6 * S, 1.6 * S, 0, 0, 7); g.fill();
   }
+}
+
+function drawCloakBack(c) {   // a travel cloak hanging behind the shoulders, wider than the body
+  const { g, S, x, B, L, line } = c, Y = c.Y, hw = B.hemW + 3.4;
+  g.fillStyle = L.cloak; g.strokeStyle = line; g.lineWidth = 1.2; g.beginPath(); g.moveTo(x - (B.shW + 1.6) * S, Y(B.sh - .4)); g.lineTo(x + (B.shW + 1.6) * S, Y(B.sh - .4));
+  g.lineTo(x + hw * S, Y(B.hem - 3.5)); g.quadraticCurveTo(x, Y(B.hem - 5), x - hw * S, Y(B.hem - 3.5)); g.closePath(); g.fill(); g.stroke();
+}
+function drawGear(c) {   // what hangs on the body, drawn over the torso and under the arms; small things only when zoomed in
+  const { g, S, x, B, L, line, z } = c, Y = c.Y, hip = B.hem + 2.4;
+  if (L.cloak) { g.fillStyle = shade(L.cloak, 1.15); g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.roundRect(x - (B.shW + .6) * S, Y(B.sh + 1.2), 2 * (B.shW + .6) * S, 3.6 * S, 1.6 * S); g.fill(); g.stroke(); g.fillStyle = '#e8bd5f'; g.beginPath(); g.arc(x, Y(B.sh - .6), .9 * S, 0, 7); g.fill(); }   // the cloak's collar and clasp
+  if (z <= 1) return;
+  if (L.towel) { g.fillStyle = '#efe9da'; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.moveTo(x - (B.shW + .2) * S, Y(B.sh + .4)); g.lineTo(x - (B.shW - 3.4) * S, Y(B.sh + .4)); g.lineTo(x - (B.shW - 3.2) * S, Y(B.sh - 7.4)); g.lineTo(x - (B.shW + .2) * S, Y(B.sh - 7.8)); g.closePath(); g.fill(); g.stroke(); }   // a cloth over the shoulder
+  if (L.satchel) {
+    g.strokeStyle = shade(L.satchel, .75); g.lineWidth = 1.5 * S; g.beginPath(); g.moveTo(x + B.shW * .7 * S, Y(B.sh)); g.lineTo(x - B.hemW * .9 * S, Y(hip + .8)); g.stroke();
+    g.fillStyle = L.satchel; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.roundRect(x - (B.hemW + 2.4) * S, Y(hip + 1), 5 * S, 4.6 * S, 1 * S); g.fill(); g.stroke(); g.fillStyle = shade(L.satchel, .8); g.fillRect(x - (B.hemW + 2.2) * S, Y(hip + 1), 4.6 * S, 1.5 * S);
+  }
+  if (L.tool) {   // a mallet or hatchet hanging from the belt
+    const bx = x + (B.hemW + .4) * S; g.strokeStyle = '#6b4a2e'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(bx, Y(hip + 1)); g.lineTo(bx + .6 * S, Y(hip - 5)); g.stroke();
+    g.fillStyle = '#9aa0a6'; g.strokeStyle = line; g.lineWidth = .9; g.beginPath(); if (L.tool === 'axe') { g.moveTo(bx + .6 * S, Y(hip - 3.4)); g.lineTo(bx + 3.4 * S, Y(hip - 2.4)); g.lineTo(bx + 3.4 * S, Y(hip - 5.6)); g.lineTo(bx + .6 * S, Y(hip - 4.8)); g.closePath(); } else g.roundRect(bx - 1.8 * S, Y(hip - 4.8), 4.8 * S, 2.6 * S, .6 * S); g.fill(); g.stroke();
+  }
+  if (L.net) {   // a coil of net at the hip
+    const nx = x - (B.hemW + 1.6) * S, ny = Y(hip - 1.4); g.fillStyle = '#b8a47a'; g.strokeStyle = 'rgba(70,52,30,.7)'; g.lineWidth = .8; g.beginPath(); g.ellipse(nx, ny, 3.2 * S, 2.8 * S, 0, 0, 7); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(nx - 2.4 * S, ny - .8 * S); g.lineTo(nx + 2.4 * S, ny + .8 * S); g.moveTo(nx - 2.4 * S, ny + .8 * S); g.lineTo(nx + 2.4 * S, ny - .8 * S); g.moveTo(nx, ny - 2.6 * S); g.lineTo(nx, ny + 2.6 * S); g.stroke();
+  }
+}
+function drawBook(c) {   // a ledger or a book tucked under the left arm
+  const { g, S, x, B, L, line } = c, col = L.ledger || L.book; if (!col || c.z <= 1 || c.prop === 'book') return;
+  g.save(); g.translate(x - (B.shW + .4) * S, c.Y(B.sh - 8.2)); g.rotate(-.12); g.fillStyle = col; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.roundRect(-1.9 * S, -3 * S, 3.8 * S, 6 * S, .6 * S); g.fill(); g.stroke();
+  g.fillStyle = '#f2ead6'; g.fillRect(1.1 * S, -2.6 * S, .8 * S, 5.2 * S); g.fillStyle = 'rgba(255,255,255,.25)'; g.fillRect(-1.2 * S, -2 * S, .8 * S, 4 * S); g.restore();
 }
 
 function drawTorso(c) {   // the tunic or dress as a path (reused for the clip and the outline)
@@ -105,7 +138,7 @@ function person(a, p, t, g = ctx) {
   const dir = f || p.face || 1, lean = old ? 1.4 * S * dir : 0, r = B.r * S, hx = x + lean + f * .5 * S, hy = y - (B.chin + B.r) * S, u = r / 5.7;
   const skin = hurt ? '#e2dac2' : L.skin, line = 'rgba(30,22,16,.4)', hairC = a.hair, prop = standing && PROPS[a.place];
   const dress = a.sex === 'f' && a.age >= 6, z = g === ctx ? cam.z : 3;   // z: how close we are looking (scene cards are always close)
-  const c = { g, a, p, h, z, hairC, S, B, L, x, y, gy, f, t, skin, line, drop, sit, step, cyc, walking, dress, sleeve: a.color, trouser: TROUSERS[(h >>> 16) % 4], sock: dress ? '#c4b8a0' : mix(TROUSERS[(h >>> 16) % 4], '#c9bda3', .3), Y: v => y - v * S };
+  const c = { g, a, p, h, z, dir, prop, hairC, S, B, L, x, y, gy, f, t, skin, line, drop, sit, step, cyc, walking, dress, sleeve: a.color, trouser: TROUSERS[(h >>> 16) % 4], sock: dress ? '#c4b8a0' : mix(TROUSERS[(h >>> 16) % 4], '#c9bda3', .3), Y: v => y - v * S };
   shadow(g, x - 2, base + 1, 11 * S, 4 * S, .3);
   if (selected === a.name) { const k = 1 + Math.sin(t / 300) * 0.08; g.strokeStyle = '#e8bd5f'; g.lineWidth = 2.5; g.beginPath(); g.ellipse(x, base + 1, 17 * S * k, 7.5 * S * k, 0, 0, 7); g.stroke(); }
   else if (hover === a.name) { g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 2; g.beginPath(); g.ellipse(x, base + 1, 15 * S, 6.5 * S, 0, 0, 7); g.stroke(); }
@@ -116,6 +149,7 @@ function person(a, p, t, g = ctx) {
   if (L.hair === 'long') { g.fillStyle = hairC; g.strokeStyle = line; g.beginPath(); g.roundRect(hx - r - .9 * u, hy - r * .55, 2 * r + 1.8 * u, 13 * S, [r, r, 3 * S, 3 * S]); g.fill(); g.stroke(); }   // hair falling behind the shoulders
   if (sit && !c.onBench) { g.fillStyle = '#8a6a44'; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.roundRect(x - 5.6 * S, gy - (B.hem - drop - .4) * S, 11.2 * S, (B.hem - drop - .4) * S, 1 * S); g.fill(); g.stroke(); g.fillStyle = 'rgba(255,235,190,.25)'; g.fillRect(x - 5.2 * S, gy - (B.hem - drop - .4) * S, 10.4 * S, 1.2 * S); g.lineWidth = 1.3; }   // a stool under anyone seated away from a bench
   drawLegs(c);
+  if (L.cloak) drawCloakBack(c);
   g.fillStyle = shade(skin, .86); g.fillRect(x + lean * .5 - 1.7 * S, y - (B.chin + .8) * S, 3.4 * S, (B.chin + .8 - B.sh + 1.4) * S);   // neck
   if (old) { const sd = -dir, sx = x + sd * (B.shW + 1.8) * S; g.strokeStyle = '#6b4a2e'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(sx + sd * .8 * S, gy); g.lineTo(sx, y - (B.hem + 1) * S); g.stroke(); g.lineWidth = 1.3; c.stick = sd; }   // walking stick, held in the hand on that side and ending at the ground
   g.fillStyle = a.color; drawTorso(c); g.fill();
@@ -125,8 +159,14 @@ function person(a, p, t, g = ctx) {
     g.fillStyle = L.apron; g.beginPath(); g.roundRect(x - aw * S, y - top * S, 2 * aw * S, (top - bot) * S, 2 * S); g.fill(); g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x + .5 * S, y - top * S, aw * S, (top - bot) * S);
     g.strokeStyle = L.leather ? '#5a3a1c' : 'rgba(150,140,120,.8)'; g.lineWidth = 1.1; g.beginPath(); g.moveTo(x - aw * .6 * S, y - top * S); g.lineTo(x - (aw - .2) * S, y - B.sh * S); g.moveTo(x + aw * .6 * S, y - top * S); g.lineTo(x + (aw - .2) * S, y - B.sh * S); g.stroke();
     g.fillStyle = L.leather ? '#6e4624' : 'rgba(0,0,0,.1)'; g.fillRect(x - aw * .5 * S, y - (top - 3.6) * S, aw * S, 3.2 * S);
+    if (L.flour && z > 1) { g.fillStyle = 'rgba(255,255,255,.7)'; for (const [fx, fv, fr] of [[-2.6, .22, 1.3], [1.8, .5, 1], [3, .12, .8], [-.5, .7, .9]]) { g.beginPath(); g.ellipse(x + fx * S, y - (top + (bot - top) * fv) * S, fr * S, fr * .7 * S, .3, 0, 7); g.fill(); } g.fillStyle = 'rgba(120,100,70,.18)'; g.fillRect(x - aw * S, y - bot * S - 1.2 * S, 2 * aw * S, 1.2 * S); }   // flour dusting the apron
+  }
+  if (L.accent === 'waistcoat') {   // a dark waistcoat with a V and buttons
+    const vc = shade(a.color, .42), sh = B.sh, hm = B.hem; g.fillStyle = vc; g.beginPath(); g.moveTo(x - 5.6 * S, y - (sh + .5) * S); g.lineTo(x - 1.1 * S, y - (sh + .5) * S); g.lineTo(x, y - (sh - 5) * S); g.lineTo(x + 1.1 * S, y - (sh + .5) * S); g.lineTo(x + 5.6 * S, y - (sh + .5) * S); g.lineTo(x + 5.6 * S, y - (hm - .5) * S); g.lineTo(x - 5.6 * S, y - (hm - .5) * S); g.closePath(); g.fill();
+    if (z > 1) { g.fillStyle = '#e8d8a0'; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(x, y - (sh - 6.4 - i * 2.6) * S, .6 * S + .1, 0, 7); g.fill(); } }
   }
   g.restore(); g.strokeStyle = line; g.lineWidth = 1.3; drawTorso(c); g.stroke();
+  drawGear(c);
   const rest = d => [d * .9, 9.4];   // arms hang a little away from the body
   const wl = rest(-1), wr = rest(1);
   if (walking) { wl[1] -= step * 2.2; wr[1] += step * 2.2; wl[0] += step * 1.2; wr[0] -= step * 1.2; }   // arms swing against the legs
@@ -136,7 +176,7 @@ function person(a, p, t, g = ctx) {
   if (standing && !prop && (pose === 'eat' || pose === 'drink')) { const k = REDUCE ? .7 : (Math.sin(t / 520 + h) + 1) / 2; wr[0] += (-5.2 + dir * 1.6 - wr[0]) * k; wr[1] += (-4.2 - wr[1]) * k; }   // the hand goes to the mouth and back
   else if (standing && !prop && pose === 'work') { wr[0] = 3.2 + sw * 3; wr[1] = -2.5 + (sw + 1) * 3.6; }                  // the working arm swings
   else if (standing && !prop && talking && !c.stick) { wl[0] = -2.2 + sw * 2.2; wl[1] = 4.5 + Math.sin(t / 240 + h) * 3; }              // a hand gestures while they speak
-  drawArm(c, -1, wl); const [hx2, hy2] = drawArm(c, 1, wr);
+  drawArm(c, -1, wl); drawBook(c); const [hx2, hy2] = drawArm(c, 1, wr);
   if (standing && !prop && pose === 'drink') { g.fillStyle = '#b98a50'; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.roundRect(hx2 - 2.4 * S, hy2 - 3.6 * S, 4.8 * S, 5 * S, 1 * S); g.fill(); g.stroke(); g.fillStyle = '#f4efe0'; g.fillRect(hx2 - 2.4 * S, hy2 - 3.9 * S, 4.8 * S, 1.3 * S); }       // a mug
   else if (standing && !prop && pose === 'eat') { g.fillStyle = '#d9a35a'; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.ellipse(hx2, hy2 - 1 * S, 3 * S, 1.9 * S, -.2, 0, 7); g.fill(); g.stroke(); }   // a piece of bread
   else if (standing && !prop && pose === 'work') { const up = -(sw + 1) * .5; g.strokeStyle = '#6b4a2e'; g.lineWidth = 1.7; g.beginPath(); g.moveTo(hx2, hy2 + 1.5 * S); g.lineTo(hx2 + dir * 2.4 * S, hy2 - (6 + up * 2) * S); g.stroke(); g.fillStyle = '#9aa0a6'; g.beginPath(); g.roundRect(hx2 + dir * 2.4 * S - 2.6 * S, hy2 - (7.4 + up * 2) * S, 5.2 * S, 2.2 * S, .6 * S); g.fill(); }   // a tool in the swinging hand
@@ -153,7 +193,7 @@ function person(a, p, t, g = ctx) {
   if (L.hair === 'bald+beard') { g.fillStyle = hairC; for (const d of [-1, 1]) { g.beginPath(); g.ellipse(hx + d * (r - .5 * u), hy - 1.2 * u, 1.8 * u, 3.4 * u, 0, 0, 7); g.fill(); } }
   else hairCap(c, hx, hy, r, u);
   if (L.beard && a.age >= 18) { g.fillStyle = L.beard; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.moveTo(hx - r * .98, hy + 1.6 * u); g.quadraticCurveTo(hx - r * 1.05, hy + r + 2.4 * u, hx, hy + r + 2.8 * u); g.quadraticCurveTo(hx + r * 1.05, hy + r + 2.4 * u, hx + r * .98, hy + 1.6 * u); g.quadraticCurveTo(hx, hy + 3.4 * u, hx - r * .98, hy + 1.6 * u); g.fill(); g.stroke(); }
-  drawFace(g, { a, u, hx, hy, r, f, t, z, talking, hurt, baby, skin, beard: !!(L.beard && a.age >= 18), h });
+  drawFace(g, { a, u, hx, hy, r, f, t, z, talking, hurt, baby, skin, glasses: L.glasses && z > 1, flour: L.flour, beard: !!(L.beard && a.age >= 18), h });
   if (L.cap && a.age >= 6) {   // cap with a brim towards the facing direction
     g.fillStyle = L.cap; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.arc(hx, hy - 1.2 * u, r + .8 * u, Math.PI * 1.0, Math.PI * 2); g.closePath(); g.fill(); g.stroke();
     g.beginPath(); g.roundRect(hx - r - 1.2 * u + f * 2.5 * u, hy - 2.4 * u, 2 * r + 2.4 * u, 2.4 * u, 1.2 * u); g.fill(); g.stroke();

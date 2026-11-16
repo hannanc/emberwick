@@ -126,3 +126,32 @@ test('walking pace is slow enough to read as walking, slower when hungry, sick o
 test('only fright opens the eyes wide', () => {
   assert.ok(P.moodKind('terrified').wide && P.moodKind('startled').wide); assert.ok(!P.moodKind('content').wide && !P.moodKind('stern').wide);
 });
+test('jobs map to kinds of work', () => {
+  assert.equal(P.jobKind('the baker'), 'baker'); assert.equal(P.jobKind('the tavern keeper'), 'tavern'); assert.equal(P.jobKind('the brewer'), 'tavern');
+  assert.equal(P.jobKind('the stonemason'), 'mason'); assert.equal(P.jobKind('the woodcutter'), 'wood'); assert.equal(P.jobKind('the scribe'), 'scribe');
+  assert.equal(P.jobKind('the herbalist and shrine-keeper'), 'garden'); assert.equal(P.jobKind('a child of the village'), 'none'); assert.equal(P.jobKind(undefined), 'none');
+});
+test('hand-made looks: Ansel, Odile and Garrick dress for who they are, and the founders keep their outfits', () => {
+  const ansel = P.look({ name: 'Ansel', age: 44, sex: 'm', job: 'the banker', hair: '#c9a25a' }), odile = P.look({ name: 'Odile', age: 34, sex: 'f', job: 'the stonemason', hair: '#8a6a3a' });
+  const garrick = P.look({ name: 'Garrick', age: 41, sex: 'm', job: 'the woodcutter', hair: '#5a2d1a' });
+  assert.equal(ansel.accent, 'waistcoat'); assert.ok(ansel.glasses && ansel.ledger && ansel.hair === 'neat');
+  assert.ok(odile.kerchief && odile.sleeves && odile.tool === 'mallet' && odile.accent === 'apron');
+  assert.ok(garrick.cloak && garrick.satchel && !garrick.beard && !garrick.accent);
+  const bram = P.look({ name: 'Bram', age: 47, sex: 'm', job: 'the tavern keeper', hair: '#2b1b10' }); assert.ok(bram.towel && bram.apron === '#3a2e28');
+  assert.ok(P.look({ name: 'Wren', age: 25, sex: 'm', job: 'the fisher', hair: '#c4572e' }).boot);
+  assert.ok(P.look({ name: 'Isolde', age: 33, sex: 'f', job: 'the librarian', hair: '#22203a' }).glasses);
+  assert.ok(P.look({ name: 'Mira', age: 40, sex: 'f', job: 'the baker', hair: '#5a2d1a' }).flour);
+});
+test('newcomers dress for their work; nobody without a trade gets an apron; baldness is for the old', () => {
+  const nw = (name, job, age = 35, sex = 'm') => P.look({ name, age, sex, job, hair: '#555' });
+  assert.equal(nw('Newman', 'the baker').accent, 'apron'); assert.equal(nw('Newman', 'the woodcutter').tool, 'axe'); assert.ok(nw('Newman', 'the fisher').net);
+  let bald = 0, apron = 0;
+  for (let i = 0; i < 300; i++) {
+    const idle = P.look({ name: 'Idle' + i, age: 30 + i % 24, sex: i % 2 ? 'm' : 'f', job: 'a young wanderer', hair: '#555' }); if (idle.hair === 'bald+beard') bald++; if (idle.accent === 'apron') apron++;
+    const old = P.look({ name: 'Old' + i, age: 60 + i % 20, sex: 'm', job: 'a young wanderer', hair: '#ccc' }); if (old.hair === 'bald+beard') bald += 0;
+  }
+  assert.equal(bald, 0, 'nobody under 55 is bald'); assert.equal(apron, 0, 'no apron without a trade');
+  assert.ok(Array.from({ length: 60 }, (_, i) => P.look({ name: 'Elder' + i, age: 70, sex: 'm', job: '', hair: '#ccc' }).hair).includes('bald+beard'));
+  const kid = P.look({ name: 'Kidd', age: 9, sex: 'f', job: 'the baker', hair: '#555' }); assert.ok(!kid.accent || kid.accent !== 'apron');
+  assert.ok(P.look({ name: 'Kidd', age: 30, sex: 'f', job: 'the baker', hair: '#555' }) !== P.look({ name: 'Kidd', age: 9, sex: 'f', job: 'the baker', hair: '#555' }), 'life stage and job are part of the cache key');
+});
