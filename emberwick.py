@@ -2368,11 +2368,11 @@ def agent_turn():
         # key moments: whispers and voices, trade offers and a fresh Oracle plan always; a conversation reply now and then
         deep = bool(whisper or offer or proposal or a.get("plan_new")) or \
             bool(pending and pending["from"] in here and S["since_deep"] >= DEEP_EVERY)
-        # the moments a person would pause over: the first turn of the day, a fresh death or a deathbed, being
+        # the moments a person would pause over: the first turn of the day, a fresh death, being
         # approached by someone they hold a grudge against, and being courted
         fresh_loss = [d["name"] for d in S.get("dead", []) if d["day"] in (S["day"], S["day"] - 1)
                       and d["name"] not in a.get("grieved", [])]
-        pause = a.get("woke_day") != S["day"] or bool(fresh_loss) or bool(a.get("grave")) or bool(a.get("courtship")) \
+        pause = a.get("woke_day") != S["day"] or bool(fresh_loss) or bool(a.get("courtship")) \
             or bool(pending and pending["from"] in [g["who"] for g in a.get("grudges", [])])
         a["woke_day"] = S["day"]
         a["grieved"] = (a.get("grieved", []) + fresh_loss)[-10:]
