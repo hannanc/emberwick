@@ -1,3 +1,4 @@
+import glob
 import os
 import re
 import shutil
@@ -194,14 +195,19 @@ def test_mourning_is_recorded_once(world):
 
 # ---------------------------------------------------------------- the page
 @pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
-def test_the_page_script_parses(tmp_path):
-    html = (ROOT + "/index.html")
-    with open(html, encoding="utf-8") as f:
-        script = max(re.findall(r"<script[^>]*>(.*?)</script>", f.read(), re.S), key=len)
-    path = tmp_path / "page.js"
-    path.write_text(script, encoding="utf-8")
-    result = subprocess.run(["node", "--check", str(path)], capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
+def test_every_page_script_parses():
+    files = sorted(glob.glob(os.path.join(ROOT, "js", "*.js")))
+    assert files, "the page script lives in js/*.js"
+    for path in files:
+        result = subprocess.run(["node", "--check", path], capture_output=True, text=True)
+        assert result.returncode == 0, path + "\n" + result.stderr
+
+
+def test_the_page_loads_exactly_the_script_files_it_has():
+    with open(ROOT + "/index.html", encoding="utf-8") as f:
+        tags = re.findall(r'<script src="/js/([a-z0-9_-]+\.js)"></script>', f.read())
+    assert sorted(tags) == sorted(os.path.basename(p) for p in glob.glob(os.path.join(ROOT, "js", "*.js")))
+    assert len(tags) == len(set(tags))
 
 
 # ---------------------------------------------------------------- compression and incremental state
@@ -287,3 +293,24 @@ def test_unchanged_lists_are_skipped_by_hash(make_world):
     assert "structures" not in part and "wishes" not in part and part["hashes"] == full["hashes"]
     stale = json.loads(w.state_json(top, full["chron_day"], full["oracle_id"], {"structures": "0" * 10, "wishes": "0" * 10}))
     assert "structures" in stale and "wishes" in stale
+
+
+def test_only_page_scripts_are_served(make_world):
+    import http.client, os
+    w = make_world()
+    srv = _serve(w)
+    try:
+        def get(path):
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_port)
+            c.request("GET", path)
+            r = c.getresponse()
+            return r.status, r.getheader("Content-Type"), r.read()
+        name = sorted(f for f in os.listdir(os.path.join(ROOT, "js")) if f.endswith(".js"))[0]
+        status, ctype, body = get("/js/" + name)
+        assert status == 200 and ctype.startswith("text/javascript") and body
+        for bad in ("/js/nothere.js", "/js/../emberwick.py", "/js/%2e%2e/emberwick.py", "/js/..%2femberwick.py",
+                    "/js/Setup.js", "/js/", "/js/setup.js/x", "/js/a/b.js"):
+            assert get(bad)[0] == 404, bad
+        assert 'src="/js/' in open(os.path.join(ROOT, "index.html"), encoding="utf-8").read()
+    finally:
+        srv.shutdown()

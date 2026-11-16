@@ -3571,6 +3571,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/":
             with open(os.path.join(HERE, "index.html"), "rb") as f:
                 self.send(200, f.read(), "text/html")
+        elif re.fullmatch(r"/js/[a-z0-9_-]+\.js", path) and os.path.isfile(os.path.join(HERE, path[1:])):
+            with open(os.path.join(HERE, path[1:]), "rb") as f:
+                self.send(200, f.read(), "text/javascript")
         elif path == "/api/state":
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             num = lambda k: int(q[k][0]) if k in q and re.fullmatch(r"\d{1,12}", q[k][0]) else None
