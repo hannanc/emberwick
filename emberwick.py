@@ -282,7 +282,7 @@ def migrate():
         a.setdefault("plan_at", 0)
         a.setdefault("plan_work", 0)
         a.setdefault("self", "")
-        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("moods", []), ("trail", []), ("grudges", [])):
+        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("moods", []), ("trail", []), ("grudges", []), ("wake", {})):
             a.setdefault(k, v)
         for k, v in (("expecting", None), ("proposal", None), ("partner", None), ("hungry", 0), ("rest_until", 0),
                      ("sick", None), ("care_until", 0)):
@@ -506,63 +506,22 @@ def loop_notes(n):
         out.append("You have been saying nearly the same thing over and over. Say something new, or keep quiet.")
     return out
 
-# ---------------------------------------------------------------- moods and bodily needs
-COLOURS = {"ordinary": 6, "irritable, because you slept badly": 2, "giddy for no reason": 1,
-           "lazy, and tempted to skive off": 2, "preoccupied with a private worry": 2, "vain about how you look": 1,
-           "hungover and slow": 1, "sentimental and nostalgic": 1}
-COLOUR_BIAS = {"Bram": {"hungover and slow": 3, "giddy for no reason": 1},
-               "Mira": {"giddy for no reason": 2, "sentimental and nostalgic": 1},
-               "Isolde": {"preoccupied with a private worry": 3, "vain about how you look": 1},
-               "Tobias": {"irritable, because you slept badly": 2, "lazy, and tempted to skive off": 1},
-               "Wren": {"lazy, and tempted to skive off": 2, "sentimental and nostalgic": 1},
-               "Ansel": {"preoccupied with a private worry": 2, "irritable, because you slept badly": 1}}
-NEED_START = dict(energy=8.0, hunger=1.0, company=5.0, boredom=2.0)
-
-def roll_colour(n):
-    w = dict(COLOURS)
-    for k, v in COLOUR_BIAS.get(n, {}).items():
-        w[k] = w.get(k, 0) + v
-    return random.choices(list(w), weights=list(w.values()))[0]
-
-def new_morning(n):
-    """A fresh day: a mood of the day, and the body rested as far as the night allowed."""
+# ---------------------------------------------------------------- how the day starts, in the villager's own words
+def wake_text(n):
+    """Last night the villager wrote how they would wake: mood, body, what is on their mind, who to dodge or seek."""
     a = S["agents"][n]
-    a["colour"] = roll_colour(n)
-    a["need"] = dict(NEED_START)
-    if "slept badly" in a["colour"] or "hungover" in a["colour"]:
-        a["need"]["energy"] -= 2.5
-    if a.get("mood") in (None, "", "sleeping"):
-        a["mood"] = "groggy"
-
-def tick_needs(n, place, here, worked):
-    """Needs drift a little every turn: work tires, time hungers, company fills or crowds, repetition bores."""
-    a = S["agents"][n]
-    nd = a.setdefault("need", dict(NEED_START))
-    stuck = max([a.get("trail", [])[-6:].count(x) for x in set(a.get("trail", [])[-6:])] or [0]) >= 3
-    nd["hunger"] = min(10.0, nd.get("hunger", 1) + 0.25 - (1.5 if place in ("Tavern", "Bakery") else 0))
-    nd["hunger"] = max(0.0, nd["hunger"])
-    nd["energy"] = max(0.0, min(10.0, nd.get("energy", 8) - (0.3 if worked else 0.05) + (0.3 if off_duty(S["minute"]) or place == "Cottages" else 0)))
-    nd["company"] = max(0.0, min(10.0, nd.get("company", 5) + (0.3 if here else -0.2)))
-    nd["boredom"] = max(0.0, min(10.0, nd.get("boredom", 2) + (0.5 if stuck else -0.3) + (0.2 if worked else 0)))
-
-def body_notes(n):
-    """Only what the body is shouting about, as a sensation rather than a number."""
-    a = S["agents"][n]
-    nd, out = a.get("need") or NEED_START, []
-    if a.get("colour") and "ordinary" not in a["colour"]:
-        out.append(f"Today you feel {a['colour']}.")
+    w, out = a.get("wake") or {}, []
+    if w.get("mood") or w.get("body"):
+        bits = [f"This morning you woke {w['mood']}." if w.get("mood") else "", w.get("body", "")]
+        if w.get("on_mind"):
+            bits.append(f"On your mind: {w['on_mind']}")
+        if w.get("avoid"):
+            bits.append(f"You mean to avoid {w['avoid']}.")
+        if w.get("seek"):
+            bits.append(f"You want {w['seek']}.")
+        out.append(" ".join(b for b in bits if b))
     if a.get("moods"):
         out.append("Your mood in recent turns: " + ", ".join(a["moods"]) + " (moods linger; they do not swing without a reason).")
-    if nd["energy"] <= 3:
-        out.append("Your back aches and your eyes are heavy; you are worn out and would sooner sit down.")
-    if nd["hunger"] >= 7:
-        out.append("You are starving: your stomach growls and your temper is short.")
-    if nd["company"] <= 1.5:
-        out.append("You have been on your own too long and are itching for company.")
-    elif nd["company"] >= 9:
-        out.append("You have been among people all day and would like a little quiet to yourself.")
-    if nd["boredom"] >= 7:
-        out.append("You are so bored you could scream.")
     return out
 
 def gist(text, words=6):
@@ -1589,11 +1548,6 @@ WARM_DECAY, GRUDGE_DAYS = 0.1, 12      # share of the gap to the baseline lost e
 def warm_base(n, o):
     h = (sum(map(ord, n)) * 31 + sum(map(ord, o)) * 17) % 7        # a fixed little asymmetry for each ordered pair
     return 3.0 + (h - 3) * 0.5 + FRICTION.get((n, o), 0)
-
-def grumpy(n):
-    a = S["agents"].get(n, {})
-    nd = a.get("need") or {}
-    return "irritable" in (a.get("colour") or "") or nd.get("energy", 8) <= 3 or nd.get("hunger", 0) >= 7
 
 def cool_warmth():
     """Each night every relationship slips a little toward its baseline, and old grudges lapse."""
@@ -2653,7 +2607,7 @@ def agent_turn():
                 u.append("Work, building and contributing are closed for now; it is time to rest, eat and enjoy company. "
                          "Choose an action only if it is not work (trade, pray, mourn, treat, court and so on), or none.")
         u += [f"You still hold it against {g['who']}: {g['why']}" for g in a.get("grudges", []) if g["who"] in S["agents"]]
-        u += body_notes(n)
+        u += wake_text(n)
         u += loop_notes(n)
         u.append("Decide what you do in the next few minutes. Answer in JSON: "
                  '"thought" = one private sentence; "say" = what you say out loud, often nothing or just a few words (at most about 40 words); use "" whenever you would rather not talk; '
@@ -2699,7 +2653,7 @@ def agent_turn():
             for o in here:
                 remember(o, f'At the {old}, {n} said to me: "{say}"' if o == to else
                             f'At the {old}, {n} said to {to}, something like: "{gist(say)}"')
-            warm(n, to, -0.1 if grumpy(n) else 0.04); warm(to, n, -0.1 if grumpy(to) else 0.04)
+            warm(n, to, 0.04); warm(to, n, 0.04)
             if bump_talk(n, to) < TALK_STOP:          # past that, they hear it but are not prompted to answer again
                 S["agents"][to]["pending"] = {"from": n, "text": say}
         elif say:
@@ -2811,7 +2765,6 @@ def agent_turn():
         elif not say and not did:
             remember(n, f"At the {old} I was {a['activity']}.")
         advance_plan(n, act, did)
-        tick_needs(n, old, here, bool(did) and (act == "work" or act == "contribute" or act.startswith("build_")))
         log_event(kind="turn", who=n, place=old, to_place=go if moved else "", activity=a["activity"],
                   say=say, to=to, thought=a["thought"], mood=a["mood"], did=did, deep=deep)
         if prayer:
@@ -3048,11 +3001,17 @@ def night():
                      "of your life (a loss, a love, a promise made or broken, a betrayal, a discovery, a debt, a "
                      'kindness that changed you), or "" if today was an ordinary day; most days are ordinary. '
                      '"grudge_who" = the one person who slighted, wronged or really irritated you today, or "nobody" '
-                     '(most days nobody did) and "grudge" = what they did that you cannot easily let go of, or "".',
+                     '(most days nobody did) and "grudge" = what they did that you cannot easily let go of, or "". '
+                     '"wake" = how you will wake tomorrow, in your own words: "mood" (a few words), "body" (how you slept, '
+                     'what aches, how hungry or tired you are), "on_mind" (the worry or hope you cannot shake), "avoid" (a '
+                     'person, place or chore you mean to dodge, or ""), "seek" (who or what you want, or ""). Be petty and '
+                     'particular; not every day is meaningful, and you may simply be tired.',
                      obj({"reflection": STR, "growth": STR, "milestone": STR,
-                          "grudge_who": {"type": "string", "enum": ["nobody"] + others}, "grudge": STR, "feelings": {"type": "array", "items": obj(
-                         {"name": {"type": "string", "enum": others}, "feeling": STR})}}),
-                     num_predict=340, temperature=0.7)
+                          "grudge_who": {"type": "string", "enum": ["nobody"] + others}, "grudge": STR,
+                          "wake": obj({"mood": STR, "body": STR, "on_mind": STR, "avoid": STR, "seek": STR}),
+                          "feelings": {"type": "array", "items": obj(
+                         {"name": {"type": "string", "enum": others or ["nobody"]}, "feeling": STR})}}),
+                     num_predict=700, temperature=0.7)
         except Exception:
             continue
         with lock:
@@ -3066,6 +3025,9 @@ def night():
             if gw in others and gt:
                 a["grudges"] = [g for g in a.get("grudges", []) if g["who"] != gw][-2:] + [dict(who=gw, why=gt, day=day)]
                 warm(n, gw, -1)
+            wk = r.get("wake") or {}
+            if isinstance(wk, dict) and any(wk.get(k) for k in ("mood", "body", "on_mind")):
+                a["wake"] = {k: clip(wk.get(k), 140) for k in ("mood", "body", "on_mind", "avoid", "seek")}
             ms = clip(r.get("milestone"), 220)
             if ms and f"Day {day}: {ms}" not in a.get("legacy", []):
                 a["legacy"] = (a.get("legacy", []) + [f"Day {day}: {ms}"])[-LEGACY_KEPT:]
@@ -3257,7 +3219,6 @@ def night():
                 S["agents"][s_["owner"]]["inv"]["bread"] += 2
         for n, a in S["agents"].items():
             a.update(today=[], pending=None, offer=None, activity="waking up")
-            new_morning(n)
             remember(n, f"News this morning (day {S['day']}): {omen}")
         save()
 
