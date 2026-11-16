@@ -2029,9 +2029,24 @@ function msgHint() {
     how === 'thought' ? `A thought that pops into ${who}'s head` : 'A voice from the sky the whole village hears';
 }
 $('to').addEventListener('change', msgHint);
+async function fetchState() {   // ask only for what changed; any surprise falls back to the full state
+  const get = async q => (await fetch('/api/state' + q)).json(), old = st;
+  if (!old || !old.events || old.chron_day == null || !old.chronicle || !old.oracle || !old.oracle.log) return get('');
+  const top = old.events.length ? old.events[old.events.length - 1].id : 0, h = old.hashes || {};
+  const q = `?since=${top}&chron=${old.chron_day}&oracle=${old.oracle_id}` + (h.structures ? `&structures=${h.structures}&wishes=${h.wishes}` : '');
+  const nw = await get(q);
+  if (!nw.partial) return nw;
+  const evs = old.events.concat(nw.events);
+  if (nw.events.some(e => e.id <= top) || (nw.events.length && nw.events[0].id <= top)) return get('');
+  nw.events = evs.slice(-80);
+  if (!nw.chronicle) nw.chronicle = old.chronicle;
+  if (!nw.oracle.log) nw.oracle.log = old.oracle.log;
+  for (const k of ['structures', 'wishes']) if (!nw[k]) { if (!old[k]) return get(''); nw[k] = old[k]; }
+  return nw;
+}
 async function poll() {
   try {
-    const r = await fetch('/api/state'); st = await r.json(); skew = st.now - Date.now() / 1000;
+    st = await fetchState(); skew = st.now - Date.now() / 1000;
     debugOverride();
     if (st.world && st.world.w !== W) { W = st.world.w; WW = W * T; scenery = null; if (!userMoved) resetView(true); else clampT(); }   // a new lane: redraw the land
     if (!scenery) { buildPaths(); buildScenery(); const ld = $('loading'); if (ld) { ld.classList.add('gone'); setTimeout(() => ld.remove(), 700); } }
