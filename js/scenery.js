@@ -158,6 +158,57 @@ function pine(g, x, y, s, r) {
     g.fillStyle = 'rgba(255,255,230,.08)'; g.beginPath(); g.moveTo(X - w * s, yb); g.lineTo(X, yb); g.lineTo(X, yb - h * s); g.closePath(); g.fill();
   }
 }
+function drawGarden(g, gx, gy) {   // a kitchen and herb garden, 5.2 x 2.9 tiles: fenced beds either side of a path from the gate; static, seeded
+  const x0 = (gx - 2.6) * T, y0 = (gy - 1.9) * T, W = 5.2 * T, H = 2.9 * T, q = rng(404), cx = x0 + W / 2;
+  const ell = (x, y, rx, ry, c, rot = 0) => { g.fillStyle = c; g.beginPath(); g.ellipse(x, y, rx, ry, rot, 0, 7); g.fill(); };
+  const line = (x1, y1, x2, y2, c, w) => { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+  g.fillStyle = 'rgba(86,64,36,.42)'; g.beginPath(); g.roundRect(x0 - 2, y0 - 2, W + 4, H + 4, 6); g.fill();             // trodden earth inside the fence
+  g.fillStyle = 'rgba(196,170,120,.55)'; g.fillRect(cx - 9, y0 + 4, 18, H - 4); g.fillRect(x0 + 4, y0 + 40, W - 8, 9);       // the main path and the cross path
+  for (let i = 0; i < 40; i++) ell(cx - 8 + q() * 16, y0 + 6 + q() * (H - 8), 1.2, .8, 'rgba(120,96,60,.5)');             // grit on the path
+  const post = (x, y, h = 11) => { shadow(g, x + 1, y, 2.5, 1.2, .3); g.fillStyle = '#6a4a2e'; g.fillRect(x - 1.8, y - h, 3.6, h); g.fillStyle = '#8f6a42'; g.fillRect(x - 1.8, y - h, 3.6, 2); };
+  const rails = (xa, ya, xb, yb) => { line(xa, ya - 8, xb, yb - 8, '#7c5a38', 2.2); line(xa, ya - 4, xb, yb - 4, '#7c5a38', 2.2); };
+  rails(x0, y0, x0 + W, y0); rails(x0, y0, x0, y0 + H); rails(x0 + W, y0, x0 + W, y0 + H);   // the back and side rails go in first, behind the plants
+  for (let x = x0; x <= x0 + W + 1; x += W / 12) post(x, y0); for (let y = y0 + H / 4; y < y0 + H; y += H / 4) { post(x0, y); post(x0 + W, y); }
+  const bed = (x, y, w, h) => { g.fillStyle = 'rgba(20,12,6,.28)'; g.fillRect(x + 1, y + 3, w, h); g.fillStyle = '#5a3d25'; g.fillRect(x, y, w, h);
+    for (let yy = y + 5; yy < y + h - 2; yy += 6) { line(x + 2, yy, x + w - 2, yy, '#3f2a18', 1.6); line(x + 2, yy - 1.6, x + w - 2, yy - 1.6, 'rgba(150,110,70,.45)', .8); }       // furrows
+    g.strokeStyle = '#9a7648'; g.lineWidth = 2.4; g.strokeRect(x, y, w, h); g.strokeStyle = '#c4a06a'; g.lineWidth = .8; g.beginPath(); g.moveTo(x + 1, y + 1); g.lineTo(x + w - 1, y + 1); g.stroke(); };
+  const cabbage = (x, y) => { shadow(g, x, y + 3, 5, 2, .3); ell(x, y, 5.2, 4, '#3a7438'); ell(x, y - .5, 4, 3.2, '#5d9c4a'); ell(x, y - 1, 2.6, 2.1, '#a9d684'); g.strokeStyle = 'rgba(30,70,30,.6)'; g.lineWidth = .7; g.beginPath(); g.arc(x, y, 3.4, .3, 2.6); g.stroke(); };
+  const carrot = (x, y) => { ell(x, y + 1, 1.8, 1.2, '#e8872e'); for (const d of [-3, -1.2, 1.2, 3]) line(x, y, x + d, y - 5 - Math.abs(d) * .4, '#6fb04a', 1.2); };
+  const leek = (x, y) => { line(x, y + 2, x, y - 3, '#ecf0d8', 2.4); for (const d of [-2.6, 0, 2.6]) line(x, y - 2, x + d, y - 8 + Math.abs(d), d ? '#4f8f4a' : '#3f7a3c', 1.8); };
+  const tomato = (x, y) => { line(x, y + 2, x, y - 13, '#8a6a44', 1.3); ell(x - 2, y - 8, 3.4, 2.4, '#3f8a3c'); ell(x + 2.4, y - 3, 3.2, 2.2, '#4f9a44'); ell(x - 1, y - 12, 2.6, 2, '#3f8a3c');
+    for (const [dx, dy] of [[2.8, -8], [-3.2, -3], [1, -1.4]]) { ell(x + dx, y + dy, 1.9, 1.9, '#d9372c'); ell(x + dx - .5, y + dy - .6, .6, .6, 'rgba(255,255,255,.6)'); } };
+  const beans = (x, y) => { for (const d of [-5, 0, 5]) line(x + d * 1.2, y + 3, x + d * .2, y - 20, '#7a5a38', 1.3); for (let i = 0; i < 9; i++) ell(x + (q() - .5) * 12, y - 2 - i * 2.1, 2.2, 1.5, ['#3f8a3c', '#56a048', '#4a9040'][i % 3], q()); for (const [dx, dy] of [[-3, -9], [3, -14]]) ell(x + dx, y + dy, .8, 2.6, '#8fc860'); ell(x + 2, y - 19, 1.5, 1.5, '#e86a4a'); };
+  const herbs = (x, y, k) => { const cols = [['#8fae8a', '#a9c4a0'], ['#2f7a3a', '#4a9a4c'], ['#6cc06a', '#98dc8a'], ['#587a3a', '#7a9c52'], ['#9aa86a', '#b8c488']][k % 5]; for (let i = 0; i < 6; i++) ell(x + (q() - .5) * 9, y + (q() - .5) * 4, 2.6 + q() * 1.6, 1.7 + q(), cols[i % 2], q() * 3); };
+  const sunflower = (x, y) => { shadow(g, x, y + 2, 3, 1.4, .3); line(x, y + 2, x, y - 24, '#4a7a34', 2); ell(x - 3, y - 12, 3.2, 1.6, '#4f8a3a', -.5); ell(x + 3, y - 7, 3.2, 1.6, '#4f8a3a', .5); for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; ell(x + Math.cos(a) * 4.6, y - 26 + Math.sin(a) * 4.6, 2.6, 1.3, '#f2c32a', a); } ell(x, y - 26, 3.2, 3.2, '#5a3a1c'); };
+  const bx = [x0 + 7, cx + 13], bw = cx - x0 - 20, rows = [[y0 + 10, 30], [y0 + 52, 24]];
+  for (const [by, bh] of rows) for (const x of bx) bed(x, by, bw, bh);
+  for (let j = 0; j < 4; j++) for (let i = 0; i < 2; i++) cabbage(bx[0] + 8 + j * 14.5 + i * 4, rows[0][0] + 9 + i * 12);        // back left: cabbages
+  for (let j = 0; j < 8; j++) { carrot(bx[0] + 6 + j * 7, rows[1][0] + 8); leek(bx[0] + 6 + j * 7, rows[1][0] + 19); }              // front left: carrots, then leeks
+  for (let j = 0; j < 3; j++) tomato(bx[1] + 8 + j * 14, rows[0][0] + 16); beans(bx[1] + bw - 13, rows[0][0] + 20);                  // back right: staked tomatoes, a bean tripod
+  for (let j = 0; j < 4; j++) for (let i = 0; i < 2; i++) herbs(bx[1] + 8 + j * 12, rows[1][0] + 8 + i * 11, j * 2 + i);             // front right: herbs in five greens
+  sunflower(bx[1] + bw - 5, rows[1][0] + 4); sunflower(bx[1] + 3, rows[1][0] + 3);
+  const sx = cx, sy = y0 + 33;                                                                                                       // a scarecrow where the paths cross
+  shadow(g, sx, sy + 12, 9, 3, .3); line(sx, sy + 12, sx, sy - 14, '#6a4a2e', 2.4); line(sx - 11, sy - 6, sx + 11, sy - 6, '#6a4a2e', 2.4);
+  g.fillStyle = '#7a8fb0'; g.beginPath(); g.moveTo(sx - 7, sy - 5); g.lineTo(sx + 7, sy - 5); g.lineTo(sx + 5, sy + 6); g.lineTo(sx - 5, sy + 6); g.fill(); ell(sx + 2, sy, 1.8, 1.8, '#c9a45a');
+  for (const d of [-1, 1]) for (let i = 0; i < 3; i++) line(sx + d * 11, sy - 6, sx + d * (13 + i), sy - 4 + i * 2, '#d8bc6a', 1);
+  ell(sx, sy - 12, 4.4, 4.4, '#d9c28a'); ell(sx - 1.6, sy - 12.4, .7, .7, '#2a2018'); ell(sx + 1.6, sy - 12.4, .7, .7, '#2a2018'); line(sx - 1.6, sy - 10, sx + 1.6, sy - 10, '#2a2018', .7);
+  ell(sx, sy - 15.6, 7, 1.8, '#a98a4a'); g.fillStyle = '#b89a56'; g.beginPath(); g.ellipse(sx, sy - 17, 3.8, 2.8, 0, Math.PI, 0); g.fill();
+  const fy = y0 + H;                                                                                                                 // the front fence, drawn over the plants, with a gate and two taller posts
+  rails(x0, fy, cx - 9, fy); rails(cx + 9, fy, x0 + W, fy);
+  for (let x = x0; x < cx - 10; x += W / 12) post(x, fy); for (let x = x0 + W; x > cx + 10; x -= W / 12) post(x, fy);
+  post(cx - 9, fy, 15); post(cx + 9, fy, 15); line(cx - 8, fy - 3, cx - 1, fy - 12, '#7c5a38', 2); line(cx - 8, fy - 11, cx - 1, fy - 3, '#7c5a38', 1.4); line(cx - 8, fy - 12, cx - 8, fy - 2, '#7c5a38', 2);
+  for (const [dx, dy, w] of [[0, 7, 7], [-1, 14, 6]]) { ell(cx + dx, fy + dy, w, 3, 'rgba(30,30,26,.25)'); ell(cx + dx, fy + dy - 1, w, 3, '#a9a79e'); ell(cx + dx - 1, fy + dy - 1.6, w - 2, 1.8, '#c4c2b8'); }   // stepping stones down to the road
+  for (let i = 0; i < 14; i++) { const x = x0 + 6 + q() * (cx - x0 - 22), y = fy - 3 + q() * 2; line(x, y, x, y - 4 - q() * 3, '#4f8a3c', 1); ell(x, y - 6 - q() * 2, 1.5, 1.5, ['#f0d24a', '#e86a8a', '#b06fd0', '#fff'][i % 4]); }   // flower border
+  const barrel = (x, y) => { shadow(g, x, y + 2, 8, 3, .3); g.fillStyle = '#7a5230'; g.beginPath(); g.roundRect(x - 6, y - 12, 12, 13, 2); g.fill(); line(x - 6, y - 8, x + 6, y - 8, '#3a2a1a', 1.2); line(x - 6, y - 3, x + 6, y - 3, '#3a2a1a', 1.2); ell(x, y - 12, 6, 2.2, '#3f6a7a'); ell(x - 1, y - 12.3, 3, 1, 'rgba(255,255,255,.35)'); };
+  barrel(x0 + 14, fy - 2);
+  shadow(g, x0 + 28, fy - 2, 4, 1.5, .3); g.fillStyle = '#6a8aa0'; g.beginPath(); g.roundRect(x0 + 24, fy - 9, 7, 7, 1.5); g.fill(); line(x0 + 31, fy - 7, x0 + 37, fy - 11, '#587890', 1.6); line(x0 + 24, fy - 8, x0 + 21, fy - 10, '#587890', 1.4); line(x0 + 28, fy - 9, x0 + 28, fy - 11, '#587890', 1.4);   // a watering can
+  const hx = x0 + W - 44, hy = fy - 3; shadow(g, hx + 10, hy, 16, 3, .3);                                                                   // a cold frame: timber box under glass
+  g.fillStyle = '#7a5a38'; g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx + 4, hy - 11); g.lineTo(hx + 28, hy - 11); g.lineTo(hx + 32, hy); g.fill();
+  g.fillStyle = 'rgba(170,215,230,.75)'; g.beginPath(); g.moveTo(hx + 3, hy - 2); g.lineTo(hx + 6, hy - 10); g.lineTo(hx + 26, hy - 10); g.lineTo(hx + 29, hy - 2); g.fill(); line(hx + 16, hy - 10, hx + 16, hy - 2, '#7a5a38', 1);
+  const mx = x0 + W - 12, my = fy - 2; shadow(g, mx, my, 9, 3, .3); ell(mx, my - 3, 9, 5.5, '#5a4028'); ell(mx - 1, my - 5, 6, 3.5, '#6e5230'); for (let i = 0; i < 7; i++) ell(mx - 6 + q() * 12, my - 7 + q() * 6, 1.5, .6, ['#b8a458', '#7a9a48', '#c47a3a'][i % 3], q() * 3);   // a compost heap
+  g.restore();
+}
 function buildScenery() {
   const s = document.createElement('canvas'); s.width = Math.round((WW + 2 * M) * SS); s.height = Math.round((WH + 2 * M) * SS);
   const g = s.getContext('2d'), r = rng(7);
@@ -271,10 +322,7 @@ function buildScenery() {
   lamp(15.2, 11.6); lamp(25.6, 11.6); lamp(15.2, 14.8); lamp(25.6, 14.8); lamp(P.Tavern[0] - 2.8, P.Tavern[1] + 0.3); lamp(P.Dock[0] - 2, P.Dock[1] + 0.5);
   items.sort((a, b) => a[0] - b[0]).forEach(i => i[1]());
   // garden
-  const [gx, gy] = P.Garden;
-  g.fillStyle = 'rgba(80,60,35,.25)'; g.fillRect((gx - 2.6) * T, (gy - 1.9) * T, 5.2 * T, 2.9 * T);
-  g.strokeStyle = '#7a5a3a'; g.lineWidth = 3; g.strokeRect((gx - 2.6) * T, (gy - 1.9) * T, 5.2 * T, 2.9 * T);
-  for (let i = 0; i < 4; i++) { g.fillStyle = '#6b4a30'; g.beginPath(); g.roundRect((gx - 2.3) * T, (gy - 1.6 + i * 0.65) * T, 4.6 * T, 9, 4); g.fill(); for (let j = 0; j < 12; j++) { const X = (gx - 2.1 + j * 0.38) * T, Y = (gy - 1.52 + i * 0.65) * T; g.fillStyle = '#3f7a35'; g.beginPath(); g.arc(X, Y + 1, 4.5, 0, 7); g.fill(); g.fillStyle = ['#6fbf5a', '#b06fd0', '#f0d24a', '#e86a6a'][(i + j) % 4]; g.beginPath(); g.arc(X, Y - 1, 3.2, 0, 7); g.fill(); } }
+  drawGarden(g, ...P.Garden);   // the herb garden (beehives and the mill stand around it)
   // meadow: mown ground, a split-rail fence and a hay cart, waiting for farms
   if (P.Meadow) {
     const [mx, my] = P.Meadow, x0 = (mx - 5.2) * T, y0 = (my - 6.6) * T, mw = 10.4 * T, mh = 13.4 * T;
