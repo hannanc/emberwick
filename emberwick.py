@@ -91,14 +91,14 @@ BLUEPRINTS = {
 }
 
 CAST = {
-    "Mira": dict(temp=0.9, speech="chatty and warm: exclamations, a bit of gossip, little superstitions like 'knock on wood', calls people 'love'",
+    "Mira": dict(temp=0.9, speech="talks in a rush and leaves sentences unfinished; asks about people's business and has an opinion on everything; warm endearments and small superstitions, a different one each time and never a stock phrase",
         sex="f", age=34, dream="a windmill by the Garden, for finer flour", job="the baker", color="#e0703a", hair="#5a2d1a",
         traits="warm, nosy, superstitious, quick to laugh",
         goal="to win the midsummer fair's baking prize and to find out who keeps leaving wildflowers at your door",
         secret="you burned last year's prize loaf and blamed the oven",
         home="Bakery", feel={"Tobias": "reliable but grumpy", "Bram": "best gossip partner"},
         grates=("Isolde", "counts everything twice and says so out loud in front of people, which stings your pride")),
-    "Tobias": dict(temp=0.75, speech="few words: short gruff fragments, carpentry comparisons, never says outright what he feels",
+    "Tobias": dict(temp=0.75, speech="rarely more than six words; answers a question with a grunt or a job to be done; the odd carpentry comparison; never thanks, never explains, never says outright what he feels",
         sex="m", age=58, dream="the sailboat, at the Dock", job="the carpenter", color="#7b8f4a", hair="#b9b9b0",
         traits="gruff, proud, sentimental underneath, few words",
         goal="to finish the sailboat you began with your late brother before the midsummer fair",
@@ -506,6 +506,12 @@ def wake_text(n):
     if a.get("inner"):
         out.append(f"A moment ago you felt: {a['inner']}")
     return out
+
+ROOM_TALK = {}      # place -> the last few spoken lines there, in full, as (village minute, speaker, addressee, text)
+
+def room_talk(place):
+    now = village_minutes()
+    return [x for x in ROOM_TALK.get(place, []) if now - x[0] <= 45][-5:]
 
 def facts(o):
     """Plain facts about a villager that nobody should have to guess: age, whether a man or a woman, and trade."""
@@ -1508,7 +1514,7 @@ def settle_stranger():
                            self="", expecting=None, proposal=None, partner=None, hungry=0, rest_until=0, age_seen=st["age"],
                            sick=None, care_until=0, warmth={}, bank=0, loan=0, courtship=None, ribbons=[], lines=[])
     for o in yes:
-        warm(nm, o, 3); warm(o, nm, 1)
+        warm(nm, o, 1); warm(o, nm, 0)       # a newcomer is an acquaintance until the nights say otherwise
     for o in no:
         warm(nm, o, -1)
     house_everyone()
@@ -2328,7 +2334,7 @@ def steward():
 
 # ---------------------------------------------------------------- a villager's turn
 TALK_WINDOW = 60                  # village minutes: exchanges between a pair closer than this count as one conversation
-TALK_WRAP, TALK_STOP = 3, 5       # after this many exchanges, wrap up; after this many, the other stops being prompted to answer
+TALK_WRAP, TALK_STOP = 5, 8       # after this many exchanges, wrap up; after this many, the other stops being prompted to answer
 
 def talk_count(n, o):
     t = S.setdefault("talks", {}).get("|".join(sorted((n, o))))
@@ -2369,7 +2375,7 @@ def agent_turn():
         pending, whisper, offer, proposal = a["pending"], a["whisper"], a["offer"], a.get("proposal")
         if proposal and not (proposal["from"] in here and can_have_child(n, proposal["from"])):
             proposal = a["proposal"] = None
-        mates = [o for o in here if can_have_child(n, o)]
+        mates = [o for o in here if can_have_child(n, o) and a.get("partner") == o]
         S["since_deep"] = S.get("since_deep", DEEP_EVERY) + 1
         # key moments: whispers and voices, trade offers and a fresh Oracle plan always; a conversation reply now and then
         deep = bool(whisper or offer or proposal or a.get("plan_new")) or \
@@ -2395,6 +2401,9 @@ def agent_turn():
              "Who is who: " + "; ".join(facts(o) for o in S["agents"] if o != n) + ".",
              f"Village news today: {S['news']}",
              "Your recent memories:\n" + "\n".join("- " + m for m in a["memories"][-6:])]
+        if here and room_talk(a["place"]):
+            u.append("The talk here just now:\n" + "\n".join(
+                f'- {w}' + (f' (to {t})' if t else '') + f': "{x}"' for _, w, t, x in room_talk(a["place"])))
         if a.get("lines"):
             u.append("Things you said recently (if you hear yourself circling the same words or subject, drop it mid-thought, as people do):\n"
                      + "\n".join(f'- "{x}"' for x in a["lines"][-5:]))
@@ -2421,21 +2430,23 @@ def agent_turn():
         u.append(f"You carry: {inv_text(a['inv'])}." + (f" You own: {', '.join(mine)}." if mine else "")
                  + " You must have bread or fish to eat each night.")
         lim = carry_limit(n)
+        resting = off_duty(S["minute"])
         over = [f"{q} {i}" for i, q in a["inv"].items() if i != "coins" and q > lim]
-        u.append(f"You can carry at most {lim} of each good (a shed of your own adds {SHED_CARRY}). Fish and bread "
-                 "slowly spoil, and a quarter of anything over the limit is lost each night"
-                 + (f": you are over it with {', '.join(over)}, so trade, sell or build with the surplus." if over else "."))
+        if not resting:
+            u.append(f"You can carry at most {lim} of each good (a shed of your own adds {SHED_CARRY}). Fish and bread "
+                     "slowly spoil, and a quarter of anything over the limit is lost each night"
+                     + (f": you are over it with {', '.join(over)}, so trade, sell or build with the surplus." if over else "."))
         item, q = work_yield(n, a["place"])
         actions = ["none"]
-        resting = off_duty(S["minute"])
         if q and not resting:
             full = item != "coins" and a["inv"][item] >= lim
             u.append(f'Action "work" here gives you {q} {item}.' + (f" But you already carry all the {item} you can, "
                      "so working here gains nothing." if full else ""))
             actions.append("work")
-        u.append("Where things come from: wood at the Woods, stone at the Quarry, fish at the Dock, herbs at the "
-                 "Garden, bread at the Bakery, ale at the Tavern. The Hospital treats illness for herbs; the dead rest "
-                 "in the Cemetery.")
+        if not resting:
+            u.append("Where things come from: wood at the Woods, stone at the Quarry, fish at the Dock, herbs at the "
+                     "Garden, bread at the Bakery, ale at the Tavern. The Hospital treats illness for herbs; the dead rest "
+                     "in the Cemetery.")
         extra_fair = {}
         sick_kids = [c for c in children(n) if not acting(c) and S["agents"][c].get("sick")]
         if a.get("sick") or sick_kids:
@@ -2487,7 +2498,8 @@ def agent_turn():
             u.append(f"A travelling merchant at the Square buys surplus goods for coins ({S['merchant']} coins left today, "
                      "one sale per villager a day).")
         u += fair_text(n)
-        u += project_text()
+        if not resting:
+            u += project_text()
         pk = current_project()
         if pk and PROJECTS[pk]["site"] == a["place"] and not resting:
             actions.append("contribute")
@@ -2584,10 +2596,7 @@ def agent_turn():
         if pending and pending["from"] in here:
             told = talk_count(n, pending["from"])
             if told >= TALK_WRAP:
-                u.append(f'{pending["from"]} just said to you: "{pending["text"]}" You two have already gone back and forth '
-                         f'{told} times. Close the conversation now in a few words of your own (or say nothing), and get on '
-                         + ('with something else: rest, eat, or walk somewhere else.' if off_duty(S["minute"]) else
-                         'with something useful: choose an action like work, build, trade or contribute, or walk somewhere else.'))
+                u.append(f'{pending["from"]} just said to you: "{pending["text"]}" You two have been talking a while.')
             else:
                 u.append(f'{pending["from"]} just said to you: "{pending["text"]}" Answer, ignore them, or change the subject, as you would.')
         if whisper and whisper.get("all"):
@@ -2607,7 +2616,7 @@ def agent_turn():
         u += wake_text(n)
         u += repeat_note(n)
         u.append("Decide what you do in the next few minutes. Answer in JSON: "
-                 '"thought" = one private sentence; "say" = what you say out loud, often nothing or just a few words (at most about 40 words); use "" whenever you would rather not talk; '
+                 '"thought" = one private sentence; "say" = what you say out loud, as long or as short as you would really speak (rarely more than two sentences, never more than about 40 words); use "" whenever you would rather not talk; '
                  f'"action" = one of: {", ".join(actions)}; '
                  '"give", "give_qty", "want", "want_qty" = only for action "offer" (give and give_qty also for "sell"), otherwise "nothing" and 0; '
                  '"go_to" = a place to walk to afterwards, or "stay"; '
@@ -2673,6 +2682,9 @@ def agent_turn():
             remember(n, f'Alone at the {old} I said aloud: "{say}"')
         if to in ("everyone", "nobody"):
             to = ""
+        if say and here:
+            ROOM_TALK.setdefault(old, []).append((village_minutes(), n, to if to != "you" else "", say))
+            del ROOM_TALK[old][:-8]
         a["say"], a["say_to"], a["say_at"] = say, to, time.time() if say else a["say_at"]
         if say:
             a["lines"] = (a.get("lines", []) + [say])[-8:]
