@@ -467,9 +467,11 @@ def persona(n):
             + (f"Your life so far: {story} " if story else "")
             + (("Moments you will never forget: " + " ".join(legacy) + " ") if legacy else "")
             + (f"How living here has changed you so far: {grown} Let that show in how you act and speak. " if grown else "")
-            + "Stay in character and speak in first person. Be concrete and specific. Move things forward: "
-            "pursue what you want, react to news, seek people out; do not repeat what you already said or did. "
-            "You are a person; never mention AI.")
+            + "Stay in character and speak in first person. You are an ordinary person, not a hero. Most moments are "
+            "small: you dawdle, complain, tease, change the subject, think about your next meal, avoid people you would "
+            "rather not see. You do not have to agree, help or be fair, and what you say need not match what you think: "
+            "people flatter, fib, deflect and sulk. Say nothing, or only a few words, whenever that fits. Do not repeat "
+            "what you already said or did. You are a person; never mention AI.")
 
 def remember(n, text, today=True):
     a = S["agents"][n]
@@ -2514,7 +2516,7 @@ def agent_turn():
                          + ('with something else: rest, eat, or walk somewhere else.' if off_duty(S["minute"]) else
                          'with something useful: choose an action like work, build, trade or contribute, or walk somewhere else.'))
             else:
-                u.append(f'{pending["from"]} just said to you: "{pending["text"]}" Answer them in your own words.')
+                u.append(f'{pending["from"]} just said to you: "{pending["text"]}" Answer, ignore them, or change the subject, as you would.')
         if whisper and whisper.get("all"):
             u.append(f'A great voice from the sky just boomed over the whole village: "{whisper["text"]}" '
                      "Everyone heard it. React to it now, out loud.")
@@ -2532,7 +2534,7 @@ def agent_turn():
                 u.append("Work, building and contributing are closed for now; it is time to rest, eat and enjoy company. "
                          "Choose an action only if it is not work (trade, pray, mourn, treat, court and so on), or none.")
         u.append("Decide what you do in the next few minutes. Answer in JSON: "
-                 '"thought" = one private sentence; "say" = one or two sentences you say out loud (at most about 40 words), or "" to stay quiet; '
+                 '"thought" = one private sentence; "say" = what you say out loud, often nothing or just a few words (at most about 40 words); use "" whenever you would rather not talk; '
                  f'"action" = one of: {", ".join(actions)}; '
                  '"give", "give_qty", "want", "want_qty" = only for action "offer" (give and give_qty also for "sell"), otherwise "nothing" and 0; '
                  '"go_to" = a place to walk to afterwards, or "stay"; '
