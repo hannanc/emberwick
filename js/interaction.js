@@ -53,7 +53,7 @@ function drawKbdFocus() {   // a gold ring and a forced name label on whatever t
   const pt = kbdPoint(kfocus); if (!pt) return; const [sx, sy] = toScreen(pt[0], pt[1]), z = cam.z, v = kfocus.kind === 'villager';
   ctx.save(); ctx.beginPath(); if (v) ctx.ellipse(sx, sy - 2 * z, 17 * z * FIG / .85, 7 * z * FIG / .85, 0, 0, 7); else ctx.arc(sx, sy, Math.max(22, 30 * z), 0, 7);
   ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(14,16,20,.8)'; ctx.stroke(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#ffd36b'; ctx.stroke(); ctx.restore();
-  label(kfocus.kind === 'place' ? (PLACE_NAME[kfocus.name] || kfocus.name) : kfocus.name, sx, v ? sy - 46 * FIG * z - 8 : sy - Math.max(22, 30 * z) - 8, { color: '#ffd36b', size: 13, force: true });
+  label(kfocus.kind === 'place' ? (PLACE_NAME[kfocus.name] || kfocus.name) : kfocus.name, sx, v ? sy - (figMetrics(st.agents.find(q => q.name === kfocus.name) || { age: 30, name: kfocus.name }, FIG).top + 9) * z - 8 : sy - Math.max(22, 30 * z) - 8, { color: '#ffd36b', size: 13, force: true });
 }
 cv.addEventListener('pointerdown', () => { kfocus = null; }, true);
 cv.addEventListener('blur', () => { kfocus = null; });

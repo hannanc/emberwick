@@ -93,3 +93,33 @@ test('colour helpers', () => {
   assert.equal(P.mix('#000000', '#ffffff', .5), '#808080'); assert.deepEqual(P.rgbOf('nonsense'), [136, 136, 136]);
   assert.equal(P.rgbaOf('#ff0000', .5), 'rgba(255,0,0,0.5)'); assert.ok(P.lumaOf('#fff') > .99);
 });
+
+test('the adult body is about four heads tall with legs about a third of the height', () => {
+  const B = P.BODY.adult, head = 2 * B.r, total = B.chin + 2 * B.r;
+  assert.ok(total / head > 3.7 && total / head < 4.3, 'four heads tall');
+  assert.ok(B.hem / total > .3 && B.hem / total < .38, 'legs about a third');
+  assert.ok(B.chin < B.sh + 2 && B.chin > B.sh, 'a short neck between the shoulders and the chin');
+  assert.ok(P.BODY.kid.r * 2 / (P.BODY.kid.chin + 2 * P.BODY.kid.r) > head / total, 'children have bigger heads');
+  assert.ok(P.BODY.baby.r * 2 / (P.BODY.baby.chin + 2 * P.BODY.baby.r) > P.BODY.kid.r * 2 / (P.BODY.kid.chin + 2 * P.BODY.kid.r), 'babies bigger still');
+  assert.equal(P.stageOf(3), 'baby'); assert.equal(P.stageOf(10), 'kid'); assert.equal(P.stageOf(18), 'adult');
+});
+test('builds: founders are fixed, everyone else stays within about 8% height and 10% width, elders are shorter', () => {
+  assert.ok(P.build({ name: 'Bram', age: 40 }).wf > 1.05 && P.build({ name: 'Wren', age: 25 }).hf > 1.05 && P.build({ name: 'Isolde', age: 30 }).wf < .95);
+  const names = Array.from({ length: 80 }, (_, i) => 'Villager' + i), bs = names.map(n => P.build({ name: n, age: 30 }));
+  assert.ok(bs.every(b => b.hf >= .92 - 1e-9 && b.hf <= 1.08 + 1e-9 && b.wf >= .9 - 1e-9 && b.wf <= 1.1 + 1e-9)); assert.ok(new Set(bs.map(b => b.hf)).size > 8);
+  assert.deepEqual(P.build({ name: 'Zed', age: 30 }), P.build({ name: 'Zed', age: 30 }));
+  assert.ok(P.build({ name: 'Zed', age: 80 }).hf < P.build({ name: 'Zed', age: 30 }).hf);
+  const kid = P.build({ name: 'Zed', age: 9 }); assert.ok(Math.abs(kid.hf - 1) <= .04 + 1e-9);
+});
+test('figure metrics follow the height factor, so labels and bubbles can follow it', () => {
+  const tall = P.figMetrics({ name: 'Wren', age: 25 }, .85), short = P.figMetrics({ name: 'Isolde', age: 30 }, .85), kid = P.figMetrics({ name: 'Zed', age: 8 }, .85);
+  assert.ok(tall.top > short.top && kid.top < short.top); assert.ok(tall.headY < tall.top && tall.headY > tall.top * .8);
+  const door = 25; assert.ok(Math.abs(P.figMetrics({ name: 'Mira', age: 34 }, .85).top / door - 1.2) < .15, 'an adult stands about 1.2 doors tall');
+});
+test('walking pace is slow enough to read as walking, slower when hungry, sick or old; strides follow body size', () => {
+  const adult = { name: 'Zed', age: 30 };
+  assert.ok(P.walkSpeed(adult) <= 2.5 && P.walkSpeed(adult) >= 1.5);
+  assert.ok(P.walkSpeed({ ...adult, hungry: 3 }) < P.walkSpeed(adult) && P.walkSpeed({ ...adult, sick: true }) < P.walkSpeed(adult) && P.walkSpeed({ ...adult, age: 80 }) < P.walkSpeed(adult));
+  assert.ok(P.strideLen({ name: 'Zed', age: 8 }) < P.strideLen(adult));
+  assert.ok(P.walkSpeed(adult) / P.strideLen(adult) < 2, 'under two full step cycles a second');
+});

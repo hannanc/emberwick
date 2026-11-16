@@ -49,7 +49,7 @@ function speakerSpot() {   // where the voice being played comes from: [x, headY
   if (!hear.now) return null; const who = hear.now.who;
   if (who === 'The Oracle') { const [ox, oy] = st.places.Oracle; return [ox * T, oy * T - 26, oy * T + 12, 1.9, 1, '#a98cf0']; }
   const a = st.agents.find(q => q.name === who), p = pos[who]; if (!a || !p) return null;
-  const S = FIG * (a.age < 6 ? .62 : a.age < 18 ? .84 : 1); return [p.x * T, p.y * T - 27 * S, p.y * T, S, p.face < 0 ? -1 : 1, a.color];
+  const m = figMetrics(a, FIG); return [p.x * T, p.y * T - m.headY, p.y * T, m.S, p.face < 0 ? -1 : 1, a.color];
 }
 function drawSpeaking(t) {   // a pulsing ring at the feet and three sound-wave arcs beside the head of whoever is being heard
   const sp = speakerSpot(); if (!sp) return; const [x, hy, by, S, side, col] = sp, k = REDUCE ? .4 : (t / 800) % 1, g = ctx;
@@ -82,10 +82,10 @@ function frame(t) {
   if (st && scenery) {
     const asleep = st.phase === 'night';
     for (const a of st.agents) {                         // walk along routes
-      const p = pos[a.name]; let left = 5 * dt * (a.hungry >= 2 ? .75 : 1); p.walking = false;   // the hungry plod
+      const p = pos[a.name]; let left = walkSpeed(a) * dt; p.walking = false;   // the hungry, the sick and the old go slower
       while (p.route.length && left > 0) {
         const [tx, ty] = p.route[0], d = Math.hypot(tx - p.x, ty - p.y), ox = p.x;
-        if (d <= left) { p.x = tx; p.y = ty; p.route.shift(); left -= d; } else { p.x += (tx - p.x) / d * left; p.y += (ty - p.y) / d * left; left = 0; }
+        if (d <= left) { p.x = tx; p.y = ty; p.route.shift(); left -= d; p.phase = (p.phase || 0) + d / strideLen(a); } else { p.x += (tx - p.x) / d * left; p.y += (ty - p.y) / d * left; p.phase = (p.phase || 0) + left / strideLen(a); left = 0; }   // the step cycle follows the distance walked
         p.walking = true; if (Math.abs(p.x - ox) > 1e-4) p.face = Math.sign(p.x - ox);   // remember which way they last moved
       }
     }

@@ -47,13 +47,13 @@ function look(a) {   // cached per name and life stage
   const key = a.name + (a.age < 18 ? 'k' : ''); if (LOOKS[key]) return LOOKS[key];
   const h = hash(a.name), f = a.sex === 'f', kid = a.age < 18, L = { skin: SKIN[h % 6], ...(LOOK[a.name] || {}) };
   if (!LOOK[a.name]) {
-    L.hair = f ? (kid ? ['long', 'braid', 'short'][(h >> 3) % 3] : ['long', 'bun', 'braid', 'short'][(h >> 3) % 4]) : kid || a.age < 40 || (h >> 3) % 4 ? 'short' : 'bald+beard';
-    if (!f && !kid && (h >> 6) % 3 === 0 && L.hair !== 'bald+beard') L.beard = a.hair;
+    L.hair = f ? (kid ? ['long', 'braid', 'short'][(h >>> 3) % 3] : ['long', 'bun', 'braid', 'short'][(h >>> 3) % 4]) : kid || a.age < 40 || (h >>> 3) % 4 ? 'short' : 'bald+beard';
+    if (!f && !kid && (h >>> 6) % 3 === 0 && L.hair !== 'bald+beard') L.beard = a.hair;
     if (L.hair === 'bald+beard') L.beard = a.hair;
-    const ac = (h >> 9) % 5;
-    if (ac === 1 && !kid) { L.accent = 'apron'; L.apron = ['#f7f3ea', '#8a5a32', '#c9b88a'][(h >> 12) % 3]; } else if (ac === 2) { L.accent = 'scarf'; L.scarf = ['#b8404f', '#e0a23a', '#4a8fc2', '#6fa04a'][(h >> 12) % 4]; }
-    else if (ac === 3 && f && !kid) { L.accent = 'shawl'; L.shawl = ['#d9a0b4', '#b6c7a4', '#c9b6e0'][(h >> 12) % 3]; }
-    else if (ac === 4 && !f && !kid && (h >> 15) % 2) L.cap = ['#7a5a3a', '#4f6b8a', '#6b4f4f'][(h >> 12) % 3];
+    const ac = (h >>> 9) % 5;
+    if (ac === 1 && !kid) { L.accent = 'apron'; L.apron = ['#f7f3ea', '#8a5a32', '#c9b88a'][(h >>> 12) % 3]; } else if (ac === 2) { L.accent = 'scarf'; L.scarf = ['#b8404f', '#e0a23a', '#4a8fc2', '#6fa04a'][(h >>> 12) % 4]; }
+    else if (ac === 3 && f && !kid) { L.accent = 'shawl'; L.shawl = ['#d9a0b4', '#b6c7a4', '#c9b6e0'][(h >>> 12) % 3]; }
+    else if (ac === 4 && !f && !kid && (h >>> 15) % 2) L.cap = ['#7a5a3a', '#4f6b8a', '#6b4f4f'][(h >>> 12) % 3];
   }
   return LOOKS[key] = L;
 }
@@ -61,6 +61,30 @@ function browPoints(brow, d, cx, ey, S) {   // one brow as { outer, inner } poin
   const bx = cx + d * .3 * S, by = ey - 2.5 * S - (brow === 1 ? .3 * S : 0), tilt = brow * 1.1 * S;
   return { outer: [bx + d * 1.6 * S, by + tilt * .45], inner: [bx - d * 1.5 * S, by - tilt] };
 }
+
+// ---- the body: proportions per life stage, in figure units (1 unit = S px, S = FIG x stage x height factor); y runs up from the soles
+const BODY = {   // r head radius, chin / sh (shoulder line) / hem (tunic hem, where the legs begin) heights, shW / hemW half widths, size = the stage's share of an adult
+  adult: { r: 4.7, chin: 26.8, sh: 25.2, hem: 12.6, shW: 5.8, hemW: 6.4, size: 1 },
+  kid: { r: 5.6, chin: 21.8, sh: 20.3, hem: 10.2, shW: 5.2, hemW: 5.8, size: .84 },     // bigger head, shorter torso
+  baby: { r: 8, chin: 15.6, sh: 14.4, hem: 6.4, shW: 4.8, hemW: 5.4, size: .62 },       // bigger still
+};
+const stageOf = age => age < 6 ? 'baby' : age < 18 ? 'kid' : 'adult';
+const BUILD = {   // founders get fixed builds (hf: height factor, wf: width factor); everyone else gets one from the name hash
+  Bram: { hf: 1.03, wf: 1.1 }, Wren: { hf: 1.07, wf: .9 }, Isolde: { hf: .96, wf: .92 }, Odile: { hf: 1, wf: 1.08 },
+  Mira: { hf: .98, wf: 1.04 }, Tobias: { hf: 1.02, wf: 1.07 }, Hesper: { hf: .94, wf: .94 },
+};
+function build(a) {   // { hf, wf }: about +-8% height and +-10% width; children vary less; elders are a little shorter (they also stoop)
+  const h = hash(a.name), kid = a.age < 18, fx = BUILD[a.name];
+  let hf = fx ? fx.hf : 1 + (((h >>> 5) % 17) - 8) / 100 * (kid ? .5 : 1), wf = fx ? fx.wf : 1 + (((h >>> 10) % 21) - 10) / 100 * (kid ? .5 : 1);
+  if (a.age >= 65) hf *= .96;
+  return { hf, wf };
+}
+function figMetrics(a, fig) {   // the figure's size on the map in px: S (one unit), stage body table, build, and where the head and the top of it are above the feet
+  const st = stageOf(a.age), B = BODY[st], b = build(a), S = fig * B.size * b.hf;
+  return { S, B, stage: st, hf: b.hf, wf: b.wf, headY: (B.chin + B.r) * S, top: (B.chin + 2 * B.r) * S };
+}
+const walkSpeed = a => 2 * (a.hungry >= 2 ? .75 : 1) * (a.sick ? .7 : 1) * (a.age >= 65 ? .85 : 1) * (a.age < 6 ? .8 : 1);   // tiles a second
+const strideLen = a => 1.25 * BODY[stageOf(a.age)].size * build(a).hf;   // tiles for one full step cycle (two steps): the feet follow the ground, not the clock
 const MOOD_KIND = {};      // mood word -> how the face shows it, worked out once per word
 function moodKind(m) {
   m = (m || '').toLowerCase(); if (MOOD_KIND[m]) return MOOD_KIND[m];
@@ -102,10 +126,10 @@ function placeNear(places, wx, wy) {   // which place a point (in tiles) belongs
   for (const [n, [x, y]] of Object.entries(places)) { if (n === 'Square') continue; const d = Math.hypot(wx - x, wy - y - 0.5); if (d < bd) { bd = d; best = n; } }
   return best;
 }
-function villagerNear(st, pos, wx, wy, z, T = 32, fig = 1.35) {   // the villager under a point in world pixels, or null (nobody can be picked at night)
+function villagerNear(st, pos, wx, wy, z, T = 32, fig = 1.35) {   // the villager under a point in world pixels, or null, nearest by the middle of each body (nobody can be picked at night)
   if (!st || st.phase === 'night') return null;
   const rad = Math.max(18 * fig, 16 / z); let best = null, bd = rad;
-  for (const a of st.agents) { const p = pos[a.name]; if (!p) continue; const d = Math.hypot(p.x * T - wx, p.y * T - 18 * fig - wy); if (d < bd) { bd = d; best = a.name; } }
+  for (const a of st.agents) { const p = pos[a.name]; if (!p) continue; const d = Math.hypot(p.x * T - wx, p.y * T - figMetrics(a, fig).top / 2 - wy); if (d < bd) { bd = d; best = a.name; } }
   return best;
 }
 function sceneData(st, name, radius) {   // who is in a place, what was said there in the last 90 minutes, what stands nearby
@@ -116,4 +140,4 @@ function sceneData(st, name, radius) {   // who is in a place, what was said the
     built: (st.structures || []).filter(s => s.done && Math.hypot(s.x - px, s.y - py) <= (radius || 5)),
   };
 }
-if (typeof module !== 'undefined') module.exports = { browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };
+if (typeof module !== 'undefined') module.exports = { BODY, stageOf, build, figMetrics, walkSpeed, strideLen, browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };

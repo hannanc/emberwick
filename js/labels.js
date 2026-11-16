@@ -58,19 +58,19 @@ function drawOverlay(t, asleep, order) {
     if (hs) latest[hs.place] = hs;
     const speakers = Object.values(latest).sort((a, b) => (b.name === selected) - (a.name === selected) || b.say_at - a.say_at);
     const onScreen = (sx, sy) => sx > -40 && sx < vw + 40 && sy > -40 && sy < vh + 40;     // a speaker out of view gets no bubble pinned to a corner
-    for (const a of speakers) { const p = pos[a.name], [sx, sy] = toScreen(p.x * T, p.y * T - 40 * FIG); if (!onScreen(sx, sy)) continue; bubbles.push(layoutBubble(a.say, a.name, a.color, sx, sy, clamp((26 - (now - a.say_at)) / 4, 0, 1))); }
+    for (const a of speakers) { const p = pos[a.name], [sx, sy] = toScreen(p.x * T, p.y * T - figMetrics(a, FIG).top - 3); if (!onScreen(sx, sy)) continue; bubbles.push(layoutBubble(a.say, a.name, a.color, sx, sy, clamp((26 - (now - a.say_at)) / 4, 0, 1))); }
     if (st.oracle.speech && now - st.oracle.at < 60) { const [ox, oy] = st.places.Oracle, [sx, sy] = toScreen(ox * T, oy * T - 34); if (onScreen(sx, sy)) bubbles.push(layoutBubble(st.oracle.speech, 'The Oracle', '#a98cf0', sx, sy, clamp((60 - (now - st.oracle.at)) / 5, 0, 1))); }
     for (const a of order) {                             // villager names: below the feet, else above the head
       const p = pos[a.name], [sx, sy] = toScreen(p.x * T, p.y * T), sel = a.name === selected, o = { color: sel ? '#e8bd5f' : '#fff', size: sel ? 13 : 12, force: sel };
       let ly = sy + 15, ok = label(a.name, sx, ly, o);
-      if (!ok) { ly = sy - 42 * FIG * z - 6; ok = label(a.name, sx, ly, { ...o, force: true, alpha: .9 }); }
+      if (!ok) { ly = sy - (figMetrics(a, FIG).top + 5) * z - 6; ok = label(a.name, sx, ly, { ...o, force: true, alpha: .9 }); }
       if (ok && a.expecting) { ctx.font = `600 ${o.size}px ${SANS}`; const hx = sx + ctx.measureText(a.name).width / 2 + 9, hy = ly - o.size * .38; ctx.fillStyle = '#f48fb1'; ctx.beginPath(); ctx.moveTo(hx, hy + 3.6); ctx.bezierCurveTo(hx - 7, hy - 1, hx - 3.4, hy - 6, hx, hy - 2.4); ctx.bezierCurveTo(hx + 3.4, hy - 6, hx + 7, hy - 1, hx, hy + 3.6); ctx.fill(); }   // a tiny heart for an expecting mother
     }
   } else {
     const [cx, cy] = st.places.Cottages;
     for (let i = 0; i < 3; i++) { const k = ((t / 2600) + i / 3) % 1, [sx, sy] = toScreen((cx + 0.6 + k) * T, (cy - 2 - k * 2.2) * T); label('z', sx, sy, { color: `rgba(255,255,255,${1 - k})`, size: 14 + k * 12, force: true }); }
   }
-  if (!asleep) for (const a of order) { const p = pos[a.name]; if (!p) continue; const [bx, by] = toScreen(p.x * T, p.y * T); occ.push({ x: bx - 9 * FIG * z, y: by - 42 * FIG * z, w: 18 * FIG * z, h: 44 * FIG * z }); }   // people are in the way too: labels give way to them
+  if (!asleep) for (const a of order) { const p = pos[a.name]; if (!p) continue; const [bx, by] = toScreen(p.x * T, p.y * T); { const ft = figMetrics(a, FIG).top + 5; occ.push({ x: bx - 9 * FIG * z, y: by - ft * z, w: 18 * FIG * z, h: (ft + 2) * z }); } }   // people are in the way too: labels give way to them
   for (const s of st.structures) {                       // building-site labels, when there is room
     if (!(s.owner === selected || z >= 1.6 || (z >= 0.7 && (s.owner === 'Village' || !s.done)))) continue;     // owners' names only for the selected villager or close up; landmarks and building sites always
     const [sx, sy] = toScreen(s.x * T, s.y * T);
