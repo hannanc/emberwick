@@ -285,7 +285,7 @@ def migrate():
         a.setdefault("plan_at", 0)
         a.setdefault("plan_work", 0)
         a.setdefault("self", "")
-        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("inner", ""), ("worn", ""), ("grudges", []), ("wake", {})):
+        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("inner", ""), ("worn", ""), ("recall", []), ("grudges", []), ("wake", {})):
             a.setdefault(k, v)
         for k, v in (("expecting", None), ("proposal", None), ("partner", None), ("hungry", 0), ("rest_until", 0),
                      ("sick", None), ("care_until", 0)):
@@ -510,10 +510,12 @@ def gist(text, words=6):
     w = text.split()
     return " ".join(w[:words]) + ("…" if len(w) > words else "")
 
-def remember(n, text, today=True):
+def remember(n, text, today=True, keep=True):
+    """keep=False: the line is only material for tonight's reflection, not one of the memories shown each turn."""
     a = S["agents"][n]
     line = f"[{hhmm(S['minute'])}] {text}"
-    a["memories"] = (a["memories"] + [line])[-40:]
+    if keep:
+        a["memories"] = (a["memories"] + [line])[-40:]
     if today:
         a["today"] = (a["today"] + [line])[-36:]
 
@@ -2380,8 +2382,11 @@ def agent_turn():
         if a.get("lines"):
             u.append("Things you said recently (if you hear yourself circling the same words or subject, drop it mid-thought, as people do):\n"
                      + "\n".join(f'- "{x}"' for x in a["lines"][-5:]))
+        if a.get("recall"):
+            u.append("How you remember the last few days (as you remember them, not as a record):\n"
+                     + "\n".join("- " + x for x in a["recall"][-6:]))
         if a["reflections"]:
-            u.append("What you concluded on earlier nights:\n" + "\n".join("- " + r for r in a["reflections"][-2:]))
+            u.append("What you concluded last night: " + a["reflections"][-1])
         if a["feelings"]:
             u.append("How you feel about people: " + "; ".join(f"{k}: {v}" for k, v in a["feelings"].items()) + ".")
         close = sorted(((o, warmth(n, o)) for o in S["agents"] if o != n), key=lambda x: -x[1])
@@ -2723,12 +2728,12 @@ def agent_turn():
         moved = go in PLACES and go != old
         if moved:
             a["place"] = go
-            remember(n, f"I left the {old} and walked to the {go}.")
+            remember(n, f"I left the {old} and walked to the {go}.", keep=False)
             for c in children(n):
                 if not acting(c) and c in S["agents"] and S["agents"][c]["place"] == old:
                     S["agents"][c].update(place=go, activity=f"carried along by {n}")
         elif not say and not did:
-            remember(n, f"At the {old} I was {a['activity']}.")
+            remember(n, f"At the {old} I was {a['activity']}.", keep=False)
         advance_plan(n, act, did)
         log_event(kind="turn", who=n, place=old, to_place=go if moved else "", activity=a["activity"],
                   say=say, to=to, thought=a["thought"], mood=a["mood"], did=did, deep=deep)
@@ -2975,10 +2980,13 @@ def night():
                      'what aches, how hungry or tired you are), "on_mind" (the worry or hope you cannot shake), "avoid" (a '
                      'person, place or chore you mean to dodge, or ""), "seek" (who or what you want, or ""). Be petty and '
                      'particular; not every day is meaningful, and you may simply be tired. "worn" = a phrase, topic or habit '
-                     'you caught yourself falling back on today, or "".',
+                     'you caught yourself falling back on today, or "". "remembered" = two or three things from today as '
+                     'you will actually remember them next week: vivid, partial, coloured by how you felt; you may have a '
+                     'detail slightly wrong.',
                      obj({"reflection": STR, "growth": STR, "milestone": STR,
                           "grudges": {"type": "array", "items": obj({"who": {"type": "string", "enum": others or ["nobody"]}, "why": STR})},
                           "wake": obj({"mood": STR, "body": STR, "on_mind": STR, "avoid": STR, "seek": STR}), "worn": STR,
+                          "remembered": {"type": "array", "items": STR},
                           "feelings": {"type": "array", "items": obj(
                          {"name": {"type": "string", "enum": others or ["nobody"]}, "feeling": STR,
                           "closeness": {"type": "string", "enum": list(CLOSE_LABELS)}})}}),
@@ -2996,6 +3004,9 @@ def night():
                 a["grudges"] = [dict(who=g["who"], why=clip(g.get("why"), 160), day=day) for g in r["grudges"]
                                 if isinstance(g, dict) and g.get("who") in others and g.get("why")][:3]
             a["worn"] = clip(r.get("worn"), 120)
+            mem = [f"Day {day}: {clip(x, 200)}" for x in (r.get("remembered") or []) if isinstance(x, str) and x.strip()][:3]
+            if mem and not any(x.startswith(f"Day {day}:") for x in a.get("recall", [])):
+                a["recall"] = (a.get("recall", []) + mem)[-10:]
             wk = r.get("wake") or {}
             if isinstance(wk, dict) and any(wk.get(k) for k in ("mood", "body", "on_mind")):
                 a["wake"] = {k: clip(wk.get(k), 140) for k in ("mood", "body", "on_mind", "avoid", "seek")}
