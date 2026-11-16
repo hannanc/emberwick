@@ -464,12 +464,13 @@ def persona(n):
     legacy = S["agents"][n].get("legacy", [])[-LEGACY_SHOWN:] if S.get("agents") and n in S["agents"] else []
     fam = family_text(n) if n in S.get("agents", {}) else ""
     return (f"You are {n}, a {age(n)}-year-old {word(n)}, {c['job']} of Emberwick, a small lakeside village. "
-            f"Personality: {c['traits']}. Deep down you want {c['goal']}. "
-            + (f"Your secret: {c['secret']}. " if c.get("secret") else "") + mortality_text(n)
-            + (f"{c['grates'][0]} {c['grates'][1]}. " if c.get("grates") and c["grates"][0] in S.get("agents", {}) else "")
+            f"Personality: {c['traits']}. Deep down you want {c['goal'].rstrip('.')}. "
+            + (f"Your secret: {c['secret'].rstrip('.')}. " if c.get("secret") else "") + mortality_text(n)
+            + (f"{c['grates'][0]} {c['grates'][1]}. " if isinstance(c.get("grates"), (tuple, list)) and c["grates"][0] in S.get("agents", {})
+               else f"What gets under your skin: {c['grates'].rstrip('.')}. " if isinstance(c.get("grates"), str) and c["grates"] else "")
             + (f"Family: {fam}. " if fam else "")
             + f"How you talk: {speech_style(n)}. " +
-            f"You dream of {'building ' if n in CAST else ''}{c['dream']}. Villagers gather materials, trade with each other and build things. "
+            f"You dream of {'building ' if n in CAST else ''}{c['dream'].rstrip('.')}. Villagers gather materials, trade with each other and build things. "
             + (f"Your life so far: {story} " if story else "")
             + (f"Small habits and quirks you have picked up: {habits} " if habits else "")
             + (("Moments you will never forget: " + " ".join(legacy) + " ") if legacy else "")
@@ -1324,19 +1325,24 @@ def invent_stranger(day=None, trouble=False):
              "they were let in (for example running from a debt or a crime, or meaning to cheat whoever trusts them), "
              "and a reason for leaving home that does not quite add up.") if trouble else ""
     try:
-        r = chat(NARRATOR, "You invent believable characters for a cosy village story.",
+        r, _ = chat_deep("You invent believable, particular people for a village story: with real faults, tastes and a past.",
                  f"A stranger, {job}, will arrive at the lakeside village of Emberwick tomorrow morning and ask to settle "
                  f"there. Villagers: " + ", ".join(f"{n} ({who(n)['job']}, {age(n)})" for n in S["agents"]) + ". "
                  f"Their personality is exactly this, flaws included: {', '.join(traits)}. Let it show plainly, "
                  + shade + " "
                  "including in how they ask to join. Invent this person. Answer in JSON: \"name\" = one first name not used "
                  "by anyone above; \"sex\" = f or m; \"age\" = 20 to 50; \"speech\" = how they talk, one "
-                 "short phrase; \"goal\" = what they want, starting with 'to'; \"secret\" = a small secret in second person; "
-                 "\"dream\" = something they dream of; \"why\" = one sentence on why they left home; \"pitch\" = what they say "
-                 "to the villagers when asking to join, one or two sentences in their own voice.",
+                 "short phrase; \"goal\" = what they want, written to them in the second person and starting with 'to' "
+                 "(for example 'to ...', never mentioning 'me'); \"secret\" = a small secret in second person; "
+                 "\"dream\" = something they dream of, as a short noun phrase; \"why\" = one sentence on why they left home; "
+                 "\"pitch\" = what they say to the villagers when asking to join, one or two sentences in their own voice; "
+                 "\"story\" = four first-person sentences in their own voice: where they come from, why they really left, "
+                 "what they are bad at, and what they are vain about; \"grates\" = the kind of person who gets under their "
+                 "skin, written as a short phrase.",
                  obj({"name": STR, "sex": {"type": "string", "enum": ["f", "m"]}, "age": {"type": "integer"},
-                      "speech": STR, "goal": STR, "secret": STR, "dream": STR, "why": STR, "pitch": STR}),
-                 keep_alive="0s", num_predict=400, temperature=0.9)
+                      "speech": STR, "goal": STR, "secret": STR, "dream": STR, "why": STR, "pitch": STR,
+                      "story": STR, "grates": STR}),
+                 num_predict=700, temperature=0.9)
     except Exception as e:
         print("invent_stranger failed:", e, flush=True)
         return None
@@ -1357,6 +1363,7 @@ def invent_stranger(day=None, trouble=False):
                 goal=clip(r.get("goal"), 140) or "to find a home and be useful",
                 secret=clip(r.get("secret"), 160), dream=clip(r.get("dream"), 120) or "a home of your own",
                 why=clip(r.get("why"), 200), pitch=clip(r.get("pitch"), 260) or "I would like to make my home here.",
+                story=clip(r.get("story"), 600), grates=clip(r.get("grates"), 160),
                 color="#%02x%02x%02x" % tuple(random.randint(70, 210) for _ in range(3)),
                 hair=random.choice(["#2b1b10", "#5a2d1a", "#8a6a3a", "#c9a25a", "#3a3a3a", "#7a4a2a"]), votes={},
                 day=S["day"] + 1 if day is None else day, met={}, spoke={}, talk=[], qa=[])
@@ -1502,7 +1509,7 @@ def settle_stranger():
     S["born"][nm] = dict(sex=st["sex"], day=S["day"] + 1 - st["age"] * YEAR_DAYS, parents=[], job=st["job"],
                          workplace=st["workplace"], traits=st["traits"], speech=st["speech"], color=st["color"],
                          hair=st["hair"], home="Cottages", goal=st["goal"], secret=st["secret"], dream=st["dream"],
-                         feel={}, newcomer=S["day"] + 1)
+                         feel={}, newcomer=S["day"] + 1, grates=st.get("grates", ""))
     voice_of(nm)
     inv = dict.fromkeys(ITEMS, 0)
     for i, q in st["brings"].items():
@@ -1511,7 +1518,7 @@ def settle_stranger():
                            memories=[f"I arrived in Emberwick as a stranger ({st['why']}) and asked to stay. The village voted: "
                                      f"{', '.join(yes)} welcomed me" + (f"; {', '.join(no)} did not" if no else "") + "."],
                            today=[], reflections=[], feelings={}, pending=None, whisper=None, offer=None, inv=inv, plan=[],
-                           self="", expecting=None, proposal=None, partner=None, hungry=0, rest_until=0, age_seen=st["age"],
+                           self="", expecting=None, proposal=None, partner=None, hungry=0, rest_until=0, age_seen=st["age"], story=st.get("story", ""),
                            sick=None, care_until=0, warmth={}, bank=0, loan=0, courtship=None, ribbons=[], lines=[])
     for o in yes:
         warm(nm, o, 1); warm(o, nm, 0)       # a newcomer is an acquaintance until the nights say otherwise
