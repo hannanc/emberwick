@@ -948,6 +948,10 @@ function drawBubble(b) {
 }
 function drawOverlay(t, asleep, order) {
   occ = [];
+  if (sceneAt && !$('scene').hidden) {                   // the scene card is part of the overlay: bubbles and labels keep off it
+    if (!sceneRect || t - sceneRectAt > 500) { const b = $('scene').getBoundingClientRect(), c = cv.getBoundingClientRect(); sceneRect = { x: b.left - c.left, y: b.top - c.top, w: b.width, h: b.height }; sceneRectAt = t; }
+    occ.push(sceneRect);
+  }
   const now = Date.now() / 1000 + skew, z = cam.z, bubbles = [];
   if (!asleep) {
     const latest = {};                                    // one bubble per place: whoever spoke last
@@ -1348,7 +1352,7 @@ const PLACE_DESC = {
   Meadow: 'The open Meadow, new ground for farms and homes.', Hospital: 'The little whitewashed Hospital, where the sick are treated with herbs.', Cemetery: 'The quiet Cemetery by the lake, where the village buries its dead.' };
 const SCENE_ZOOM = { Square: 15, Dock: 14, Cottages: 15, Meadow: 12, Garden: 11, Tavern: 10, Woods: 12, Quarry: 10, Shrine: 9, Cemetery: 9, Library: 8, Bakery: 8, Workshop: 8, Hospital: 8, Oracle: 8 };   // tiles of map across the screen
 const SCENE_R = { Square: 6.5, Cottages: 14, Dock: 9, Meadow: 7, Garden: 4.5, Woods: 8, Quarry: 6 };                                                                                  // how far round a place counts as "here"
-let sceneAt = null, sceneKey = '';
+let sceneAt = null, sceneKey = '', sceneRect = null, sceneRectAt = -1e9;
 function placeAt(sx, sy) {
   if (!st) return null; const [wx, wy] = toWorld(sx, sy).map(v => v / T);
   if (((wx - 20.4) / 5.8) ** 2 + ((wy - 13) / 3.4) ** 2 < 1) return 'Square';
@@ -1360,10 +1364,10 @@ function focusPlace(name, fly = true) {
   if (!st || !st.places[name]) return;
   if (selected) select(null);
   sceneAt = name; sceneKey = '';
-  if (fly) { const [x, y] = st.places[name]; cam.follow = false; userMoved = true; cam.tx = x * T; cam.ty = (y + (name === 'Square' ? 1 : 0.4)) * T; cam.tz = clamp(vw / ((SCENE_ZOOM[name] || 10) * T), fitZ(), maxZ()); clampT(); syncFocus(); }
+  if (fly) { const [x, y] = st.places[name]; cam.follow = false; userMoved = true; cam.tz = clamp(vw / ((SCENE_ZOOM[name] || 10) * T), fitZ(), maxZ()); cam.tx = x * T - (vw > 760 ? 176 : 0) / cam.tz; cam.ty = (y + (name === 'Square' ? 1 : 0.4)) * T; clampT(); syncFocus(); }   // the place sits right of the card, not under it
   renderScene(true);
 }
-function closeScene() { sceneAt = null; $('scene').hidden = true; }
+function closeScene() { sceneAt = null; sceneRect = null; $('scene').hidden = true; }
 function renderScene(force) {
   const box = $('scene'); if (!sceneAt || !st || !st.places[sceneAt]) { box.hidden = true; return; }
   const name = sceneAt, [px, py] = st.places[name], here = st.agents.filter(a => a.place === name), nowMin = st.day * 1440 + st.minute;
