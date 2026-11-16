@@ -718,7 +718,6 @@ def die(n, cause):
                 oa[k] = None
         got = " Their goods and buildings passed to " + ", ".join(heirs) + "." if heirs else ""
         mine = " Everything they owned is now mine." if heirs == [o] else " I received a share of what they owned." if o in heirs else ""
-        oa["legacy"] = (oa.get("legacy", []) + [f"Day {S['day']}: {n} died, aged {ag}, and I was there when the village laid them to rest."])[-LEGACY_KEPT:]
         remember(o, f"{n} died in the night, aged {ag} ({cause}), and was buried in the Cemetery."
                     f"{mine if o in heirs else got}")
     log_event(kind="death", who=n, age=ag, text=f"{n}, {who(n)['job']}, died in the night aged {ag} ({cause}) and "
@@ -1992,7 +1991,8 @@ def oracle_world(n, question):
     a = S["agents"][n]
     L = [f"Day {S['day']}, {hhmm(S['minute'])}. Weather: {S['weather']}. News: {S['news']}", "", "RULES OF THE WORLD",
          "Each turn a villager may speak, take one action, then walk to one place. A village day runs 06:00-22:00 in "
-         "5-minute turns; each villager gets roughly 30 turns a day. Everyone must hold 1 bread or fish at night or go hungry.",
+         "5-minute turns; each villager gets roughly 30 turns a day. Work, building and contributing are closed from 12:00 to 13:00 and "
+         "from 19:00 on, so plan steps for the working hours. Everyone must hold 1 bread or fish at night or go hungry.",
          "Places: " + ", ".join(PLACES) + ".",
          "Action work (yield per use): " + "; ".join(
              f"{p}: {b} {i} for anyone" + (f", 3 for {sp}" if sp else "") for p, (i, b, sp) in WORK.items())
@@ -2418,7 +2418,8 @@ def agent_turn():
                  + (f": you are over it with {', '.join(over)}, so trade, sell or build with the surplus." if over else "."))
         item, q = work_yield(n, a["place"])
         actions = ["none"]
-        if q:
+        resting = off_duty(S["minute"])
+        if q and not resting:
             full = item != "coins" and a["inv"][item] >= lim
             u.append(f'Action "work" here gives you {q} {item}.' + (f" But you already carry all the {item} you can, "
                      "so working here gains nothing." if full else ""))
@@ -2455,10 +2456,11 @@ def agent_turn():
                 if bp["site"] == a["place"]:
                     cost = " + ".join(f"{c} {i}" for i, c in bp["cost"].items())
                     can.append(f"{t} ({cost}; {bp['perk']})")
-                    actions.append("build_" + t)
+                    if not resting:
+                        actions.append("build_" + t)
                 else:
                     elsewhere.append(f"{t} at the {bp['site']}")
-        if can:
+        if can and not resting:
             u.append(f"You can build here at the {a['place']}: " + "; ".join(can) + ". Use the build action: it first "
                      "delivers the materials you carry, then each use does one turn of work.")
         if elsewhere:
@@ -2478,7 +2480,7 @@ def agent_turn():
         u += fair_text(n)
         u += project_text()
         pk = current_project()
-        if pk and PROJECTS[pk]["site"] == a["place"]:
+        if pk and PROJECTS[pk]["site"] == a["place"] and not resting:
             actions.append("contribute")
         bank_q = {}
         if project_done("bank") and not banker():
@@ -2589,12 +2591,9 @@ def agent_turn():
         elif whisper:
             u.append(f'A sudden, strangely vivid thought enters your mind, as if whispered: "{whisper["text"]}" '
                      "You feel compelled to act on it now and to say something about it out loud.")
-        if off_duty(S["minute"]):
-            closed = [x for x in actions if x in ("work", "contribute") or x.startswith("build_")]
-            actions = [x for x in actions if x not in closed]
-            if closed:
-                u.append("Work, building and contributing are closed for now; it is time to rest, eat and enjoy company. "
-                         "Choose an action only if it is not work (trade, pray, mourn, treat, court and so on), or none.")
+        if resting:
+            u.append("Work, building and contributing are closed for now; it is time to rest, eat and enjoy company. "
+                     "Choose an action only if it is not work (trade, pray, mourn, treat, court and so on), or none.")
         u += [f"You still hold it against {g['who']}: {g['why']}" for g in a.get("grudges", []) if g["who"] in S["agents"]]
         u += wake_text(n)
         u += repeat_note(n)
