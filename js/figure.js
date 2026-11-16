@@ -22,7 +22,7 @@ function drawFace(g, o) {   // small dark eyes with a highlight (whites only for
     if (hurt && z >= 1.5 && !blink) { g.strokeStyle = shade(o.skin, .7); g.lineWidth = .8 * S + .1; g.beginPath(); g.moveTo(cx - 1.2 * S, ey - .55 * S); g.lineTo(cx + 1.2 * S, ey - .55 * S); g.stroke(); }   // the drooped lid
     if (!baby && z >= 1) {   // brows, mirrored: inner ends (towards the nose) drop when stern, rise when worried; drawn in a darker shade of the hair
       const { outer, inner } = browPoints(k.brow, d, cx, ey - .3 * S, S);
-      g.strokeStyle = shade(a.hair || '#3a2a1c', a.hair && a.age >= 60 ? .8 : .55); g.lineWidth = .95 * S + .15; g.beginPath(); g.moveTo(outer[0], outer[1]); g.lineTo(inner[0], inner[1]); g.stroke();
+      g.strokeStyle = shade(hairColor(a) || '#3a2a1c', a.age >= 60 ? .8 : .55); g.lineWidth = .95 * S + .15; g.beginPath(); g.moveTo(outer[0], outer[1]); g.lineTo(inner[0], inner[1]); g.stroke();
     }
   }
   if (z < 1) return;
@@ -108,6 +108,11 @@ function drawGear(c) {   // what hangs on the body, drawn over the torso and und
     g.beginPath(); g.moveTo(nx - 2.4 * S, ny - .8 * S); g.lineTo(nx + 2.4 * S, ny + .8 * S); g.moveTo(nx - 2.4 * S, ny + .8 * S); g.lineTo(nx + 2.4 * S, ny - .8 * S); g.moveTo(nx, ny - 2.6 * S); g.lineTo(nx, ny + 2.6 * S); g.stroke();
   }
 }
+function drawBlanket(c) {   // someone ill is wrapped in a striped blanket over the shoulders
+  const { g, S, x, B, line } = c, Y = c.Y, col = '#c9a86a'; g.fillStyle = col; g.strokeStyle = line; g.lineWidth = 1.2; g.beginPath(); g.moveTo(x - (B.shW + 2.4) * S, Y(B.sh - .8)); g.quadraticCurveTo(x - 6 * S, Y(B.sh + 1.4), x, Y(B.sh + 1.2)); g.quadraticCurveTo(x + 6 * S, Y(B.sh + 1.4), x + (B.shW + 2.4) * S, Y(B.sh - .8));
+  g.lineTo(x + (B.shW + 1.6) * S, Y(B.sh - 8)); g.quadraticCurveTo(x, Y(B.sh - 9.6), x - (B.shW + 1.6) * S, Y(B.sh - 8)); g.closePath(); g.fill(); g.stroke();
+  g.strokeStyle = '#a0603a'; g.lineWidth = 1.1; for (const v of [-3.4, -5.6]) { g.beginPath(); g.moveTo(x - (B.shW + 1.9) * S, Y(B.sh + v + .2)); g.quadraticCurveTo(x, Y(B.sh + v - 1.1), x + (B.shW + 1.9) * S, Y(B.sh + v + .2)); g.stroke(); }
+}
 function drawBook(c) {   // a ledger or a book tucked under the left arm
   const { g, S, x, B, L, line } = c, col = L.ledger || L.book; if (!col || c.z <= 1 || c.prop === 'book') return;
   g.save(); g.translate(x - (B.shW + .4) * S, c.Y(B.sh - 8.2)); g.rotate(-.12); g.fillStyle = col; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.roundRect(-1.9 * S, -3 * S, 3.8 * S, 6 * S, .6 * S); g.fill(); g.stroke();
@@ -125,7 +130,7 @@ function drawTorso(c) {   // the tunic or dress as a path (reused for the clip a
 function person(a, p, t, g = ctx) {
   const m = figMetrics(a, FIG), S = m.S, B = m.B, h = hash(a.name), L = look(a), x = p.x * T, base = p.y * T;
   const standing = !p.walking && !p.route.length, pose = standing ? poseOf(a) : 'walk', sit = pose === 'sit', walking = !standing;
-  const cyc = p.phase || 0, step = walking ? Math.sin(cyc * 6.2832) : 0, drop = sit ? 3 * B.size : 0;
+  const cyc = p.phase || 0, step = walking ? Math.sin(cyc * 6.2832) : 0, drop = sit ? 2.4 * B.size : 0;
   const breath = walking || REDUCE ? 0 : Math.sin(t / 900 + h % 100) * .6 * S, bob = walking ? Math.abs(Math.cos(cyc * 6.2832)) * 1.1 * S : 0;
   const gy = base - bob, y = gy + breath + drop * S;   // gy: the ground under the soles (the legs), y: the body, lower when seated
   const now = Date.now() / 1000 + skew, old = a.age >= 65, baby = a.age < 6, hurt = a.sick;
@@ -135,14 +140,14 @@ function person(a, p, t, g = ctx) {
     if (op && Math.abs(op.x - p.x) > .05) f = Math.sign(op.x - p.x);
     else if (!REDUCE) { const ph = t / 1000 + h % 7; if (ph % 6 < .9) f = (Math.floor(ph / 6) + h) & 1 ? 1 : -1; }   // now and then a glance to the side
   }
-  const dir = f || p.face || 1, lean = old ? 1.4 * S * dir : 0, r = B.r * S, hx = x + lean + f * .5 * S, hy = y - (B.chin + B.r) * S, u = r / 5.7;
-  const skin = hurt ? '#e2dac2' : L.skin, line = 'rgba(30,22,16,.4)', hairC = a.hair, prop = standing && PROPS[a.place];
-  const dress = a.sex === 'f' && a.age >= 6, z = g === ctx ? cam.z : 3;   // z: how close we are looking (scene cards are always close)
-  const c = { g, a, p, h, z, dir, prop, hairC, S, B, L, x, y, gy, f, t, skin, line, drop, sit, step, cyc, walking, dress, sleeve: a.color, trouser: TROUSERS[(h >>> 16) % 4], sock: dress ? '#c4b8a0' : mix(TROUSERS[(h >>> 16) % 4], '#c9bda3', .3), Y: v => y - v * S };
+  const dir = f || p.face || 1, lean = old ? 1.4 * S * dir : 0, r = B.r * S, hx = x + lean + f * .5 * S, hy = y - (B.chin + B.r) * S + (old ? .9 * S : 0), u = r / 5.7;
+  const skin = hurt ? mix(L.skin, '#f6eee4', .16) : L.skin, line = 'rgba(30,22,16,.4)', hairC = hairColor(a), prop = standing && PROPS[a.place];
+  const onBench = sit && a.place === 'Square' && SEATS.Square.some(q => Math.abs(q[0] - p.x) < .05 && Math.abs(q[1] - p.y) < .05), dress = a.sex === 'f' && a.age >= 6, z = g === ctx ? cam.z : 3;   // z: how close we are looking (scene cards are always close)
+  const c = { g, a, p, h, z, dir, prop, onBench, hairC, S, B, L, x, y, gy, f, t, skin, line, drop, sit, step, cyc, walking, dress, sleeve: a.color, trouser: TROUSERS[(h >>> 16) % 4], sock: dress ? '#c4b8a0' : mix(TROUSERS[(h >>> 16) % 4], '#c9bda3', .3), Y: v => y - v * S };
   shadow(g, x - 2, base + 1, 11 * S, 4 * S, .3);
   if (selected === a.name) { const k = 1 + Math.sin(t / 300) * 0.08; g.strokeStyle = '#e8bd5f'; g.lineWidth = 2.5; g.beginPath(); g.ellipse(x, base + 1, 17 * S * k, 7.5 * S * k, 0, 0, 7); g.stroke(); }
   else if (hover === a.name) { g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 2; g.beginPath(); g.ellipse(x, base + 1, 15 * S, 6.5 * S, 0, 0, 7); g.stroke(); }
-  if (hurt) { const k = REDUCE ? .6 : .5 + .3 * Math.sin(t / 700 + h % 9); g.fillStyle = `rgba(140,215,120,${.16 * k})`; g.beginPath(); g.ellipse(x, base - 15 * S, 15 * S, 25 * S, 0, 0, 7); g.fill(); g.fillStyle = `rgba(140,215,120,${.2 * k})`; g.beginPath(); g.ellipse(x, base + 1, 13 * S, 5 * S, 0, 0, 7); g.fill(); }   // a faint green aura while ill
+  if (hurt) { const k = REDUCE ? .6 : .5 + .3 * Math.sin(t / 700 + h % 9); g.fillStyle = `rgba(140,215,120,${.1 * k})`; g.beginPath(); g.ellipse(x, base - 15 * S, 15 * S, 25 * S, 0, 0, 7); g.fill(); g.fillStyle = `rgba(140,215,120,${.14 * k})`; g.beginPath(); g.ellipse(x, base + 1, 13 * S, 5 * S, 0, 0, 7); g.fill(); }   // a faint green aura while ill
   g.lineWidth = 1.3; g.lineJoin = 'round'; g.lineCap = 'round';
   g.save();   // the figure itself: broader or slighter about its middle, leaning forward a little as it walks
   if (m.wf !== 1 || walking) { g.translate(x, base); if (m.wf !== 1) g.scale(m.wf, 1); if (walking) g.rotate(.06 * dir); g.translate(-x, -base); }
@@ -166,7 +171,7 @@ function person(a, p, t, g = ctx) {
     if (z > 1) { g.fillStyle = '#e8d8a0'; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(x, y - (sh - 6.4 - i * 2.6) * S, .6 * S + .1, 0, 7); g.fill(); } }
   }
   g.restore(); g.strokeStyle = line; g.lineWidth = 1.3; drawTorso(c); g.stroke();
-  drawGear(c);
+  drawGear(c); if (hurt) drawBlanket(c);
   const rest = d => [d * .9, 9.4];   // arms hang a little away from the body
   const wl = rest(-1), wr = rest(1);
   if (walking) { wl[1] -= step * 2.2; wr[1] += step * 2.2; wl[0] += step * 1.2; wr[0] -= step * 1.2; }   // arms swing against the legs
@@ -188,8 +193,9 @@ function person(a, p, t, g = ctx) {
   if (L.accent === 'scarf') { const Y = c.Y; g.fillStyle = L.scarf; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.roundRect(x - 5.8 * S, Y(B.sh + 1.6), 11.6 * S, 3.4 * S, 1.7 * S); g.fill(); g.stroke(); g.beginPath(); g.roundRect(x + 1.8 * S, Y(B.sh - .4), 3 * S, 6.4 * S, 1.2 * S); g.fill(); g.stroke(); }   // scarf with a hanging tail
   // head: back of the braid / bun first, then face, then hair in front
   if (L.hair === 'braid') { g.fillStyle = hairC; g.strokeStyle = line; g.lineWidth = 1; for (let i = 0; i < 4; i++) { g.beginPath(); g.ellipse(hx - r - .9 * u - i * .15 * u, hy + (5 + i * 3.2) * u, 2.3 * u, 2.1 * u, 0, 0, 7); g.fill(); g.stroke(); } g.fillStyle = '#e0a23a'; g.beginPath(); g.arc(hx - r - 1.4 * u, hy + 17.6 * u, 1.3 * u, 0, 7); g.fill(); }
-  g.strokeStyle = line; g.lineWidth = 1.3; g.fillStyle = skin; g.beginPath(); g.arc(hx, hy, r, 0, 7); g.fill(); g.stroke();
-  if (hurt) { g.fillStyle = 'rgba(150,200,130,.16)'; g.beginPath(); g.arc(hx, hy, r - .7, 0, 7); g.fill(); }
+  g.strokeStyle = line; g.lineWidth = 1.3; g.fillStyle = skin; g.beginPath(); if (a.age < 18) g.ellipse(hx, hy, r * 1.05, r, 0, 0, 7); else g.arc(hx, hy, r, 0, 7); g.fill(); g.stroke();   // children's faces are rounder
+  if (z >= 1.5 && (hurt || a.age < 18)) { g.fillStyle = hurt ? 'rgba(235,110,110,.4)' : 'rgba(235,130,130,.22)'; for (const d of [-1, 1]) { g.beginPath(); g.arc(hx + (f * 1.4 + d * 3.3) * u, hy + 2.5 * u, (hurt ? 1.35 : 1.2) * u, 0, 7); g.fill(); } }   // flushed cheeks when ill; a faint blush on children
+  if (old && z >= 1.5) { g.strokeStyle = shade(skin, .72); g.globalAlpha = .55; g.lineWidth = .8; g.beginPath(); for (const d of [-1, 1]) { const cx0 = hx + (f * 1.6 + d * 3.1) * u; g.moveTo(cx0 - d * .2 * u, hy + 1.6 * u); g.quadraticCurveTo(cx0 + d * .9 * u, hy + 3.2 * u, cx0 - d * .1 * u, hy + 4.4 * u); } g.stroke(); g.globalAlpha = 1; }   // two short cheek lines
   if (L.hair === 'bald+beard') { g.fillStyle = hairC; for (const d of [-1, 1]) { g.beginPath(); g.ellipse(hx + d * (r - .5 * u), hy - 1.2 * u, 1.8 * u, 3.4 * u, 0, 0, 7); g.fill(); } }
   else hairCap(c, hx, hy, r, u);
   if (L.beard && a.age >= 18) { g.fillStyle = L.beard; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.moveTo(hx - r * .98, hy + 1.6 * u); g.quadraticCurveTo(hx - r * 1.05, hy + r + 2.4 * u, hx, hy + r + 2.8 * u); g.quadraticCurveTo(hx + r * 1.05, hy + r + 2.4 * u, hx + r * .98, hy + 1.6 * u); g.quadraticCurveTo(hx, hy + 3.4 * u, hx - r * .98, hy + 1.6 * u); g.fill(); g.stroke(); }

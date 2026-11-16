@@ -47,7 +47,7 @@ const LOOK = {   // hand-made people; everyone else is derived from the name has
 };
 const SKIN = ['#f0c9a0', '#f0c9a0', '#e8b98c', '#d9a678', '#c58c5f', '#9a6a45'], LOOKS = {};
 const JOB_KINDS = [[/baker/, 'baker'], [/tavern|brewer|innkeep|publican/, 'tavern'], [/fisher/, 'fisher'], [/librar|scribe|clerk/, 'scribe'], [/bank|treasur|merchant/, 'banker'],
-  [/mason|quarr/, 'mason'], [/wood ?cutter|carpent|joiner|wright|lumber/, 'wood'], [/garden|herbal|farm|beekeep/, 'garden'], [/shrine|priest/, 'shrine']];
+  [/mason|quarr/, 'mason'], [/wood ?cutter|carpent|joiner|wright|lumber/, 'wood'], [/shrine|priest/, 'shrine'], [/garden|herbal|farm|beekeep/, 'garden']];
 function jobKind(job) {   // what work a job phrase means for dress: baker, tavern, fisher, scribe, banker, mason, wood, garden, shrine, or 'none' (children and anyone without a trade)
   const j = (job || '').toLowerCase(); for (const [re, k] of JOB_KINDS) if (re.test(j)) return k; return 'none';
 }
@@ -91,6 +91,7 @@ const BUILD = {   // founders get fixed builds (hf: height factor, wf: width fac
   Bram: { hf: 1.03, wf: 1.1 }, Wren: { hf: 1.07, wf: .9 }, Isolde: { hf: .96, wf: .92 }, Odile: { hf: 1, wf: 1.08 },
   Mira: { hf: .98, wf: 1.04 }, Tobias: { hf: 1.02, wf: 1.07 }, Hesper: { hf: .94, wf: .94 },
 };
+const hairColor = a => a.age > 50 ? mix(a.hair || '#555555', '#d4d2c8', clamp((a.age - 50) / 25, 0, 1) * .92) : a.hair;   // grey creeps in from about 50
 function build(a) {   // { hf, wf }: about +-8% height and +-10% width; children vary less; elders are a little shorter (they also stoop)
   const h = hash(a.name), kid = a.age < 18, fx = BUILD[a.name];
   let hf = fx ? fx.hf : 1 + (((h >>> 5) % 17) - 8) / 100 * (kid ? .5 : 1), wf = fx ? fx.wf : 1 + (((h >>> 10) % 21) - 10) / 100 * (kid ? .5 : 1);
@@ -103,6 +104,14 @@ function figMetrics(a, fig) {   // the figure's size on the map in px: S (one un
 }
 const walkSpeed = a => 2 * (a.hungry >= 2 ? .75 : 1) * (a.sick ? .7 : 1) * (a.age >= 65 ? .85 : 1) * (a.age < 6 ? .8 : 1);   // tiles a second
 const strideLen = a => 1.25 * BODY[stageOf(a.age)].size * build(a).hf;   // tiles for one full step cycle (two steps): the feet follow the ground, not the clock
+// ---- where people stand: sitters take the benches, everyone else lines up at the place
+const SEATS = { Square: [[17.1, 13.21], [17.7, 13.21], [23.0, 13.21], [23.6, 13.21]] };   // the Square's two benches (drawn at 17.4 and 23.3, y 12.9), two seats each; y is where the feet reach the ground
+function placeLayout(here, xy, stand, seats, poseFn) {   // here: the agents at one place; returns name -> { x, y, seat } in tiles
+  const out = {}, up = []; let si = 0;
+  for (const a of here) { if (seats && si < seats.length && poseFn(a) === 'sit') { out[a.name] = { x: seats[si][0], y: seats[si][1], seat: true }; si++; } else up.push(a); }
+  up.forEach((a, i) => { out[a.name] = { x: xy[0] + (i - (up.length - 1) / 2) * 1.15, y: xy[1] + stand + (i % 2) * .35, seat: false }; });
+  return out;
+}
 const MOOD_KIND = {};      // mood word -> how the face shows it, worked out once per word
 function moodKind(m) {
   m = (m || '').toLowerCase(); if (MOOD_KIND[m]) return MOOD_KIND[m];
@@ -121,7 +130,7 @@ function poseOf(a) {
   return POSE[k] = /\bladl|\bpouring|\bwiping|\bsweeping|\bkneading|\bhammer|\bplan(e|ing)\b|\bsaw(ing)?\b|\bchop|\bchip|\bhaul|\bdigging|\bmending|\brepair|\bstacking|\bscrub|\bpolish|\bcoiling|\braking|\bweeding|\bplanting|\bcarving|\bmeasuring|\blifting|\bsorting/.test(m) ? 'work'
     : /\bsip|\bdrink|\bale\b|\bcup\b|\bmug\b|\btea\b|\btoast/.test(m) ? 'drink'
     : /\beat|\bchewing|\btasting|\bnibbl|\bmunch|\bsupper|\bbreakfast|\blunch|\bstew\b|\bbowl\b|\bcrust|\bmeal/.test(m) ? 'eat'
-    : /\bsit|\bseated|\brest|\bnap|\bdoz|\bwaiting|\blounging|\bperched|\bslumped/.test(m) ? 'sit'
+    : /\bsit(ting|s)?\b|\bseated|\bresting|\brests\b|\bnapp?(ing|s)?\b|\bdoz(ing|es)?\b|\blounging|\bperched|\bslumped|\bbench\b|\bstool\b/.test(m) ? 'sit'
     : 'stand';
 }
 function weatherIcon(w, m) {
@@ -159,4 +168,4 @@ function sceneData(st, name, radius) {   // who is in a place, what was said the
     built: (st.structures || []).filter(s => s.done && Math.hypot(s.x - px, s.y - py) <= (radius || 5)),
   };
 }
-if (typeof module !== 'undefined') module.exports = { jobKind, LOOK, BODY, stageOf, build, figMetrics, walkSpeed, strideLen, browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };
+if (typeof module !== 'undefined') module.exports = { hairColor, SEATS, placeLayout, jobKind, LOOK, BODY, stageOf, build, figMetrics, walkSpeed, strideLen, browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };

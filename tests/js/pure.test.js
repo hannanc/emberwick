@@ -129,7 +129,7 @@ test('only fright opens the eyes wide', () => {
 test('jobs map to kinds of work', () => {
   assert.equal(P.jobKind('the baker'), 'baker'); assert.equal(P.jobKind('the tavern keeper'), 'tavern'); assert.equal(P.jobKind('the brewer'), 'tavern');
   assert.equal(P.jobKind('the stonemason'), 'mason'); assert.equal(P.jobKind('the woodcutter'), 'wood'); assert.equal(P.jobKind('the scribe'), 'scribe');
-  assert.equal(P.jobKind('the herbalist and shrine-keeper'), 'garden'); assert.equal(P.jobKind('a child of the village'), 'none'); assert.equal(P.jobKind(undefined), 'none');
+  assert.equal(P.jobKind('the herbalist and shrine-keeper'), 'shrine'); assert.equal(P.jobKind('the gardener'), 'garden'); assert.equal(P.jobKind('a child of the village'), 'none'); assert.equal(P.jobKind(undefined), 'none');
 });
 test('hand-made looks: Ansel, Odile and Garrick dress for who they are, and the founders keep their outfits', () => {
   const ansel = P.look({ name: 'Ansel', age: 44, sex: 'm', job: 'the banker', hair: '#c9a25a' }), odile = P.look({ name: 'Odile', age: 34, sex: 'f', job: 'the stonemason', hair: '#8a6a3a' });
@@ -154,4 +154,20 @@ test('newcomers dress for their work; nobody without a trade gets an apron; bald
   assert.ok(Array.from({ length: 60 }, (_, i) => P.look({ name: 'Elder' + i, age: 70, sex: 'm', job: '', hair: '#ccc' }).hair).includes('bald+beard'));
   const kid = P.look({ name: 'Kidd', age: 9, sex: 'f', job: 'the baker', hair: '#555' }); assert.ok(!kid.accent || kid.accent !== 'apron');
   assert.ok(P.look({ name: 'Kidd', age: 30, sex: 'f', job: 'the baker', hair: '#555' }) !== P.look({ name: 'Kidd', age: 9, sex: 'f', job: 'the baker', hair: '#555' }), 'life stage and job are part of the cache key');
+});
+test('poses: sitting means sitting, waiting is standing', () => {
+  assert.equal(P.poseOf({ activity: 'sitting on the bench, resting her feet' }), 'sit'); assert.equal(P.poseOf({ activity: 'napping in the sun' }), 'sit');
+  assert.equal(P.poseOf({ activity: 'waiting by the well' }), 'stand'); assert.equal(P.poseOf({ activity: 'restless and pacing' }), 'stand');
+  assert.equal(P.poseOf({ activity: 'hammering a barrel hoop' }), 'work'); assert.equal(P.poseOf({ activity: 'sipping ale from a mug' }), 'drink'); assert.equal(P.poseOf({ activity: 'eating bread slowly' }), 'eat');
+});
+test('sitters take the bench seats, the rest line up', () => {
+  const mk = (n, activity) => ({ name: n, activity }), here = [mk('A', 'sitting'), mk('B', 'standing'), mk('C', 'resting'), mk('D', 'sitting'), mk('E', 'sitting'), mk('F', 'sitting')];
+  const L = P.placeLayout(here, [20, 12], 1.4, P.SEATS.Square, P.poseOf);
+  assert.ok(L.A.seat && L.C.seat && L.D.seat && L.E.seat); assert.ok(!L.B.seat && !L.F.seat, 'only four seats; the fifth sitter stands');
+  assert.deepEqual([L.A.x, L.A.y], P.SEATS.Square[0]); assert.ok(L.B.y > 12);
+  const none = P.placeLayout(here, [5, 5], 1.9, undefined, P.poseOf); assert.ok(Object.values(none).every(v => !v.seat), 'no benches, no seats (a stool is drawn instead)');
+});
+test('hair greys with age from about fifty', () => {
+  assert.equal(P.hairColor({ age: 40, hair: '#2b1b10' }), '#2b1b10'); const mid = P.hairColor({ age: 62, hair: '#2b1b10' }), old = P.hairColor({ age: 80, hair: '#2b1b10' });
+  assert.ok(P.lumaOf(mid) > P.lumaOf('#2b1b10') && P.lumaOf(old) > P.lumaOf(mid) && P.lumaOf(old) > .7);
 });

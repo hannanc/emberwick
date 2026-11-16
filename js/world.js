@@ -125,14 +125,18 @@ function drawStruct(s, t, wins) {
   }
 }
 
-function slotTarget(a) {
-  const mates = st.agents.filter(o => o.place === a.place).map(o => o.name), i = mates.indexOf(a.name);
-  const [x, y] = st.places[a.place] || st.places.Square;
-  return [x + (i - (mates.length - 1) / 2) * 1.15, y + (STAND[a.place] || 1.9) + (i % 2) * 0.35];
+function slotTargets() {   // name -> [x, y] where each villager stands (or sits, on a bench) at their place
+  const by = {}, out = {}; for (const a of st.agents) (by[a.place] = by[a.place] || []).push(a);
+  for (const [pl, here] of Object.entries(by)) {
+    const xy = st.places[pl] || st.places.Square, L = placeLayout(here, xy, STAND[pl] || 1.9, SEATS[pl], poseOf);
+    for (const a of here) out[a.name] = [L[a.name].x, L[a.name].y];
+  }
+  return out;
 }
 function syncPositions() {
+  const slots = slotTargets();
   for (const a of st.agents) {
-    const [tx, ty] = slotTarget(a), p = pos[a.name];
+    const [tx, ty] = slots[a.name], p = pos[a.name];
     if (!p) { pos[a.name] = { x: tx, y: ty, route: [], place: a.place, walking: false }; continue; }
     const end = p.route.length ? p.route[p.route.length - 1] : [p.x, p.y];
     if (Math.hypot(end[0] - tx, end[1] - ty) < 0.05) continue;
