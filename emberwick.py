@@ -70,7 +70,9 @@ BLUEPRINTS = {
     "house":   dict(site="Cottages", cost={"wood": 12, "stone": 8}, labour=6, perk="a home of your own",
                     slots=[(6.5, 11.6), (9.6, 11.4), (4.6, 17.4), (1.6, 18.8), (12.6, 11.5),
                            (5.6, 8.8), (12.4, 8.6), (6.6, 14.4), (14.6, 9.0),
-                           (9.4, 8.4), (9.8, 14.4), (1.6, 15.2), (3.0, 6.4)]),
+                           (9.4, 8.4), (9.8, 14.4), (1.6, 15.2), (3.0, 6.4),
+                           # new lots on the Meadow, east of the Shrine, where the land has been cleared
+                           (46.2, 11.1), (49.0, 11.1), (51.8, 11.1), (46.2, 13.7), (49.0, 13.7), (51.8, 13.7)]),
     "stall":   dict(site="Square", cost={"wood": 8}, labour=3, perk="earns its owner 3 coins every morning",
                     slots=[(16.4, 11.4), (24.4, 11.4), (16.4, 15.4), (24.4, 15.4), (18.2, 10.6), (22.6, 10.6),
                            (18.2, 16.0), (22.6, 16.0)]),
