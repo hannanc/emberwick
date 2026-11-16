@@ -291,11 +291,12 @@
 </div>
 <script>
 // ================================================================ setup
-const T = 32, H = 24, WH = H * T, M = 8 * T, SS = 1.5, SQ = [20, 13.4];
+const T = 32, H = 24, WH = H * T, M = 8 * T, SQ = [20, 13.4];
 let W = 58, WW = W * T;                                   // grows east as the village opens new lanes
 const SERIF = getComputedStyle(document.documentElement).getPropertyValue('--serif'), SANS = getComputedStyle(document.documentElement).getPropertyValue('--sans');
 const $ = id => document.getElementById(id);
 const DEBUG = Object.fromEntries(new URLSearchParams(location.search));   // ?t=HH:MM &w=weather &cam=x,y,z &sel=Name &tab=id &freeze=ms (screenshots)
+const SS = DEBUG.ss ? +DEBUG.ss || 1.5 : (navigator.deviceMemory && navigator.deviceMemory <= 2 ? 1 : 1.5);   // scenery resolution: 1.5x, or 1x on very low-memory devices (?ss=1 forces it)
 if ('err' in DEBUG) addEventListener('error', e => {   // ?err shows script errors on the page (for headless screenshots)
   const d = document.createElement('pre'); d.style.cssText = 'position:fixed;top:0;left:0;z-index:99;background:#fff;color:#000;font:12px monospace;max-width:60vw;white-space:pre-wrap;margin:0';
   d.textContent = e.message + ' @ line ' + e.lineno + ':' + e.colno; document.body.append(d); });
@@ -366,13 +367,25 @@ function zoomAt(f, sx = vw / 2, sy = vh / 2, instant) {
 // ================================================================ scenery
 function door(p) { const [x, y] = st.places[p]; return [x, y + (STAND[p] || 1.9) - 0.5]; }
 function distSeg(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1; let t = ((px - a[0]) * dx + (py - a[1]) * dy) / L; t = clamp(t, 0, 1); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
-function distPaths(x, y) { let d = 1e9; for (const pts of Object.values(pathPts)) for (let i = 1; i < pts.length; i++) d = Math.min(d, distSeg(x, y, pts[i - 1], pts[i])); return d; }
+let pathGrid = null;     // the path segments filed by 4x4-tile cell (each also in the cells within 2 tiles), so a lookup tests a few segments, not all of them
+function buildPathGrid() {
+  pathGrid = new Map();
+  for (const pts of Object.values(pathPts)) for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], x0 = Math.floor((Math.min(a[0], b[0]) - 2) / 4), x1 = Math.floor((Math.max(a[0], b[0]) + 2) / 4), y0 = Math.floor((Math.min(a[1], b[1]) - 2) / 4), y1 = Math.floor((Math.max(a[1], b[1]) + 2) / 4);
+    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) { const k = cx * 1000 + cy; if (!pathGrid.has(k)) pathGrid.set(k, []); pathGrid.get(k).push([a, b]); }
+  }
+}
+function distPaths(x, y) {      // exact below 2 tiles, which is all the callers ask about (they compare with 0.55 to 1.4); anything farther just comes back large
+  if (!pathGrid) buildPathGrid();
+  const segs = pathGrid.get(Math.floor(x / 4) * 1000 + Math.floor(y / 4)); if (!segs) return 1e9;
+  let d = 1e9; for (const [a, b] of segs) d = Math.min(d, distSeg(x, y, a, b)); return d;
+}
 function inLake(x, y) { return ((x - 20) / 15.5) ** 2 + ((y - 25) / 5.4) ** 2 < 1; }
 function nearPlace(x, y, dx = 3.4, dy = 3.2) { return Object.values(st.places).some(([px, py]) => Math.abs(x - px) < dx && Math.abs(y - py) < dy); }
 function inMeadow(x, y) { const m = st.places.Meadow; return !!m && Math.abs(x - m[0]) < 5.6 && Math.abs(y - m[1]) < 7.2; }
 
 function buildPaths() {      // gentle curves from the Square to every door, sampled so villagers can walk them
-  pathPts = {};
+  pathPts = {}; pathGrid = null;
   for (const p of Object.keys(st.places).sort((x, y) => viaDepth(x) - viaDepth(y))) {   // hubs before their branches, however deep
     if (p === 'Square') continue;
     const a = VIA[p] && st.places[VIA[p]] ? door(VIA[p]) : SQ, b = door(p), dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
