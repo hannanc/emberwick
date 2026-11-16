@@ -203,3 +203,8 @@ test('heavy loads show on the back, by the good; light loads do not', () => {
   assert.equal(P.loadOf({ carry: 200, inv: { bread: 118, coins: 5000 } }), null, 'coins never weigh anything'); assert.equal(P.loadOf({ name: 'x' }), null);
 });
 test('grief is its own face and body', () => { assert.ok(P.moodKind('grieving').grief && P.moodKind('bereft').grief); assert.ok(!P.moodKind('weary').grief); });
+test('mouth colour: lipstick red on light skin, a shade of the skin on dark skin', () => {
+  const light = P.look({ name: 'Lightone', age: 30, sex: 'f', job: '', hair: '#555' }), dark = Array.from({ length: 40 }, (_, i) => P.look({ name: 'Tone' + i, age: 30, sex: 'f', job: '', hair: '#555' })).find(l => l.skin === '#9a6a45');
+  const red = c => P.rgbOf(c)[0] - P.rgbOf(c)[1]; assert.ok(dark, 'a dark skin turns up'); assert.ok(P.rgbOf(dark.mouthC)[0] < 100, 'dark skin: a dark, quiet mouth'); assert.ok(red(dark.mouthC) < 80);
+  const fair = Array.from({ length: 40 }, (_, i) => P.look({ name: 'Fair' + i, age: 30, sex: 'f', job: '', hair: '#555' })).find(l => l.skin === '#f0c9a0'); assert.ok(fair && P.rgbOf(fair.mouthC)[0] > 110);
+});

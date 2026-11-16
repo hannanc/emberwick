@@ -73,6 +73,7 @@ function look(a) {   // cached per name, life stage and kind of work, so a newco
     else if (ac === 3 && f && !kid) { L.accent = 'shawl'; L.shawl = pick(['#d9a0b4', '#b6c7a4', '#c9b6e0'], 12); }
     else if (ac === 4 && !f && !kid && (h >>> 15) % 2) L.cap = pick(['#7a5a3a', '#4f6b8a', '#6b4f4f'], 12);
   }
+  L.mouthC = rgbaOf(mix('#823728', shade(L.skin, .5), clamp((.78 - lumaOf(L.skin)) * 3, 0, 1)), .8);   // the mouth is a shade of the skin, not lipstick, on darker skin
   return LOOKS[key] = { ...L, ...(LOOK[a.name] || {}) };
 }
 function browPoints(brow, d, cx, ey, S) {   // one brow as { outer, inner } points; d = -1 left eye, 1 right. Both eyes mirror: stern (-1) drops the inner ends, worried (1) lifts them
@@ -118,12 +119,12 @@ function placeLayout(here, xy, stand, seats, poseFn, aff = () => 0) {   // here:
   for (const a of here) { if (seats && si < seats.length && poseFn(a) === 'sit') { out[a.name] = { x: seats[si][0], y: seats[si][1], seat: true, face: 0 }; si++; } else up.push(a); }
   const order = [], left = up.slice();   // a chain: each next person is the one closest to the last, so partners, friends and talkers end up side by side
   while (left.length) { const last = order[order.length - 1]; let bi = 0, bs = -1; if (last) left.forEach((o, k) => { const s = aff(last, o); if (s > bs) { bs = s; bi = k; } }); order.push(left.splice(bi, 1)[0]); }
-  const gaps = order.slice(1).map((o, k) => [1.15, .95, .8, .75][aff(order[k], o)]), total = gaps.reduce((s, v) => s + v, 0);
+  const gaps = order.slice(1).map((o, k) => [1.15, .98, .9, .85][aff(order[k], o)]), total = gaps.reduce((s, v) => s + v, 0);
   let x = xy[0] - total / 2; const n = order.length;
   order.forEach((a, i) => {
     if (i) x += gaps[i - 1];
     const c = (n - 1) / 2, k = c ? (i - c) / c : 0, face = n < 3 ? (n === 2 ? (i ? -1 : 1) : 0) : Math.abs(k) < .34 ? 0 : k < 0 ? 1 : -1;   // a loose arc: the ends face in, the middle faces out
-    let y = xy[1] + stand + .45 * k * k - (n > 2 ? .1 : 0) + (i % 2) * .22;
+    let y = xy[1] + stand + .45 * k * k - (n > 2 ? .1 : 0) + (i % 2) * .4;
     for (const o of seats && Object.values(out) || []) if (o.seat && Math.abs(o.x - x) < 1 && y - o.y < .8) y = o.y + .8;   // not on top of anyone sitting
     const before = i ? aff(order[i - 1], a) : 0, after = i < n - 1 ? aff(a, order[i + 1]) : 0;
     out[a.name] = { x, y, seat: false, face: after >= 2 ? 1 : before >= 2 ? -1 : face };   // talkers and partners face each other
