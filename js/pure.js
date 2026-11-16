@@ -130,6 +130,14 @@ function placeLayout(here, xy, stand, seats, poseFn, aff = () => 0) {   // here:
   });
   return out;
 }
+const ARM_UP = 5.4, ARM_LO = 5;
+function armPoints(d, S, sx, sy, hand) {   // pure geometry: { elbow: [x, y], wrist: [x, y] }
+  let dx = hand[0] * S, dy = hand[1] * S, L = Math.hypot(dx, dy) || .01; const a = ARM_UP * S, b = ARM_LO * S, reach = (a + b) * .999;
+  if (L > reach) { dx *= reach / L; dy *= reach / L; L = reach; }
+  const ux = dx / L, uy = dy / L, along = (a * a - b * b + L * L) / (2 * L), hh = Math.sqrt(Math.max(0, a * a - along * along));
+  let nx = -uy, ny = ux; if (nx * d * .55 + ny < -nx * d * .55 - ny) { nx = -nx; ny = -ny; }   // bend towards outwards-and-down
+  return { elbow: [sx + ux * along + nx * hh, sy + uy * along + ny * hh], wrist: [sx + dx, sy + dy] };
+}
 const MOOD_KIND = {};      // mood word -> how the face shows it, worked out once per word
 function moodKind(m) {
   m = (m || '').toLowerCase(); if (MOOD_KIND[m]) return MOOD_KIND[m];
@@ -187,4 +195,4 @@ function sceneData(st, name, radius) {   // who is in a place, what was said the
     built: (st.structures || []).filter(s => s.done && Math.hypot(s.x - px, s.y - py) <= (radius || 5)),
   };
 }
-if (typeof module !== 'undefined') module.exports = { affinity, hairColor, SEATS, placeLayout, jobKind, LOOK, BODY, stageOf, build, figMetrics, walkSpeed, strideLen, browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };
+if (typeof module !== 'undefined') module.exports = { armPoints, ARM_UP, ARM_LO, affinity, hairColor, SEATS, placeLayout, jobKind, LOOK, BODY, stageOf, build, figMetrics, walkSpeed, strideLen, browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };

@@ -58,15 +58,20 @@ function hairCap(c, hx, hy, r, u) {   // the hair in front: a cap on the top of 
   if (bun) { g.fillStyle = c.hairC; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.arc(hx, hy - r - 1.3 * u, 3.4 * u, 0, 7); g.fill(); g.stroke(); }
 }
 
-// One arm, shoulder to wrist and a hand. `hand` is where the hand goes, [dx, dy] in units from the shoulder (y down). Returns the hand's centre in px.
+// One arm: shoulder, elbow and wrist with a sleeve down to the wrist and a mitten-shaped hand. `hand` is where the hand should go, [dx, dy] in units from the shoulder
+// (y down); a target out of reach is pulled in. The elbow bends outwards and down (two-bone reach). Returns the hand's centre in px.
 function drawArm(c, d, hand) {
-  const { g, S, x, sleeve, skin, line, B } = c, sx = x + d * (B.shW + 1) * S, sy = c.Y(B.sh - 1.8);
-  const ex = sx + hand[0] * S, ey = sy + hand[1] * S;
-  g.lineCap = 'round';
-  g.strokeStyle = line; g.lineWidth = 3.6 * S + 1.3; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke();
-  g.strokeStyle = sleeve; g.lineWidth = 3.6 * S; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke();
-  if (c.L.sleeves) { g.strokeStyle = skin; g.lineWidth = 3 * S; g.beginPath(); g.moveTo(sx + (ex - sx) * .45, sy + (ey - sy) * .45); g.lineTo(ex, ey); g.stroke(); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(sx + (ex - sx) * .42 - 1.5 * S, sy + (ey - sy) * .45); g.lineTo(sx + (ex - sx) * .42 + 1.5 * S, sy + (ey - sy) * .45); g.stroke(); }
-  g.fillStyle = skin; g.beginPath(); g.arc(ex, ey + .6 * S, 1.9 * S, 0, 7); g.fill(); return [ex, ey + .6 * S];
+  const { g, S, x, sleeve, skin, line, B, L } = c, sx = x + d * (B.shW + 1) * S, sy = c.Y(B.sh - 1.8);
+  const { elbow: [ex, ey], wrist: [wx, wy] } = armPoints(d, S, sx, sy, hand), fl = Math.hypot(wx - ex, wy - ey) || 1, fx = (wx - ex) / fl, fy = (wy - ey) / fl;
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  g.strokeStyle = line; g.lineWidth = 3.6 * S + 1.3; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.lineTo(wx, wy); g.stroke();
+  g.strokeStyle = sleeve; g.lineWidth = 3.6 * S; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.lineTo(wx, wy); g.stroke();
+  if (L.sleeves) { g.strokeStyle = skin; g.lineWidth = 3.1 * S; g.beginPath(); g.moveTo(ex, ey); g.lineTo(wx, wy); g.stroke(); g.strokeStyle = shade(sleeve, 1.35); g.lineWidth = 1.5 * S; g.beginPath(); g.moveTo(ex - fy * 1.8 * S, ey + fx * 1.8 * S); g.lineTo(ex + fy * 1.8 * S, ey - fx * 1.8 * S); g.stroke(); }   // sleeves rolled to the elbow
+  else { g.strokeStyle = shade(sleeve, .78); g.lineWidth = 1.2; g.beginPath(); g.moveTo(wx - fy * 1.8 * S, wy + fx * 1.8 * S); g.lineTo(wx + fy * 1.8 * S, wy - fx * 1.8 * S); g.stroke(); }   // a cuff at the wrist
+  const hx = wx + fx * 1.1 * S, hy = wy + fy * 1.1 * S, ang = Math.atan2(fy, fx) - Math.PI / 2;   // the mitten, along the forearm, with a thumb on the inner side
+  g.fillStyle = skin; g.beginPath(); g.ellipse(hx, hy, 1.35 * S, 1.9 * S, ang, 0, 7); g.fill();
+  g.beginPath(); g.ellipse(hx - d * 1.2 * S * Math.cos(ang), hy - d * 1.2 * S * Math.sin(ang) - .3 * S, .7 * S, 1 * S, ang, 0, 7); g.fill();
+  return [hx, hy];
 }
 
 function drawLegs(c) {   // trousers to the knee, socks, boots; a skirt hides the thighs. Walking swings them with the distance travelled.
@@ -178,11 +183,11 @@ function person(a, p, t, g = ctx) {
   }
   g.restore(); g.strokeStyle = line; g.lineWidth = 1.3; drawTorso(c); g.stroke();
   drawGear(c); if (hurt) drawBlanket(c);
-  const rest = d => [d * .9, 9.4];   // arms hang a little away from the body
+  const rest = d => [d * .8, 10];   // arms hang a little away from the body
   const wl = rest(-1), wr = rest(1);
   if (walking) { wl[1] -= step * 2.2; wr[1] += step * 2.2; wl[0] += step * 1.2; wr[0] -= step * 1.2; }   // arms swing against the legs
   if (prop === 'book') { wl[0] = 2.6; wl[1] = 7.4; wr[0] = -2.6; wr[1] = 7.4; }
-  if (c.stick) { const hd = c.stick; (hd < 0 ? wl : wr)[0] = hd * 1.4; (hd < 0 ? wl : wr)[1] = 10.4; }
+  if (c.stick) { const hd = c.stick; (hd < 0 ? wl : wr)[0] = hd * 1.4; (hd < 0 ? wl : wr)[1] = 10; }
   const talking = standing && !!a.say && now - a.say_at < 5.5, sw = REDUCE ? .4 : Math.sin(t / 190 + h);
   if (standing && !prop && (pose === 'eat' || pose === 'drink')) { const k = REDUCE ? .7 : (Math.sin(t / 520 + h) + 1) / 2; wr[0] += (-5.2 + dir * 1.6 - wr[0]) * k; wr[1] += (-4.2 - wr[1]) * k; }   // the hand goes to the mouth and back
   else if (standing && !prop && pose === 'work') { wr[0] = 3.2 + sw * 3; wr[1] = -2.5 + (sw + 1) * 3.6; }                  // the working arm swings

@@ -188,3 +188,12 @@ test('layout: friends and talkers stand closer, a crowd forms a loose arc facing
   assert.deepEqual(P.placeLayout([mk('Solo')], [5, 5], 1.9, undefined, P.poseOf).Solo, { x: 5, y: 6.9, seat: false, face: 0 });
 });
 test('tired moods yawn late in the day', () => { assert.ok(P.moodKind('weary').tired && P.moodKind('drained').tired); assert.ok(!P.moodKind('jovial').tired); });
+test('arms are two bones: the elbow sits at the right distances and bends outwards and down', () => {
+  const S = 1, d1 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  for (const d of [-1, 1]) for (const hand of [[d * .8, 10], [-3, -4], [d * 4, 2], [0, 6]]) {
+    const { elbow, wrist } = P.armPoints(d, S, 0, 0, hand); assert.ok(Math.abs(d1([0, 0], elbow) - P.ARM_UP) < 1e-6 && Math.abs(d1(elbow, wrist) - P.ARM_LO) < 1e-6);
+  }
+  const hang = P.armPoints(1, 1, 0, 0, [.8, 10]); assert.ok(hang.elbow[0] > .3 && hang.elbow[0] < 2, 'a slight bend outwards at the elbow');
+  const mouth = P.armPoints(1, 1, 0, 0, [-4, -4]); assert.ok(mouth.elbow[1] > 0, 'hand to the mouth: the elbow drops below the shoulder');
+  const far = P.armPoints(1, 1, 0, 0, [0, 30]); assert.ok(Math.abs(far.wrist[1] - (P.ARM_UP + P.ARM_LO)) < .02, 'out of reach is pulled in to full length');
+});
