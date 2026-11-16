@@ -504,10 +504,6 @@ def loop_notes(n):
     if len(lines) >= 2 and max(difflib.SequenceMatcher(None, x.lower(), y.lower()).ratio()
                                for i, x in enumerate(lines[-4:]) for y in lines[-4:][i + 1:]) > 0.5:
         out.append("You have been saying nearly the same thing over and over. Say something new, or keep quiet.")
-    tired = tired_words()
-    if tired:
-        out.append("Everyone in the village is sick of hearing the word " + " and the word ".join(f'"{w}"' for w in tired)
-                   + "; avoid it, and talk or think about almost anything else.")
     return out
 
 # ---------------------------------------------------------------- moods and bodily needs
@@ -2814,8 +2810,6 @@ def agent_turn():
                     S["agents"][c].update(place=go, activity=f"carried along by {n}")
         elif not say and not did:
             remember(n, f"At the {old} I was {a['activity']}.")
-        if pending and pending["from"] in here and not say:
-            warm(pending["from"], n, -0.15)               # being ignored stings, a little
         advance_plan(n, act, did)
         tick_needs(n, old, here, bool(did) and (act == "work" or act == "contribute" or act.startswith("build_")))
         log_event(kind="turn", who=n, place=old, to_place=go if moved else "", activity=a["activity"],
