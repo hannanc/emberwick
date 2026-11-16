@@ -171,3 +171,14 @@ counsel must advance the first unmet one. See `steward_agenda()` in `emberwick.p
 
 Token usage for every model, the Oracle included, is in the `usage` table and under `usage` in `/api/state`.
 Set `EMBERWICK_PRICES='{"model": [in, out]}'` to correct the cost estimate.
+
+## Tests
+
+```
+.venv/bin/python -m unittest discover -s tests -t .
+```
+
+The tests build a fresh world in a temporary database and stub every model call, so they take about a second,
+cost nothing and never touch `emberwick.db` or an API key. They cover the schedule, the turn (who a villager
+addresses, what is offered when work is closed, the talk shown in the room), the nightly reflection, inheritance,
+mourning, and a syntax check of the page script (needs `node`). `tests/helpers.py` has `fresh_world()` for new tests.
