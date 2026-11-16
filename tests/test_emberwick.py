@@ -320,3 +320,73 @@ def test_only_page_scripts_are_served(make_world):
 def test_the_pages_pure_helpers_pass_their_node_tests():
     result = subprocess.run(["node", "--test", os.path.join(ROOT, "tests", "js", "pure.test.js")], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-1000:]
+
+
+# ---------------------------------------------------------------- the Old Oak Shrine in the prompt
+def shrine_prompt(m, who="Bram", minute=10 * 60, **answer):
+    m.S["minute"] = minute
+    take_turn(m, who=who, to="nobody", say="", **answer)
+    return m.CALLS[-1]
+
+
+def test_pray_is_offered_with_a_wish_field(world):
+    _, _, schema = shrine_prompt(world)
+    assert "pray" in schema["properties"]["action"]["enum"]
+    assert "wish" in schema["properties"]
+
+
+def test_the_prompt_says_nobody_has_prayed_today(world):
+    _, prompt, _ = shrine_prompt(world)
+    assert "Nobody has prayed at the Old Oak Shrine yet today" in prompt
+    assert "grant one wish tonight to someone who does" in prompt
+    assert "work is closed" not in prompt
+
+
+def test_the_prompt_says_who_has_prayed_today(world):
+    world.S["prayers"].append(dict(who="Mira", day=world.S["day"], minute=500, wish="rain"))
+    _, prompt, _ = shrine_prompt(world)
+    assert "Mira prayed at the Old Oak Shrine today" in prompt
+    assert "Nobody has prayed" not in prompt
+
+
+def test_the_evening_shrine_mentions_closed_work(world):
+    _, prompt, _ = shrine_prompt(world, minute=20 * 60)
+    assert "the day's work is closed, night is near" in prompt
+
+
+def test_the_last_granted_wish_is_named(world):
+    world.S["wishes"].append(dict(day=3, who="Wren", wish="a new net", reason="", blessing="A net."))
+    _, prompt, _ = shrine_prompt(world)
+    assert "last wish the heavens granted was Wren's, on day 3" in prompt and "a new net" in prompt
+
+
+def test_a_vacant_shrine_is_stated_only_when_nobody_alive_keeps_it(world):
+    _, prompt, _ = shrine_prompt(world)
+    assert "kept by no one" not in prompt
+    world.S["dead"].append(dict(name="Hesper", age=80, day=35, cause="illness", job="the herbalist and shrine-keeper"))
+    del world.S["agents"]["Hesper"]
+    _, prompt, _ = shrine_prompt(world)
+    assert "The shrine has been kept by no one since Hesper died." in prompt
+
+
+def test_the_heart_wish_shows_in_the_prompt(world):
+    world.S["agents"]["Bram"]["heart_wish"] = "that my daughter writes"
+    _, prompt, _ = shrine_prompt(world)
+    assert "A wish you have been carrying: that my daughter writes." in prompt
+
+
+def test_the_nightly_reflection_stores_the_wish_and_it_shows_next_day(make_world):
+    m = make_world(dict(reflection="A day.", heart_wish="a quiet week for the village"))
+    run_night(m)
+    assert m.S["agents"]["Bram"]["heart_wish"] == "a quiet week for the village"
+    assert any("a quiet week for the village" in x for x in m.wake_text("Bram"))
+    assert "heart_wish" in next(sc for _, u, sc in m.CALLS if "between_us" in u)["properties"]
+
+
+def test_a_lone_survivor_can_wish(make_world):
+    m = make_world(dict(reflection="Alone.", heart_wish="company"))
+    for n in list(m.S["agents"]):
+        if n != "Mira":
+            del m.S["agents"][n]
+    run_night(m)
+    assert m.S["agents"]["Mira"]["heart_wish"] == "company"
