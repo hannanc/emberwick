@@ -1827,8 +1827,8 @@ function renderChron() {
   for (const c of st.chronicle) { const d = el('article', 'chr'); d.append(el('h3', '', `Day ${c.day} — ${c.title}`), el('div', 'w', cap(c.weather))); c.body.split(/\n+/).forEach(p => d.append(el('p', '', p))); box.append(d); }
 }
 function weatherIcon(w, m) {
-  const night = m < 6 * 60 || m >= 20.5 * 60;
-  return /storm/.test(w) ? '⛈' : /rain/.test(w) ? '☂' : /mist|haze/.test(w) ? '≋' : /overcast/.test(w) ? '☁' : /windy/.test(w) ? '༄' : night ? '☾' : '☀';
+  const night = m < 6 * 60 || m >= 20.5 * 60, dawn = m >= 6 * 60 && m < 7.5 * 60, dusk = m >= 18.5 * 60 && m < 20.5 * 60;
+  return /storm/.test(w) ? '⛈' : /rain/.test(w) ? '☂' : /mist|haze/.test(w) ? '≋' : /overcast/.test(w) ? '☁' : /windy/.test(w) ? '🍃' : night ? '☾' : dawn ? '🌅' : dusk ? '🌇' : '☀';
 }
 function renderHeader() {
   const c = $('clock'); c.firstChild.textContent = weatherIcon(st.weather, st.minute);
