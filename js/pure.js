@@ -93,6 +93,7 @@ function moodKind(m) {
     : /irritable|sour|angry|annoyed|grumpy|stern|resolute|determined|stubborn|edgy|fierce|bitter|defiant/.test(m) ? { mouth: 'flat', brow: -1 }
     : /wary|uneasy|fretful|anxious|nervous|worried|afraid|suspic|watchful|tense|restless|jumpy|troubled/.test(m) ? { mouth: 'flat', brow: 1 }
     : { mouth: 'soft', brow: 0 };
+  if (/afraid|terrif|shock|startl|surpris|alarm|fright|panic|horrif|dread/.test(m)) k.wide = true;   // eyes wide open: whites showing
   return MOOD_KIND[m] = k;
 }
 const POSE = {};     // activity text -> what the body does, worked out once per phrase

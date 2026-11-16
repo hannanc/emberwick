@@ -123,3 +123,6 @@ test('walking pace is slow enough to read as walking, slower when hungry, sick o
   assert.ok(P.strideLen({ name: 'Zed', age: 8 }) < P.strideLen(adult));
   assert.ok(P.walkSpeed(adult) / P.strideLen(adult) < 2, 'under two full step cycles a second');
 });
+test('only fright opens the eyes wide', () => {
+  assert.ok(P.moodKind('terrified').wide && P.moodKind('startled').wide); assert.ok(!P.moodKind('content').wide && !P.moodKind('stern').wide);
+});

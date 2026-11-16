@@ -4,23 +4,32 @@
 const PROPS = { Woods: 'axe', Dock: 'rod', Garden: 'basket', Bakery: 'loaf', Library: 'book', Quarry: 'pick', Cemetery: 'flowers' };
 const TROUSERS = ['#5b4a3a', '#4a5058', '#6a5a46', '#3f4a5a'], BOOT = '#2b211a';
 
-function drawFace(g, o) {   // eyes with whites and pupils, brows, a nose and a mouth that follows the mood and moves when speaking
-  const { a, hx, hy, f, t, talking, hurt, baby, beard, h } = o, S = o.u, k = moodKind(a.mood), af = Math.abs(f);
-  const ex = hx + f * 2.6 * S, es = 2.15 * S * (1 - .3 * af), ey = hy + .3 * S, blink = !REDUCE && ((t / 1000 + h % 5) % 4.3) < .13;
-  const ew = (baby ? 1.7 : 1.45) * S, eh = (blink ? .25 : (baby ? 1.7 : 1.35)) * S;
+function drawFace(g, o) {   // small dark eyes with a highlight (whites only for babies and for fright), mood brows, a nose, a mouth that follows the mood and moves when speaking
+  const { a, hx, hy, f, t, talking, hurt, baby, beard, h, z } = o, S = o.u, k = moodKind(a.mood), af = Math.abs(f), wide = baby || k.wide;
+  const ex = hx + f * 2.6 * S, es = 2.1 * S * (1 - .3 * af), ey = hy + .6 * S, blink = !REDUCE && ((t / 1000 + h % 5) % 4.3) < .13;
+  const lid = hurt ? .55 : 1;   // a sick person's eyelids droop
   for (const d of [-1, 1]) {
     const cx = ex + d * es;
-    g.fillStyle = '#f7f2e8'; g.beginPath(); g.ellipse(cx, ey, ew, eh, 0, 0, 7); g.fill();
-    if (!blink) { g.fillStyle = '#1f1812'; g.beginPath(); g.arc(cx + f * .5 * S, ey + .1 * S, .8 * S, 0, 7); g.fill(); }
-    if (!baby && !hurt) {   // brows, mirrored: inner ends (towards the nose) drop when stern, rise when worried; drawn in a darker shade of the hair
-      const { outer, inner } = browPoints(k.brow, d, cx, ey, S);
-      g.strokeStyle = shade(a.hair || '#3a2a1c', a.hair && a.age >= 60 ? .8 : .55); g.lineWidth = 1 * S + .15; g.beginPath(); g.moveTo(outer[0], outer[1]); g.lineTo(inner[0], inner[1]); g.stroke();
+    if (z < 1.5) { g.fillStyle = '#2a1f19'; g.beginPath(); g.arc(cx, ey, .95 * S, 0, 7); g.fill(); }   // zoomed out: two dots
+    else if (wide) {
+      const ew = (baby ? 1.7 : 1.5) * S, eh = (blink ? .25 : baby ? 1.7 : 1.6) * S;
+      g.fillStyle = '#f7f2e8'; g.beginPath(); g.ellipse(cx, ey, ew, eh, 0, 0, 7); g.fill();
+      if (!blink) { g.fillStyle = '#1f1812'; g.beginPath(); g.arc(cx + f * .5 * S, ey + .1 * S, .8 * S, 0, 7); g.fill(); }
+    } else {
+      const eh = blink ? .2 * S : 1.25 * S * lid; g.fillStyle = '#2a1f19'; g.beginPath(); g.ellipse(cx + f * .35 * S, ey + (1.25 * S - eh) * .5, .95 * S, eh, 0, 0, 7); g.fill();
+      if (!blink && !hurt) { g.fillStyle = 'rgba(255,255,255,.85)'; g.beginPath(); g.arc(cx + f * .35 * S + .35 * S, ey - .45 * S, .32 * S, 0, 7); g.fill(); }
+    }
+    if (hurt && z >= 1.5 && !blink) { g.strokeStyle = shade(o.skin, .7); g.lineWidth = .8 * S + .1; g.beginPath(); g.moveTo(cx - 1.2 * S, ey - .55 * S); g.lineTo(cx + 1.2 * S, ey - .55 * S); g.stroke(); }   // the drooped lid
+    if (!baby && z >= 1) {   // brows, mirrored: inner ends (towards the nose) drop when stern, rise when worried; drawn in a darker shade of the hair
+      const { outer, inner } = browPoints(k.brow, d, cx, ey - .3 * S, S);
+      g.strokeStyle = shade(a.hair || '#3a2a1c', a.hair && a.age >= 60 ? .8 : .55); g.lineWidth = .95 * S + .15; g.beginPath(); g.moveTo(outer[0], outer[1]); g.lineTo(inner[0], inner[1]); g.stroke();
     }
   }
-  const nx = hx + f * 3.4 * S, ny = hy + 2.2 * S; g.strokeStyle = 'rgba(120,70,50,.45)'; g.lineWidth = .9; g.beginPath(); g.moveTo(nx - f * .2 * S, ny - .8 * S); g.lineTo(nx + (f || .4) * .8 * S, ny + .6 * S); g.stroke();   // a nose, turned the way they face
+  if (z < 1) return;
+  if (z >= 1.5) { const nx = hx + f * 3.4 * S, ny = hy + 2.4 * S; g.strokeStyle = 'rgba(120,70,50,.45)'; g.lineWidth = .9; g.beginPath(); g.moveTo(nx - f * .2 * S, ny - .8 * S); g.lineTo(nx + (f || .4) * .8 * S, ny + .6 * S); g.stroke(); }   // a nose, turned the way they face
   const mx = hx + f * 2.2 * S, my = hy + 4 * S;
   if (talking) { const open = .5 + .5 * Math.sin(t / 85 + h); g.fillStyle = '#5a2a22'; g.beginPath(); g.ellipse(mx, my + .2 * S, (1.5 - .3 * af) * S, (.5 + open * 1.5) * S, 0, 0, 7); g.fill(); }
-  else if (!beard && !hurt) {
+  else if (!beard) {
     g.strokeStyle = 'rgba(130,55,45,.8)'; g.lineWidth = 1; g.beginPath();
     if (k.mouth === 'smile') g.arc(mx, my - 1.3 * S, 2.2 * S, .18 * Math.PI, .82 * Math.PI);
     else if (k.mouth === 'frown') g.arc(mx, my + 2.6 * S, 2 * S, 1.2 * Math.PI, 1.8 * Math.PI);
@@ -28,6 +37,18 @@ function drawFace(g, o) {   // eyes with whites and pupils, brows, a nose and a 
     else { g.moveTo(mx - 1.7 * S, my + .5 * S); g.lineTo(mx + 1.7 * S, my + .5 * S); }
     g.stroke();
   }
+}
+
+function hairCap(c, hx, hy, r, u) {   // the hair in front: a cap on the top of the head with a hairline that leaves the forehead bare, shaped per style
+  const { g, L, a, h, f, line } = c, ps = h & 1 ? 1 : -1, R = r + .4 * u, long = L.hair === 'long' || L.hair === 'braid', bun = L.hair === 'bun';
+  const tl = long ? .1 : -.12, tx = long ? .96 : .93;   // long hair comes lower at the temples, over the ears
+  g.fillStyle = c.hairC; g.strokeStyle = line; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(hx - tx * r, hy + tl * r); g.arc(hx, hy - .15 * u, R, Math.PI * (1 + .06), Math.PI * (2 - .06)); g.lineTo(hx + tx * r, hy + tl * r);
+  if (bun) { g.quadraticCurveTo(hx + .8 * r, hy - .55 * r, hx, hy - .6 * r); g.quadraticCurveTo(hx - .8 * r, hy - .55 * r, hx - tx * r, hy + tl * r); }   // pulled back from the forehead
+  else if (long) { g.quadraticCurveTo(hx + .8 * r, hy - .4 * r, hx + ps * .1 * r, hy - .62 * r); g.quadraticCurveTo(hx - .7 * r, hy - .35 * r, hx - tx * r, hy + tl * r); }   // a parted fringe falling to each side
+  else { g.quadraticCurveTo(hx + .88 * r, hy - .5 * r, hx + ps * .3 * r, hy - .58 * r); g.quadraticCurveTo(hx - .6 * r, hy - .52 * r, hx - tx * r, hy + tl * r); }   // short: a side-swept fringe
+  g.closePath(); g.fill(); g.globalAlpha = .55; g.stroke(); g.globalAlpha = 1;
+  if (bun) { g.fillStyle = c.hairC; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.arc(hx, hy - r - 1.3 * u, 3.4 * u, 0, 7); g.fill(); g.stroke(); }
 }
 
 // One arm, shoulder to wrist and a hand. `hand` is where the hand goes, [dx, dy] in units from the shoulder (y down). Returns the hand's centre in px.
@@ -83,8 +104,8 @@ function person(a, p, t, g = ctx) {
   }
   const dir = f || p.face || 1, lean = old ? 1.4 * S * dir : 0, r = B.r * S, hx = x + lean + f * .5 * S, hy = y - (B.chin + B.r) * S, u = r / 5.7;
   const skin = hurt ? '#e2dac2' : L.skin, line = 'rgba(30,22,16,.4)', hairC = a.hair, prop = standing && PROPS[a.place];
-  const dress = a.sex === 'f' && a.age >= 6;
-  const c = { g, a, p, S, B, L, x, y, gy, f, t, skin, line, drop, sit, step, cyc, walking, dress, sleeve: a.color, trouser: TROUSERS[(h >>> 16) % 4], sock: dress ? '#c4b8a0' : mix(TROUSERS[(h >>> 16) % 4], '#c9bda3', .3), Y: v => y - v * S };
+  const dress = a.sex === 'f' && a.age >= 6, z = g === ctx ? cam.z : 3;   // z: how close we are looking (scene cards are always close)
+  const c = { g, a, p, h, z, hairC, S, B, L, x, y, gy, f, t, skin, line, drop, sit, step, cyc, walking, dress, sleeve: a.color, trouser: TROUSERS[(h >>> 16) % 4], sock: dress ? '#c4b8a0' : mix(TROUSERS[(h >>> 16) % 4], '#c9bda3', .3), Y: v => y - v * S };
   shadow(g, x - 2, base + 1, 11 * S, 4 * S, .3);
   if (selected === a.name) { const k = 1 + Math.sin(t / 300) * 0.08; g.strokeStyle = '#e8bd5f'; g.lineWidth = 2.5; g.beginPath(); g.ellipse(x, base + 1, 17 * S * k, 7.5 * S * k, 0, 0, 7); g.stroke(); }
   else if (hover === a.name) { g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 2; g.beginPath(); g.ellipse(x, base + 1, 15 * S, 6.5 * S, 0, 0, 7); g.stroke(); }
@@ -130,13 +151,9 @@ function person(a, p, t, g = ctx) {
   g.strokeStyle = line; g.lineWidth = 1.3; g.fillStyle = skin; g.beginPath(); g.arc(hx, hy, r, 0, 7); g.fill(); g.stroke();
   if (hurt) { g.fillStyle = 'rgba(150,200,130,.16)'; g.beginPath(); g.arc(hx, hy, r - .7, 0, 7); g.fill(); }
   if (L.hair === 'bald+beard') { g.fillStyle = hairC; for (const d of [-1, 1]) { g.beginPath(); g.ellipse(hx + d * (r - .5 * u), hy - 1.2 * u, 1.8 * u, 3.4 * u, 0, 0, 7); g.fill(); } }
-  else {
-    g.fillStyle = hairC; g.beginPath(); g.arc(hx, hy - 1.5 * u, r + .4 * u, Math.PI * 1.02, Math.PI * 1.98); g.fill();
-    if (L.hair === 'long' || L.hair === 'braid') { g.beginPath(); g.ellipse(hx + (f > 0 ? -1 : 1) * r * .65, hy - 2.4 * u, r * .38, 2.8 * u, 0, 0, 7); g.fill(); }   // fringe swept to one side
-    if (L.hair === 'bun') { g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.arc(hx, hy - r - 1.3 * u, 3.4 * u, 0, 7); g.fill(); g.stroke(); }
-  }
+  else hairCap(c, hx, hy, r, u);
   if (L.beard && a.age >= 18) { g.fillStyle = L.beard; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.moveTo(hx - r * .98, hy + 1.6 * u); g.quadraticCurveTo(hx - r * 1.05, hy + r + 2.4 * u, hx, hy + r + 2.8 * u); g.quadraticCurveTo(hx + r * 1.05, hy + r + 2.4 * u, hx + r * .98, hy + 1.6 * u); g.quadraticCurveTo(hx, hy + 3.4 * u, hx - r * .98, hy + 1.6 * u); g.fill(); g.stroke(); }
-  drawFace(g, { a, u, hx, hy, r, f, t, talking, hurt, baby, beard: !!(L.beard && a.age >= 18), skin, h });
+  drawFace(g, { a, u, hx, hy, r, f, t, z, talking, hurt, baby, skin, beard: !!(L.beard && a.age >= 18), h });
   if (L.cap && a.age >= 6) {   // cap with a brim towards the facing direction
     g.fillStyle = L.cap; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.arc(hx, hy - 1.2 * u, r + .8 * u, Math.PI * 1.0, Math.PI * 2); g.closePath(); g.fill(); g.stroke();
     g.beginPath(); g.roundRect(hx - r - 1.2 * u + f * 2.5 * u, hy - 2.4 * u, 2 * r + 2.4 * u, 2.4 * u, 1.2 * u); g.fill(); g.stroke();
