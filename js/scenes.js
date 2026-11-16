@@ -13,7 +13,7 @@ function focusPlace(name, fly = true) {
   if (!st || !st.places[name]) return;
   if (selected) select(null);
   sceneAt = name; sceneKey = '';
-  if (fly) { const [x, y] = st.places[name]; cam.follow = false; userMoved = true; cam.tz = clamp(vw / ((SCENE_ZOOM[name] || 10) * T), fitZ(), maxZ()); cam.tx = x * T - (vw > 760 ? 176 : 0) / cam.tz; cam.ty = (y + (name === 'Square' ? 1 : 0.4)) * T; clampT(); syncFocus(); }   // the place sits right of the card, not under it
+  if (fly) { const [x, y] = st.places[name]; cam.follow = false; userMoved = true; cam.tz = clamp(vw / ((SCENE_ZOOM[name] || 10) * T), fitZ(), maxZ()); const phone = vw <= 900; cam.tx = x * T - (phone ? 0 : 176) / cam.tz; cam.ty = (y + (name === 'Square' ? 1 : 0.4)) * T + (phone ? .22 * vh / cam.tz : 0); clampT(); syncFocus(); }   // the place sits right of the card (or above the bottom sheet on a phone), not under it
   renderScene(true);
 }
 function closeScene() { sceneAt = null; sceneRect = null; $('scene').hidden = true; }
