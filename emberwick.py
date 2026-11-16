@@ -282,7 +282,7 @@ def migrate():
         a.setdefault("plan_at", 0)
         a.setdefault("plan_work", 0)
         a.setdefault("self", "")
-        for k, v in (("legacy", []), ("story", ""), ("story_day", 0)):
+        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("moods", []), ("trail", [])):
             a.setdefault(k, v)
         for k, v in (("expecting", None), ("proposal", None), ("partner", None), ("hungry", 0), ("rest_until", 0),
                      ("sick", None), ("care_until", 0)):
@@ -508,6 +508,65 @@ def loop_notes(n):
     if tired:
         out.append("Everyone in the village is sick of hearing the word " + " and the word ".join(f'"{w}"' for w in tired)
                    + "; avoid it, and talk or think about almost anything else.")
+    return out
+
+# ---------------------------------------------------------------- moods and bodily needs
+COLOURS = {"ordinary": 6, "irritable, because you slept badly": 2, "giddy for no reason": 1,
+           "lazy, and tempted to skive off": 2, "preoccupied with a private worry": 2, "vain about how you look": 1,
+           "hungover and slow": 1, "sentimental and nostalgic": 1}
+COLOUR_BIAS = {"Bram": {"hungover and slow": 3, "giddy for no reason": 1},
+               "Mira": {"giddy for no reason": 2, "sentimental and nostalgic": 1},
+               "Isolde": {"preoccupied with a private worry": 3, "vain about how you look": 1},
+               "Tobias": {"irritable, because you slept badly": 2, "lazy, and tempted to skive off": 1},
+               "Wren": {"lazy, and tempted to skive off": 2, "sentimental and nostalgic": 1},
+               "Ansel": {"preoccupied with a private worry": 2, "irritable, because you slept badly": 1}}
+NEED_START = dict(energy=8.0, hunger=1.0, company=5.0, boredom=2.0)
+
+def roll_colour(n):
+    w = dict(COLOURS)
+    for k, v in COLOUR_BIAS.get(n, {}).items():
+        w[k] = w.get(k, 0) + v
+    return random.choices(list(w), weights=list(w.values()))[0]
+
+def new_morning(n):
+    """A fresh day: a mood of the day, and the body rested as far as the night allowed."""
+    a = S["agents"][n]
+    a["colour"] = roll_colour(n)
+    a["need"] = dict(NEED_START)
+    if "slept badly" in a["colour"] or "hungover" in a["colour"]:
+        a["need"]["energy"] -= 2.5
+    if a.get("mood") in (None, "", "sleeping"):
+        a["mood"] = "groggy"
+
+def tick_needs(n, place, here, worked):
+    """Needs drift a little every turn: work tires, time hungers, company fills or crowds, repetition bores."""
+    a = S["agents"][n]
+    nd = a.setdefault("need", dict(NEED_START))
+    stuck = max([a.get("trail", [])[-6:].count(x) for x in set(a.get("trail", [])[-6:])] or [0]) >= 3
+    nd["hunger"] = min(10.0, nd.get("hunger", 1) + 0.25 - (1.5 if place in ("Tavern", "Bakery") else 0))
+    nd["hunger"] = max(0.0, nd["hunger"])
+    nd["energy"] = max(0.0, min(10.0, nd.get("energy", 8) - (0.3 if worked else 0.05) + (0.3 if off_duty(S["minute"]) or place == "Cottages" else 0)))
+    nd["company"] = max(0.0, min(10.0, nd.get("company", 5) + (0.3 if here else -0.2)))
+    nd["boredom"] = max(0.0, min(10.0, nd.get("boredom", 2) + (0.5 if stuck else -0.3) + (0.2 if worked else 0)))
+
+def body_notes(n):
+    """Only what the body is shouting about, as a sensation rather than a number."""
+    a = S["agents"][n]
+    nd, out = a.get("need") or NEED_START, []
+    if a.get("colour") and "ordinary" not in a["colour"]:
+        out.append(f"Today you feel {a['colour']}.")
+    if a.get("moods"):
+        out.append("Your mood in recent turns: " + ", ".join(a["moods"]) + " (moods linger; they do not swing without a reason).")
+    if nd["energy"] <= 3:
+        out.append("Your back aches and your eyes are heavy; you are worn out and would sooner sit down.")
+    if nd["hunger"] >= 7:
+        out.append("You are starving: your stomach growls and your temper is short.")
+    if nd["company"] <= 1.5:
+        out.append("You have been on your own too long and are itching for company.")
+    elif nd["company"] >= 9:
+        out.append("You have been among people all day and would like a little quiet to yourself.")
+    if nd["boredom"] >= 7:
+        out.append("You are so bored you could scream.")
     return out
 
 def gist(text, words=6):
@@ -2575,6 +2634,7 @@ def agent_turn():
             if closed:
                 u.append("Work, building and contributing are closed for now; it is time to rest, eat and enjoy company. "
                          "Choose an action only if it is not work (trade, pray, mourn, treat, court and so on), or none.")
+        u += body_notes(n)
         u += loop_notes(n)
         u.append("Decide what you do in the next few minutes. Answer in JSON: "
                  '"thought" = one private sentence; "say" = what you say out loud, often nothing or just a few words (at most about 40 words); use "" whenever you would rather not talk; '
@@ -2600,6 +2660,7 @@ def agent_turn():
         here = [o for o in S["agents"] if o != n and S["agents"][o]["place"] == old]
         say = trim(r.get("say"), 420)
         a["thought"], a["mood"] = trim(r.get("thought"), 300), clip(r.get("mood"), 20).lower()
+        a["moods"] = ([x for x in a.get("moods", []) if x != a["mood"]][-2:] + [a["mood"]]) if a["mood"] else a.get("moods", [])
         a["activity"] = clip(r.get("activity"), 70).rstrip(".") or "idling"
         if a["activity"][:1].isupper() and not a["activity"].startswith("I "):
             a["activity"] = a["activity"][0].lower() + a["activity"][1:]
@@ -2731,6 +2792,7 @@ def agent_turn():
         elif not say and not did:
             remember(n, f"At the {old} I was {a['activity']}.")
         advance_plan(n, act, did)
+        tick_needs(n, old, here, bool(did) and (act == "work" or act == "contribute" or act.startswith("build_")))
         log_event(kind="turn", who=n, place=old, to_place=go if moved else "", activity=a["activity"],
                   say=say, to=to, thought=a["thought"], mood=a["mood"], did=did, deep=deep)
         if prayer:
@@ -3164,7 +3226,8 @@ def night():
             if s_["done"] and s_["type"] == "farm":
                 S["agents"][s_["owner"]]["inv"]["bread"] += 2
         for n, a in S["agents"].items():
-            a.update(today=[], pending=None, offer=None, activity="waking up", mood="rested")
+            a.update(today=[], pending=None, offer=None, activity="waking up")
+            new_morning(n)
             remember(n, f"News this morning (day {S['day']}): {omen}")
         save()
 
