@@ -523,7 +523,7 @@ def remember(n, text, today=True, keep=True):
     if keep:
         a["memories"] = (a["memories"] + [line])[-40:]
     if today:
-        a["today"] = (a["today"] + [line])[-36:]
+        a["today"] = (a["today"] + [line])[-150:]
 
 BREAKS = ((12 * 60, 13 * 60), (19 * 60, 24 * 60))   # midday meal and the evening: the day's work is put down
 
@@ -2403,14 +2403,18 @@ def agent_turn():
                      + "\n".join("- " + x for x in a["recall"][-6:]))
         if a["reflections"]:
             u.append("What you concluded last night: " + a["reflections"][-1])
-        if a["feelings"]:
-            u.append("How you feel about people: " + "; ".join(f"{k}: {v}" for k, v in a["feelings"].items()) + ".")
-        close = sorted(((o, warmth(n, o)) for o in S["agents"] if o != n), key=lambda x: -x[1])
-        u.append("How close you are: " + "; ".join(f"{o}: {closeness(v)}" for o, v in close) + "."
-                 + (f" {a['partner']} is your sweetheart." if a.get("partner") else ""))
-        if S.get("arc"):
-            u.append(f"Something is unfolding in the village (part {S['arc']['stage']} of 4 of a story): {S['news']} "
-                     "Look into it, talk it over, and act on it if you can; what the village does will shape how it ends.")
+        if here:
+            u.append("What you feel about the people here:\n" + "\n".join(
+                f"- {o}: {closeness(warmth(n, o))}" + (f"; {a['feelings'][o]}" if a["feelings"].get(o) else "")
+                + (f". {a.get('between', {})[o]}" if a.get("between", {}).get(o) else "") for o in here))
+        far = [o for o in S["agents"] if o != n and o not in here]
+        if far:
+            u.append("How close you are to the others: " + "; ".join(f"{o}: {closeness(warmth(n, o))}" for o in far) + ".")
+        if a.get("partner"):
+            u.append(f"{a['partner']} is your sweetheart.")
+        if S.get("arc") and not off_duty(S["minute"]):
+            u.append("What the village news describes is the talk of the village. You may care a great deal, a little, or "
+                     "be sick of hearing about it; you have your own life to get on with.")
         if S.get("dead"):
             u.append("Remembered, gone from this world: " + "; ".join(
                 f"{d['name']} (died aged {d['age']} on day {d['day']}, {d['cause']})" for d in S["dead"][-5:]) + ".")
@@ -2656,13 +2660,13 @@ def agent_turn():
         elif say and to == "nobody":
             remember(n, f'At the {old} I muttered to myself: "{say}"')
             for o in here:
-                remember(o, f'At the {old}, {n} muttered something like: "{gist(say)}"')
+                remember(o, f'At the {old}, {n} muttered something like: "{gist(say)}"', today=False)
             to = ""
         elif say and to:
             remember(n, f'At the {old} I said to {to}: "{say}"')
             for o in here:
                 remember(o, f'At the {old}, {n} said to me: "{say}"' if o == to else
-                            f'At the {old}, {n} said to {to}, something like: "{gist(say)}"')
+                            f'At the {old}, {n} said to {to}, something like: "{gist(say)}"', today=(o == to))
             if bump_talk(n, to) < TALK_STOP:          # past that, they hear it but are not prompted to answer again
                 S["agents"][to]["pending"] = {"from": n, "text": say}
         elif say:
@@ -2998,15 +3002,18 @@ def night():
         try:
             r, _ = chat_deep(persona(n),
                      "The day is over and you are in bed. This is what happened to you today:\n"
-                     + "\n".join("- " + t for t in today[-30:]) +
+                     + "\n".join("- " + t for t in today[-150:]) +
                      '\nAnswer in JSON: "reflection" = one or two first-person sentences on what mattered most today '
                      'and what you intend to do tomorrow; "feelings" = how you now feel about each person you dealt '
-                     'with today, 3 to 6 words each, and "closeness" = how close you honestly are to them now (most '
-                     'neighbours are only neighbours, some grate on you, and warmth cools when nothing feeds it); "growth" = two first-person sentences on how this day has changed '
-                     "who you are: what you have become more or less, bolder, warier, fonder, harder, softer. You are "
-                     "still recognisably yourself, but let real change show, and build on this earlier description of "
-                     f"yourself: {S['agents'][n].get('self') or 'none yet, this is your first night'}. Be specific to "
-                     "what actually happened to you, not general. "
+                     'with today, 3 to 6 words each, "closeness" = how close you honestly are to them now (most '
+                     'neighbours are only neighbours, some grate on you, and warmth cools when nothing feeds it), and '
+                     '"between_us" = one or two sentences only you would write about what lies between you and them: a '
+                     'favour owed, a thing unsaid, an old joke, something you envy or cannot stand, and how you talk to '
+                     'them differently from everyone else; "growth" = two first-person sentences: first, the fault or habit '
+                     'of yours that showed again today exactly as it always has (name the moment); second, one thing that '
+                     'has shifted in you, or "nothing has" (most days nothing does). '
+                     f"Your earlier description of yourself: {S['agents'][n].get('self') or 'none yet, this is your first night'}. "
+                     "Be specific to what actually happened to you, not general. "
                      '"milestone" = one first-person sentence about something from today you will remember for the rest '
                      "of your life (a loss, a love, a promise made or broken, a betrayal, a discovery, a debt, a "
                      'kindness that changed you), or "" if today was an ordinary day; most days are ordinary. '
@@ -3028,7 +3035,7 @@ def night():
                           "remembered": {"type": "array", "items": STR},
                           "feelings": {"type": "array", "items": obj(
                          {"name": {"type": "string", "enum": others or ["nobody"]}, "feeling": STR,
-                          "closeness": {"type": "string", "enum": list(CLOSE_LABELS)}})}}),
+                          "closeness": {"type": "string", "enum": list(CLOSE_LABELS)}, "between_us": STR})}}),
                      num_predict=700, temperature=0.7)
         except Exception:
             continue
@@ -3052,9 +3059,11 @@ def night():
             ms = clip(r.get("milestone"), 220)
             if ms and f"Day {day}: {ms}" not in a.get("legacy", []):
                 a["legacy"] = (a.get("legacy", []) + [f"Day {day}: {ms}"])[-LEGACY_KEPT:]
-            for f in (r.get("feelings") or [])[:5]:
+            for f in (r.get("feelings") or [])[:8]:
                 if f.get("name") in others and f.get("feeling"):
                     a["feelings"][f["name"]] = clip(f["feeling"], 50)
+                if f.get("name") in others and f.get("between_us"):
+                    a.setdefault("between", {})[f["name"]] = clip(f["between_us"], 240)
                 if f.get("name") in others and f.get("closeness") in CLOSE_LABELS:
                     a.setdefault("warmth", {})[f["name"]] = CLOSE_LABELS[f["closeness"]]
             save()
@@ -3076,7 +3085,8 @@ def night():
                      'Answer in JSON: "story" = 3 or 4 first-person sentences (about 80 words) telling who you are NOW and '
                      "how you came to be this person: what you value, fear and hold dear, how you treat people, the habits "
                      "and sore spots you have picked up, and who matters most to you. Keep what is still true of the earlier "
-                     "telling, let what has changed show, and stay recognisably yourself. "
+                     "telling, let what has changed show, and stay recognisably yourself. Do not tell this as a tale of "
+                     "self-improvement: you still have the faults you came with, and you say which. "
                      f'"habits" = two or three small habits, quirks or contradictions you have picked up, building on these: '
                      f"{S['agents'][n].get('habits') or 'none yet'}; they can be endearing, petty or silly, and you may drop old ones.",
                      obj({"story": STR, "habits": STR}), num_predict=420, temperature=0.7)
