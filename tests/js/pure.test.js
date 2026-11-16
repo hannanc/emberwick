@@ -171,3 +171,20 @@ test('hair greys with age from about fifty', () => {
   assert.equal(P.hairColor({ age: 40, hair: '#2b1b10' }), '#2b1b10'); const mid = P.hairColor({ age: 62, hair: '#2b1b10' }), old = P.hairColor({ age: 80, hair: '#2b1b10' });
   assert.ok(P.lumaOf(mid) > P.lumaOf('#2b1b10') && P.lumaOf(old) > P.lumaOf(mid) && P.lumaOf(old) > .7);
 });
+test('affinity: partners, talkers and friends', () => {
+  const A = { name: 'A', partner: 'B' }, B = { name: 'B', partner: 'A' }, C = { name: 'C', say_to: 'D', say_at: 1000, close: { D: 'acquaintance', E: 'friend' } }, D = { name: 'D' }, E = { name: 'E' };
+  assert.equal(P.affinity(A, B, 0), 3); assert.equal(P.affinity(C, D, 1030), 2); assert.equal(P.affinity(C, D, 1500), 0, 'a conversation that ended is forgotten');
+  assert.equal(P.affinity(C, E, 0), 1); assert.equal(P.affinity(D, A, 0), 0);
+});
+test('layout: friends and talkers stand closer, a crowd forms a loose arc facing in, nobody stands on a seated person', () => {
+  const mk = n => ({ name: n, activity: 'standing' }), here = ['A', 'B', 'C', 'D', 'E'].map(mk), aff = (a, b) => (a.name + b.name === 'AB' || a.name + b.name === 'BA' ? 3 : 0);
+  const L = P.placeLayout(here, [20, 12], 1.4, undefined, P.poseOf, aff), gap = (a, b) => Math.abs(L[a].x - L[b].x);
+  assert.ok(gap('A', 'B') < gap('B', 'C') - .2, 'partners closer than strangers'); assert.equal(L.A.face, 1); assert.equal(L.B.face, -1);
+  const xs = Object.values(L).map(v => v.x), mid = (Math.min(...xs) + Math.max(...xs)) / 2; assert.ok(Math.abs(mid - 20) < .01, 'centred on the place');
+  const plain = P.placeLayout(here, [20, 12], 1.4, undefined, P.poseOf), ends = [plain.A, plain.E], midp = plain.C;
+  assert.ok(ends.every(e => e.face !== 0) && midp.face === 0 && ends[0].face === 1 && ends[1].face === -1 && ends[0].y > midp.y - .01, 'arc: ends face in');
+  const s = P.placeLayout([{ name: 'S', activity: 'sitting' }, mk('T'), mk('U')], [20, 12], 1.4, P.SEATS.Square, P.poseOf), seat = s.S;
+  for (const n of ['T', 'U']) assert.ok(Math.abs(s[n].x - seat.x) >= 1 || s[n].y - seat.y >= .8 - 1e-9, 'clear of the sitter');
+  assert.deepEqual(P.placeLayout([mk('Solo')], [5, 5], 1.9, undefined, P.poseOf).Solo, { x: 5, y: 6.9, seat: false, face: 0 });
+});
+test('tired moods yawn late in the day', () => { assert.ok(P.moodKind('weary').tired && P.moodKind('drained').tired); assert.ok(!P.moodKind('jovial').tired); });

@@ -1,16 +1,18 @@
 // ================================================================ the villager figure
 // person() draws one villager onto any 2d context (the map by default, a scene card's interior strip otherwise).
 // Everything is laid out in figure units: 1 unit = S px, S = FIG x life stage x this person's height; y runs up from the soles (see BODY in pure.js).
+let lampNow = 0;   // how lit the lamps are (set by the frame): 0 by day, 1 at night
 const PROPS = { Woods: 'axe', Dock: 'rod', Garden: 'basket', Bakery: 'loaf', Library: 'book', Quarry: 'pick', Cemetery: 'flowers' };
 const TROUSERS = ['#5b4a3a', '#4a5058', '#6a5a46', '#3f4a5a'], BOOT = '#2b211a';
 
 function drawFace(g, o) {   // small dark eyes with a highlight (whites only for babies and for fright), mood brows, a nose, a mouth that follows the mood and moves when speaking
-  const { a, hx, hy, f, t, talking, hurt, baby, beard, h, z } = o, S = o.u, k = moodKind(a.mood), af = Math.abs(f), wide = baby || k.wide;
+  const { a, hx, hy, f, t, talking, hurt, baby, beard, h, z, yawn } = o, S = o.u, k = o.wet ? { ...o.k, mouth: 'flat' } : o.k, af = Math.abs(f), wide = (baby || k.wide) && !yawn;
   const ex = hx + f * 2.6 * S, es = 2.1 * S * (1 - .3 * af), ey = hy + .6 * S, blink = !REDUCE && ((t / 1000 + h % 5) % 4.3) < .13;
   const lid = hurt ? .55 : 1;   // a sick person's eyelids droop
   for (const d of [-1, 1]) {
     const cx = ex + d * es;
-    if (z < 1.5) { g.fillStyle = '#2a1f19'; g.beginPath(); g.arc(cx, ey, .95 * S, 0, 7); g.fill(); }   // zoomed out: two dots
+    if (yawn && z >= 1.5) { g.strokeStyle = '#2a1f19'; g.lineWidth = .9 * S; g.beginPath(); g.arc(cx, ey + .3 * S, 1 * S, .15 * Math.PI, .85 * Math.PI); g.stroke(); }   // eyes screwed shut in a yawn
+    else if (z < 1.5) { g.fillStyle = '#2a1f19'; g.beginPath(); g.arc(cx, ey, .95 * S, 0, 7); g.fill(); }   // zoomed out: two dots
     else if (wide) {
       const ew = (baby ? 1.7 : 1.5) * S, eh = (blink ? .25 : baby ? 1.7 : 1.6) * S;
       g.fillStyle = '#f7f2e8'; g.beginPath(); g.ellipse(cx, ey, ew, eh, 0, 0, 7); g.fill();
@@ -30,7 +32,8 @@ function drawFace(g, o) {   // small dark eyes with a highlight (whites only for
   if (o.flour && z >= 1.5) { g.fillStyle = 'rgba(255,255,255,.6)'; g.beginPath(); g.ellipse(hx + (f || -1) * 3.6 * S, hy + 2.6 * S, 1 * S, .7 * S, .4, 0, 7); g.fill(); }   // a smudge of flour on the cheek
   if (z >= 1.5) { const nx = hx + f * 3.4 * S, ny = hy + 2.4 * S; g.strokeStyle = 'rgba(120,70,50,.45)'; g.lineWidth = .9; g.beginPath(); g.moveTo(nx - f * .2 * S, ny - .8 * S); g.lineTo(nx + (f || .4) * .8 * S, ny + .6 * S); g.stroke(); }   // a nose, turned the way they face
   const mx = hx + f * 2.2 * S, my = hy + 4 * S;
-  if (talking) { const open = .5 + .5 * Math.sin(t / 85 + h); g.fillStyle = '#5a2a22'; g.beginPath(); g.ellipse(mx, my + .2 * S, (1.5 - .3 * af) * S, (.5 + open * 1.5) * S, 0, 0, 7); g.fill(); }
+  if (yawn) { g.fillStyle = '#5a2a22'; g.beginPath(); g.ellipse(mx, my + .5 * S, 1.5 * S, 2.1 * S, 0, 0, 7); g.fill(); }
+  else if (talking) { const open = .5 + .5 * Math.sin(t / 85 + h); g.fillStyle = '#5a2a22'; g.beginPath(); g.ellipse(mx, my + .2 * S, (1.5 - .3 * af) * S, (.5 + open * 1.5) * S, 0, 0, 7); g.fill(); }
   else if (!beard) {
     g.strokeStyle = 'rgba(130,55,45,.8)'; g.lineWidth = 1; g.beginPath();
     if (k.mouth === 'smile') g.arc(mx, my - 1.3 * S, 2.2 * S, .18 * Math.PI, .82 * Math.PI);
@@ -136,13 +139,16 @@ function person(a, p, t, g = ctx) {
   const now = Date.now() / 1000 + skew, old = a.age >= 65, baby = a.age < 6, hurt = a.sick;
   let f = p.face || 0;   // which way the face points: -1 left, 0 front, 1 right
   if (!walking) {
-    f = 0; const o = a.say_to && now - a.say_at < 26 && st.agents.find(q => q.name === a.say_to), op = o && o.place === a.place && pos[o.name];
+    f = p.gface || 0; const o = a.say_to && now - a.say_at < 26 && st.agents.find(q => q.name === a.say_to), op = o && o.place === a.place && pos[o.name];
     if (op && Math.abs(op.x - p.x) > .05) f = Math.sign(op.x - p.x);
-    else if (!REDUCE) { const ph = t / 1000 + h % 7; if (ph % 6 < .9) f = (Math.floor(ph / 6) + h) & 1 ? 1 : -1; }   // now and then a glance to the side
+    else if (!REDUCE && !f) { const ph = t / 1000 + h % 7; if (ph % 6 < .9) f = (Math.floor(ph / 6) + h) & 1 ? 1 : -1; }   // now and then a glance to the side
   }
-  const dir = f || p.face || 1, lean = old ? 1.4 * S * dir : 0, r = B.r * S, hx = x + lean + f * .5 * S, hy = y - (B.chin + B.r) * S + (old ? .9 * S : 0), u = r / 5.7;
+  const w = g === ctx && st ? st.weather || '' : '', rainy = /rain|storm/.test(w) && g === ctx && !INDOOR.has(a.place);
+  const flinch = rainy && /storm/.test(w) && !REDUCE ? Math.max(0, 1 - (t % 9000) / 700) : 0, hoodC = shade(a.color, .7), moodK = moodKind(a.mood);
+  const dir = f || p.face || 1, lean = old ? 1.4 * S * dir : 0, r = B.r * S, hx = x + lean + f * .5 * S, hy = y - (B.chin + B.r) * S + (old ? .9 * S : 0) + ((rainy ? 1.1 : 0) + flinch * 1.6) * S, u = r / 5.7;
   const skin = hurt ? mix(L.skin, '#f6eee4', .16) : L.skin, line = 'rgba(30,22,16,.4)', hairC = hairColor(a), prop = standing && PROPS[a.place];
   const onBench = sit && a.place === 'Square' && SEATS.Square.some(q => Math.abs(q[0] - p.x) < .05 && Math.abs(q[1] - p.y) < .05), dress = a.sex === 'f' && a.age >= 6, z = g === ctx ? cam.z : 3;   // z: how close we are looking (scene cards are always close)
+  const lantern = g === ctx && lampNow > .3 && !INDOOR.has(a.place) && !sit && z > .7, yawn = !REDUCE && moodK.tired && st && (st.minute >= 19.5 * 60 || st.minute < 6.5 * 60) && ((t / 1000 + h % 9) % 14) < 1.8;
   const c = { g, a, p, h, z, dir, prop, onBench, hairC, S, B, L, x, y, gy, f, t, skin, line, drop, sit, step, cyc, walking, dress, sleeve: a.color, trouser: TROUSERS[(h >>> 16) % 4], sock: dress ? '#c4b8a0' : mix(TROUSERS[(h >>> 16) % 4], '#c9bda3', .3), Y: v => y - v * S };
   shadow(g, x - 2, base + 1, 11 * S, 4 * S, .3);
   if (selected === a.name) { const k = 1 + Math.sin(t / 300) * 0.08; g.strokeStyle = '#e8bd5f'; g.lineWidth = 2.5; g.beginPath(); g.ellipse(x, base + 1, 17 * S * k, 7.5 * S * k, 0, 0, 7); g.stroke(); }
@@ -181,7 +187,10 @@ function person(a, p, t, g = ctx) {
   if (standing && !prop && (pose === 'eat' || pose === 'drink')) { const k = REDUCE ? .7 : (Math.sin(t / 520 + h) + 1) / 2; wr[0] += (-5.2 + dir * 1.6 - wr[0]) * k; wr[1] += (-4.2 - wr[1]) * k; }   // the hand goes to the mouth and back
   else if (standing && !prop && pose === 'work') { wr[0] = 3.2 + sw * 3; wr[1] = -2.5 + (sw + 1) * 3.6; }                  // the working arm swings
   else if (standing && !prop && talking && !c.stick) { wl[0] = -2.2 + sw * 2.2; wl[1] = 4.5 + Math.sin(t / 240 + h) * 3; }              // a hand gestures while they speak
-  drawArm(c, -1, wl); drawBook(c); const [hx2, hy2] = drawArm(c, 1, wr);
+  if (rainy && standing && !prop && !c.stick && pose === 'stand' && !talking) { wl[0] = 3.1; wl[1] = 6.4; wr[0] = -3.1; wr[1] = 6.4; }   // arms drawn in against the rain
+  if (lantern && !c.stick && !(prop === 'book')) { wl[0] = -.2; wl[1] = 7.6; }
+  const [hxl, hyl] = drawArm(c, -1, wl); drawBook(c); const [hx2, hy2] = drawArm(c, 1, wr);
+  if (lantern) { const lx = hxl, ly = hyl + 2.6 * S; g.strokeStyle = '#4a3222'; g.lineWidth = 1; g.beginPath(); g.moveTo(hxl, hyl); g.lineTo(lx, ly); g.stroke(); g.fillStyle = '#ffd98a'; g.strokeStyle = '#4a3222'; g.beginPath(); g.roundRect(lx - 1.7 * S, ly, 3.4 * S, 4.6 * S, .8 * S); g.fill(); g.stroke(); g.fillStyle = '#4a3222'; g.fillRect(lx - 2 * S, ly - .5 * S, 4 * S, 1.1 * S); g.fillRect(lx - 2 * S, ly + 4.2 * S, 4 * S, 1 * S); g.fillStyle = '#fff4c8'; g.beginPath(); g.ellipse(lx, ly + 2.4 * S, .8 * S, 1.2 * S, 0, 0, 7); g.fill(); p.lampAt = [lx, ly + 2.4 * S]; } else p.lampAt = null;   // a small lantern in the hand, where the glow is drawn
   if (standing && !prop && pose === 'drink') { g.fillStyle = '#b98a50'; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.roundRect(hx2 - 2.4 * S, hy2 - 3.6 * S, 4.8 * S, 5 * S, 1 * S); g.fill(); g.stroke(); g.fillStyle = '#f4efe0'; g.fillRect(hx2 - 2.4 * S, hy2 - 3.9 * S, 4.8 * S, 1.3 * S); }       // a mug
   else if (standing && !prop && pose === 'eat') { g.fillStyle = '#d9a35a'; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.ellipse(hx2, hy2 - 1 * S, 3 * S, 1.9 * S, -.2, 0, 7); g.fill(); g.stroke(); }   // a piece of bread
   else if (standing && !prop && pose === 'work') { const up = -(sw + 1) * .5; g.strokeStyle = '#6b4a2e'; g.lineWidth = 1.7; g.beginPath(); g.moveTo(hx2, hy2 + 1.5 * S); g.lineTo(hx2 + dir * 2.4 * S, hy2 - (6 + up * 2) * S); g.stroke(); g.fillStyle = '#9aa0a6'; g.beginPath(); g.roundRect(hx2 + dir * 2.4 * S - 2.6 * S, hy2 - (7.4 + up * 2) * S, 5.2 * S, 2.2 * S, .6 * S); g.fill(); }   // a tool in the swinging hand
@@ -191,23 +200,27 @@ function person(a, p, t, g = ctx) {
     g.fillStyle = 'rgba(255,255,255,.55)'; for (let i = 0; i < 5; i++) { g.beginPath(); g.arc(x - 4.8 * S + i * 2.4 * S, Y(B.sh - 7.8 + Math.abs(i - 2) * 1.3), .8 * S, 0, 7); g.fill(); }
   }
   if (L.accent === 'scarf') { const Y = c.Y; g.fillStyle = L.scarf; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.roundRect(x - 5.8 * S, Y(B.sh + 1.6), 11.6 * S, 3.4 * S, 1.7 * S); g.fill(); g.stroke(); g.beginPath(); g.roundRect(x + 1.8 * S, Y(B.sh - .4), 3 * S, 6.4 * S, 1.2 * S); g.fill(); g.stroke(); }   // scarf with a hanging tail
+  if (rainy && a.age >= 3) { g.fillStyle = hoodC; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.ellipse(x + lean * .5, c.Y(B.sh + .6), (B.shW + 1.8) * S, 2.6 * S, 0, 0, 7); g.fill(); g.stroke(); }   // a hood's collar draped on the shoulders
   // head: back of the braid / bun first, then face, then hair in front
   if (L.hair === 'braid') { g.fillStyle = hairC; g.strokeStyle = line; g.lineWidth = 1; for (let i = 0; i < 4; i++) { g.beginPath(); g.ellipse(hx - r - .9 * u - i * .15 * u, hy + (5 + i * 3.2) * u, 2.3 * u, 2.1 * u, 0, 0, 7); g.fill(); g.stroke(); } g.fillStyle = '#e0a23a'; g.beginPath(); g.arc(hx - r - 1.4 * u, hy + 17.6 * u, 1.3 * u, 0, 7); g.fill(); }
   g.strokeStyle = line; g.lineWidth = 1.3; g.fillStyle = skin; g.beginPath(); if (a.age < 18) g.ellipse(hx, hy, r * 1.05, r, 0, 0, 7); else g.arc(hx, hy, r, 0, 7); g.fill(); g.stroke();   // children's faces are rounder
   if (z >= 1.5 && (hurt || a.age < 18)) { g.fillStyle = hurt ? 'rgba(235,110,110,.4)' : 'rgba(235,130,130,.22)'; for (const d of [-1, 1]) { g.beginPath(); g.arc(hx + (f * 1.4 + d * 3.3) * u, hy + 2.5 * u, (hurt ? 1.35 : 1.2) * u, 0, 7); g.fill(); } }   // flushed cheeks when ill; a faint blush on children
   if (old && z >= 1.5) { g.strokeStyle = shade(skin, .72); g.globalAlpha = .55; g.lineWidth = .8; g.beginPath(); for (const d of [-1, 1]) { const cx0 = hx + (f * 1.6 + d * 3.1) * u; g.moveTo(cx0 - d * .2 * u, hy + 1.6 * u); g.quadraticCurveTo(cx0 + d * .9 * u, hy + 3.2 * u, cx0 - d * .1 * u, hy + 4.4 * u); } g.stroke(); g.globalAlpha = 1; }   // two short cheek lines
   if (L.hair === 'bald+beard') { g.fillStyle = hairC; for (const d of [-1, 1]) { g.beginPath(); g.ellipse(hx + d * (r - .5 * u), hy - 1.2 * u, 1.8 * u, 3.4 * u, 0, 0, 7); g.fill(); } }
-  else hairCap(c, hx, hy, r, u);
+  else if (!(rainy && a.age >= 3)) hairCap(c, hx, hy, r, u);
   if (L.beard && a.age >= 18) { g.fillStyle = L.beard; g.strokeStyle = line; g.lineWidth = 1; g.beginPath(); g.moveTo(hx - r * .98, hy + 1.6 * u); g.quadraticCurveTo(hx - r * 1.05, hy + r + 2.4 * u, hx, hy + r + 2.8 * u); g.quadraticCurveTo(hx + r * 1.05, hy + r + 2.4 * u, hx + r * .98, hy + 1.6 * u); g.quadraticCurveTo(hx, hy + 3.4 * u, hx - r * .98, hy + 1.6 * u); g.fill(); g.stroke(); }
-  drawFace(g, { a, u, hx, hy, r, f, t, z, talking, hurt, baby, skin, glasses: L.glasses && z > 1, flour: L.flour, beard: !!(L.beard && a.age >= 18), h });
-  if (L.cap && a.age >= 6) {   // cap with a brim towards the facing direction
+  drawFace(g, { a, u, hx, hy, r, f, t, z, talking, hurt, baby, skin, yawn, wet: rainy, k: moodK, glasses: L.glasses && z > 1, flour: L.flour, beard: !!(L.beard && a.age >= 18), h });
+  if (rainy && a.age >= 3) { g.fillStyle = hoodC; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.arc(hx, hy - .3 * u, r + 1.9 * u, 0, 7); g.moveTo(hx + r * .9, hy + .35 * r); g.arc(hx, hy + .35 * r, r * .9, 0, 7, true); g.fill('evenodd'); g.stroke(); }   // the hood up: a ring of cloth round the face
+  if (L.cap && a.age >= 6 && !rainy) {   // cap with a brim towards the facing direction
     g.fillStyle = L.cap; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.arc(hx, hy - 1.2 * u, r + .8 * u, Math.PI * 1.0, Math.PI * 2); g.closePath(); g.fill(); g.stroke();
     g.beginPath(); g.roundRect(hx - r - 1.2 * u + f * 2.5 * u, hy - 2.4 * u, 2 * r + 2.4 * u, 2.4 * u, 1.2 * u); g.fill(); g.stroke();
   }
   if (prop) {   // what they hold, only while standing at that place
     const px = hx2, py = hy2; g.lineWidth = 1.2; g.strokeStyle = line;
     if (prop === 'axe') { g.strokeStyle = '#6b4a2e'; g.lineWidth = 2; g.beginPath(); g.moveTo(px - .5 * S, py + 4 * S); g.lineTo(px + 3 * S, py - 12 * S); g.stroke(); g.fillStyle = '#aeb4ba'; g.beginPath(); g.moveTo(px + 2.4 * S, py - 12.4 * S); g.lineTo(px + 8 * S, py - 13.4 * S); g.lineTo(px + 7 * S, py - 7.4 * S); g.lineTo(px + 3.4 * S, py - 8.4 * S); g.closePath(); g.fill(); g.strokeStyle = line; g.lineWidth = 1; g.stroke(); }
-    else if (prop === 'rod') { g.strokeStyle = '#6b4a2e'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(px - 1 * S, py + 2 * S); g.lineTo(px + 15 * S, py - 20 * S); g.stroke(); g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = .8; g.beginPath(); g.moveTo(px + 15 * S, py - 20 * S); g.lineTo(px + 17 * S, py - 6 * S); g.stroke(); g.fillStyle = '#d9604a'; g.beginPath(); g.arc(px + 17 * S, py - 5 * S, 1.2 * S, 0, 7); g.fill(); }
+    else if (prop === 'rod') {   // each angler holds the rod their own way: side, angle, length and how the bobber hangs
+      const rd = (h >>> 5) & 1 ? 1 : -1, ang = .72 + ((h >>> 7) % 5) * .13, len = 20 + (h >>> 9) % 7, tx = px + rd * Math.cos(ang) * len * S, ty = py + 2 * S - Math.sin(ang) * len * S, sway = REDUCE ? 0 : Math.sin(t / 700 + h) * .9 * S, drop2 = 12 + (h >>> 11) % 9;
+      g.strokeStyle = '#6b4a2e'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(px - rd * 1 * S, py + 2 * S); g.lineTo(tx, ty); g.stroke(); g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = .8; g.beginPath(); g.moveTo(tx, ty); g.lineTo(tx + rd * 1.6 * S + sway, ty + drop2 * S); g.stroke(); g.fillStyle = '#d9604a'; g.beginPath(); g.arc(tx + rd * 1.6 * S + sway, ty + (drop2 + 1) * S, 1.2 * S, 0, 7); g.fill(); }
     else if (prop === 'basket') { g.fillStyle = '#6fbf5a'; g.beginPath(); g.arc(px - 1.5 * S, py - .5 * S, 2 * S, 0, 7); g.arc(px + 2 * S, py - 1 * S, 2 * S, 0, 7); g.fill(); g.fillStyle = '#b98a50'; g.beginPath(); g.roundRect(px - 5 * S, py + .4 * S, 10 * S, 5.4 * S, [0, 0, 3 * S, 3 * S]); g.fill(); g.stroke(); g.strokeStyle = 'rgba(80,50,20,.5)'; g.beginPath(); g.moveTo(px - 4 * S, py + 3 * S); g.lineTo(px + 4 * S, py + 3 * S); g.stroke(); }
     else if (prop === 'loaf') { g.fillStyle = '#d9a35a'; g.beginPath(); g.ellipse(px, py + 1 * S, 5.2 * S, 2.8 * S, -.15, 0, 7); g.fill(); g.stroke(); g.strokeStyle = 'rgba(120,70,20,.7)'; g.beginPath(); for (const d of [-2.2, 0, 2.2]) { g.moveTo(px + d * S - .8 * S, py + .2 * S); g.lineTo(px + d * S + .8 * S, py + 1.8 * S); } g.stroke(); }
     else if (prop === 'book') { const bt = B.hem + 6.4; g.fillStyle = '#8c3a3a'; g.beginPath(); g.roundRect(x - 4.8 * S, c.Y(bt), 9.6 * S, 6.6 * S, 1 * S); g.fill(); g.stroke(); g.fillStyle = '#f2ead6'; g.fillRect(x - 4 * S, c.Y(bt - .8), 7.8 * S, 1 * S); g.fillStyle = skin; g.beginPath(); g.arc(x - 4.8 * S, c.Y(bt - 3.4), 1.9 * S, 0, 7); g.arc(x + 4.8 * S, c.Y(bt - 3.4), 1.9 * S, 0, 7); g.fill(); }

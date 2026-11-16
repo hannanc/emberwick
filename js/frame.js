@@ -98,6 +98,7 @@ function frame(t) {
     const w = st.weather, S = sky(st.minute, w), rain = /rain|storm/.test(w), wind = /windy|storm/.test(w);
     const hrL = st.minute / 60, lampMist = /mist/.test(w) ? .6 : 1,                                         // lamps and windows come on by the clock, not only when the sky is dark
       lamp = Math.max(S.light, hrL >= 17.75 && hrL < 22 ? clamp((hrL - 17.75) / 1.25, 0, 1) * .6 : 0, hrL >= 5 && hrL < 7.25 ? clamp((7.25 - hrL) / 1.5, 0, 1) * .6 : 0);
+    lampNow = lamp;   // the figures read this to carry a lit lantern
     bubbleTone = 1 - .2 * clamp(lamp, 0, 1);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#16241a'; ctx.fillRect(0, 0, cv.width, cv.height);
@@ -157,7 +158,7 @@ function frame(t) {
       const wk = st.places.Workshop, qu = st.places.Quarry;
       if (wk && stock.wood > 0 && vis(wk[0] * T, wk[1] * T, 120, 60, 80)) things.push([wk[1] + .6, () => drawLogs(wk[0] + 3.6, wk[1] + .6, Math.min(10, Math.ceil(stock.wood / 3)))]);
       if (qu && stock.stone > 0 && vis(qu[0] * T, qu[1] * T, 120, 60, 80)) things.push([qu[1] + .6, () => drawStones(qu[0] + 3, qu[1] + .6, Math.min(12, Math.ceil(stock.stone / 25)))]); }   // the village's wood and stone, piled where they are worked
-    if (!asleep) for (const a of order) if (vis(pos[a.name].x * T, pos[a.name].y * T, 70, 40, 100)) things.push([pos[a.name].y, () => { person(a, pos[a.name], t); const p = pos[a.name]; if (lamp > .3 && !INDOOR.has(a.place)) wins.push([p.x * T + (p.face || 1) * 9 * FIG / 1.35, p.y * T - 22 * FIG / 1.35, .45, '255,190,110']); }]);   // a villager out after dusk carries a small lantern glow
+    if (!asleep) for (const a of order) if (vis(pos[a.name].x * T, pos[a.name].y * T, 70, 40, 100)) things.push([pos[a.name].y, () => { person(a, pos[a.name], t); const p = pos[a.name]; if (lamp > .3 && !INDOOR.has(a.place)) wins.push(p.lampAt ? [p.lampAt[0], p.lampAt[1], .45, '255,190,110'] : [p.x * T + (p.face || 1) * 9 * FIG / 1.35, p.y * T - 22 * FIG / 1.35, .45, '255,190,110']); }]);   // a villager out after dusk carries a small lantern glow
     const sg = st.goals && st.goals.stranger;
     if (!asleep && sg) { const sp = { x: st.places.Square[0] - 3.2, y: st.places.Square[1] + 2.6, walking: false, route: [], face: 1 };   // the stranger, waiting with a bundle
       things.push([sp.y, () => { person({ name: sg.name, age: sg.age, sex: sg.sex, hair: sg.hair, color: sg.color, place: 'Square', say_to: '', say_at: 0 }, sp, t);

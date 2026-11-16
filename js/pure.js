@@ -106,10 +106,28 @@ const walkSpeed = a => 2.4 * (a.hungry >= 2 ? .75 : 1) * (a.sick ? .7 : 1) * (a.
 const strideLen = a => 1.5 * BODY[stageOf(a.age)].size * build(a).hf;   // tiles for one full step cycle (two steps): the feet follow the ground, not the clock
 // ---- where people stand: sitters take the benches, everyone else lines up at the place
 const SEATS = { Square: [[17.1, 13.21], [17.7, 13.21], [23.0, 13.21], [23.6, 13.21]] };   // the Square's two benches (drawn at 17.4 and 23.3, y 12.9), two seats each; y is where the feet reach the ground
-function placeLayout(here, xy, stand, seats, poseFn) {   // here: the agents at one place; returns name -> { x, y, seat } in tiles
+const FRIENDLY = /^(friend|close friend|dear)$/;
+function affinity(a, b, now) {   // how close two people stand: 3 partners, 2 talking to each other just now, 1 friends, else 0
+  if (a.partner === b.name || b.partner === a.name) return 3;
+  const talk = (x, y) => x.say_to === y.name && now != null && now - x.say_at < 90;
+  if (talk(a, b) || talk(b, a)) return 2;
+  return FRIENDLY.test((a.close || {})[b.name] || '') || FRIENDLY.test((b.close || {})[a.name] || '') ? 1 : 0;
+}
+function placeLayout(here, xy, stand, seats, poseFn, aff = () => 0) {   // here: the agents at one place; returns name -> { x, y, seat, face } in tiles
   const out = {}, up = []; let si = 0;
-  for (const a of here) { if (seats && si < seats.length && poseFn(a) === 'sit') { out[a.name] = { x: seats[si][0], y: seats[si][1], seat: true }; si++; } else up.push(a); }
-  up.forEach((a, i) => { out[a.name] = { x: xy[0] + (i - (up.length - 1) / 2) * 1.15, y: xy[1] + stand + (i % 2) * .35, seat: false }; });
+  for (const a of here) { if (seats && si < seats.length && poseFn(a) === 'sit') { out[a.name] = { x: seats[si][0], y: seats[si][1], seat: true, face: 0 }; si++; } else up.push(a); }
+  const order = [], left = up.slice();   // a chain: each next person is the one closest to the last, so partners, friends and talkers end up side by side
+  while (left.length) { const last = order[order.length - 1]; let bi = 0, bs = -1; if (last) left.forEach((o, k) => { const s = aff(last, o); if (s > bs) { bs = s; bi = k; } }); order.push(left.splice(bi, 1)[0]); }
+  const gaps = order.slice(1).map((o, k) => [1.15, .95, .8, .75][aff(order[k], o)]), total = gaps.reduce((s, v) => s + v, 0);
+  let x = xy[0] - total / 2; const n = order.length;
+  order.forEach((a, i) => {
+    if (i) x += gaps[i - 1];
+    const c = (n - 1) / 2, k = c ? (i - c) / c : 0, face = n < 3 ? (n === 2 ? (i ? -1 : 1) : 0) : Math.abs(k) < .34 ? 0 : k < 0 ? 1 : -1;   // a loose arc: the ends face in, the middle faces out
+    let y = xy[1] + stand + .45 * k * k - (n > 2 ? .1 : 0) + (i % 2) * .22;
+    for (const o of seats && Object.values(out) || []) if (o.seat && Math.abs(o.x - x) < 1 && y - o.y < .8) y = o.y + .8;   // not on top of anyone sitting
+    const before = i ? aff(order[i - 1], a) : 0, after = i < n - 1 ? aff(a, order[i + 1]) : 0;
+    out[a.name] = { x, y, seat: false, face: after >= 2 ? 1 : before >= 2 ? -1 : face };   // talkers and partners face each other
+  });
   return out;
 }
 const MOOD_KIND = {};      // mood word -> how the face shows it, worked out once per word
@@ -120,6 +138,7 @@ function moodKind(m) {
     : /irritable|sour|angry|annoyed|grumpy|stern|resolute|determined|stubborn|edgy|fierce|bitter|defiant/.test(m) ? { mouth: 'flat', brow: -1 }
     : /wary|uneasy|fretful|anxious|nervous|worried|afraid|suspic|watchful|tense|restless|jumpy|troubled/.test(m) ? { mouth: 'flat', brow: 1 }
     : { mouth: 'soft', brow: 0 };
+  if (/tired|weary|drained|sleepy|exhaust|worn|heavy/.test(m)) k.tired = true;   // yawns late in the day
   if (/afraid|terrif|shock|startl|surpris|alarm|fright|panic|horrif|dread/.test(m)) k.wide = true;   // eyes wide open: whites showing
   return MOOD_KIND[m] = k;
 }
@@ -168,4 +187,4 @@ function sceneData(st, name, radius) {   // who is in a place, what was said the
     built: (st.structures || []).filter(s => s.done && Math.hypot(s.x - px, s.y - py) <= (radius || 5)),
   };
 }
-if (typeof module !== 'undefined') module.exports = { hairColor, SEATS, placeLayout, jobKind, LOOK, BODY, stageOf, build, figMetrics, walkSpeed, strideLen, browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };
+if (typeof module !== 'undefined') module.exports = { affinity, hairColor, SEATS, placeLayout, jobKind, LOOK, BODY, stageOf, build, figMetrics, walkSpeed, strideLen, browPoints, rgbOf, hexOf, shade, mix, rgbaOf, lumaOf, hhmm, clamp, lerp, rng, hash, distSeg, inLake, sky, viaDepth, VIA, look, moodKind, poseOf, weatherIcon, wrapText, hitsAny, labelRejected, placeNear, villagerNear, sceneData };
