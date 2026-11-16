@@ -1219,7 +1219,7 @@ function frame(t) {
       ctx.globalAlpha = 1;
     }
     const hr = st.minute / 60, gk = hr >= 5.5 && hr <= 8 ? Math.sin((hr - 5.5) / 2.5 * Math.PI) : hr >= 17.5 && hr <= 20.5 ? Math.sin((hr - 17.5) / 3 * Math.PI) : 0;
-    if (gk > 0.02 && !/storm|steady|overcast/.test(w)) {                                               // sunrise from the east edge, sunset from the west
+    if (gk > 0.02 && !/storm|rain|steady|overcast/.test(w)) {                                               // sunrise from the east edge, sunset from the west
       const east = hr < 12, cx = east ? cv.width : 0, cy = cv.height * .38, R = Math.max(cv.width, cv.height) * .95, gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
       gr.addColorStop(0, `rgba(255,${east ? 196 : 130},${east ? 120 : 70},${.9 * gk})`); gr.addColorStop(.5, `rgba(255,${east ? 170 : 110},${east ? 100 : 80},${.4 * gk})`); gr.addColorStop(1, 'rgba(255,150,90,0)');
       ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = gr; ctx.fillRect(0, 0, cv.width, cv.height); ctx.fillRect(0, 0, cv.width, cv.height);   // twice: soft-light is gentle
