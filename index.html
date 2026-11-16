@@ -1357,7 +1357,7 @@ function renderPeople(force) {
     if (!items.length && !a.owns.length) inv.append(el('span', '', 'empty-handed'));
     c.append(inv);
     if (a.thought) c.append(el('p', 'q', '“' + a.thought + '”'));
-    const extra = [['Traits', a.traits], ['Closeness', Object.entries(a.close || {}).map(([k, v]) => `${k}: ${v}`).join(' · ')], ['Feelings', Object.entries(a.feelings).map(([k, v]) => `${k}: ${v}`).join(' · ')], ['Growing', a.growth], ['Last night', a.reflection]].filter(([, v]) => v);
+    const extra = [['Traits', a.traits], ['Closeness', Object.entries(a.close || {}).map(([k, v]) => `${k}: ${v}`).join(' · ')], ['Feelings', Object.entries(a.feelings).map(([k, v]) => `${k}: ${v}`).join(' · ')], ['Life story', a.story], ['Never forgotten', (a.legacy || []).slice(-5).join(' · ')], ['Growing', a.growth], ['Last night', a.reflection]].filter(([, v]) => v);
     if (extra.length || a.plan.length) {
       const det = el('details'); det.open = openMore.has(a.name); det.ontoggle = () => det.open ? openMore.add(a.name) : openMore.delete(a.name);
       det.append(el('summary', '', a.plan.length ? `More · following the Oracle's ${a.plan.length}-step counsel` : 'More about ' + a.name));

@@ -281,6 +281,8 @@ def migrate():
         a.setdefault("plan_at", 0)
         a.setdefault("plan_work", 0)
         a.setdefault("self", "")
+        for k, v in (("legacy", []), ("story", ""), ("story_day", 0)):
+            a.setdefault(k, v)
         for k, v in (("expecting", None), ("proposal", None), ("partner", None), ("hungry", 0), ("rest_until", 0),
                      ("sick", None), ("care_until", 0)):
             a.setdefault(k, v)
@@ -448,9 +450,13 @@ def trim(s, n):
 def hhmm(m):
     return f"{m // 60:02d}:{m % 60:02d}"
 
+LEGACY_KEPT, LEGACY_SHOWN, STORY_EVERY = 40, 5, 5   # lasting milestones kept and shown; nights between life-story rewrites
+
 def persona(n):
     c = who(n)
     grown = S["agents"][n].get("self", "") if S.get("agents") else ""
+    story = S["agents"][n].get("story", "") if S.get("agents") and n in S["agents"] else ""
+    legacy = S["agents"][n].get("legacy", [])[-LEGACY_SHOWN:] if S.get("agents") and n in S["agents"] else []
     fam = family_text(n) if n in S.get("agents", {}) else ""
     return (f"You are {n}, a {age(n)}-year-old {word(n)}, {c['job']} of Emberwick, a small lakeside village. "
             f"Personality: {c['traits']}. Deep down you want {c['goal']}. "
@@ -458,6 +464,8 @@ def persona(n):
             + (f"Family: {fam}. " if fam else "")
             + f"How you talk: {speech_style(n)}. " +
             f"You dream of {'building ' if n in CAST else ''}{c['dream']}. Villagers gather materials, trade with each other and build things. "
+            + (f"Your life so far: {story} " if story else "")
+            + (("Moments you will never forget: " + " ".join(legacy) + " ") if legacy else "")
             + (f"How living here has changed you so far: {grown} Let that show in how you act and speak. " if grown else "")
             + "Stay in character and speak in first person. Be concrete and specific. Move things forward: "
             "pursue what you want, react to news, seek people out; do not repeat what you already said or did. "
@@ -667,6 +675,7 @@ def die(n, cause):
                 oa[k] = None
         got = " Their goods and buildings passed to " + ", ".join(heirs) + "." if heirs else ""
         mine = " Everything they owned is now mine." if heirs == [o] else " I received a share of what they owned." if o in heirs else ""
+        oa["legacy"] = (oa.get("legacy", []) + [f"Day {S['day']}: {n} died, aged {ag}, and I was there when the village laid them to rest."])[-LEGACY_KEPT:]
         remember(o, f"{n} died in the night, aged {ag} ({cause}), and was buried in the Cemetery."
                     f"{mine if o in heirs else got}")
     log_event(kind="death", who=n, age=ag, text=f"{n}, {who(n)['job']}, died in the night aged {ag} ({cause}) and "
@@ -2904,8 +2913,11 @@ def night():
                      "who you are: what you have become more or less, bolder, warier, fonder, harder, softer. You are "
                      "still recognisably yourself, but let real change show, and build on this earlier description of "
                      f"yourself: {S['agents'][n].get('self') or 'none yet, this is your first night'}. Be specific to "
-                     "what actually happened to you, not general.",
-                     obj({"reflection": STR, "growth": STR, "feelings": {"type": "array", "items": obj(
+                     "what actually happened to you, not general. "
+                     '"milestone" = one first-person sentence about something from today you will remember for the rest '
+                     "of your life (a loss, a love, a promise made or broken, a betrayal, a discovery, a debt, a "
+                     'kindness that changed you), or "" if today was an ordinary day; most days are ordinary.',
+                     obj({"reflection": STR, "growth": STR, "milestone": STR, "feelings": {"type": "array", "items": obj(
                          {"name": {"type": "string", "enum": others}, "feeling": STR})}}),
                      num_predict=340, temperature=0.7)
         except Exception:
@@ -2917,10 +2929,40 @@ def night():
             a["reflections"] = (a["reflections"] + [f"Day {day}: {clip(r.get('reflection'), 300)}"])[-5:]
             if r.get("growth"):
                 a["self"] = clip(r["growth"], 330)
+            ms = clip(r.get("milestone"), 220)
+            if ms and f"Day {day}: {ms}" not in a.get("legacy", []):
+                a["legacy"] = (a.get("legacy", []) + [f"Day {day}: {ms}"])[-LEGACY_KEPT:]
             for f in (r.get("feelings") or [])[:5]:
                 if f.get("name") in others and f.get("feeling"):
                     a["feelings"][f["name"]] = clip(f["feeling"], 50)
             save()
+
+    for n in [x for x in S["agents"] if acting(x)]:
+        with lock:
+            a = S["agents"].get(n)
+            if not a or day - a.get("story_day", 0) < STORY_EVERY:
+                continue
+            old_story, mile, refl, grown = a.get("story", ""), list(a.get("legacy", []))[-15:], list(a["reflections"]), a.get("self", "")
+        status = f"night — {n} is looking back on their life"
+        try:
+            r, _ = chat_deep(persona(n),
+                     "Several nights have passed and you lie awake looking back over your life in Emberwick.\n"
+                     f"What you told yourself of your life before: {old_story or 'nothing yet'}\n"
+                     "Moments you have kept for good:\n" + ("\n".join("- " + m for m in mile) or "- none yet") + "\n"
+                     "Your recent nightly reflections:\n" + ("\n".join("- " + x for x in refl[-5:]) or "- none") + "\n"
+                     f"How you have been changing: {grown or 'not much yet'}\n"
+                     'Answer in JSON: "story" = 3 or 4 first-person sentences (about 80 words) telling who you are NOW and '
+                     "how you came to be this person: what you value, fear and hold dear, how you treat people, the habits "
+                     "and sore spots you have picked up, and who matters most to you. Keep what is still true of the earlier "
+                     "telling, let what has changed show, and stay recognisably yourself.",
+                     obj({"story": STR}), num_predict=300, temperature=0.7)
+        except Exception:
+            continue
+        with lock:
+            if n in S["agents"] and r.get("story"):
+                S["agents"][n]["story"] = clip(r["story"], 600)
+                S["agents"][n]["story_day"] = day
+                save()
 
     with lock:
         fresh = night_step("unload")
@@ -3279,7 +3321,7 @@ def state_json():
                        expecting=bool(a.get("expecting")), worth=worth(n), ribbons=a.get("ribbons", []), hungry=a.get("hungry", 0), sick=bool(a.get("sick")),
                        traits=who(n)["traits"], place=a["place"], activity=a["activity"], say=a["say"],
                        say_to=a["say_to"], say_at=a["say_at"], thought=a["thought"], mood=a["mood"],
-                       feelings=a["feelings"], reflection=(a["reflections"] or [""])[-1], inv=a["inv"], growth=a.get("self", ""),
+                       feelings=a["feelings"], reflection=(a["reflections"] or [""])[-1], inv=a["inv"], growth=a.get("self", ""), story=a.get("story", ""), legacy=a.get("legacy", [])[-LEGACY_KEPT:],
                        owns=[s["type"] for s in S["structures"] if s["done"] and s["owner"] == n], plan=a.get("plan", []), carry=carry_limit(n),
                        bank=a.get("bank", 0), loan=a.get("loan", 0), newcomer=bool(who(n).get("newcomer")),
                        close={o: closeness(v) for o, v in a.get("warmth", {}).items() if o in S["agents"]})
