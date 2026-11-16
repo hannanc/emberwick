@@ -5,6 +5,7 @@ Six villagers, each driven by a local Ollama model, walk around, talk, remember
 and reflect. Every night a larger model writes the day's chronicle and invents
 tomorrow's twist. Standard library only.  Open http://<server>:8377/
 """
+import difflib
 import collections, contextlib, json, math, os, random, re, sqlite3, threading, time, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
@@ -472,6 +473,42 @@ def persona(n):
             "rather not see. You do not have to agree, help or be fair, and what you say need not match what you think: "
             "people flatter, fib, deflect and sulk. Say nothing, or only a few words, whenever that fits. Do not repeat "
             "what you already said or did. You are a person; never mention AI.")
+
+RECENT_SAY = []          # the village's last lines of speech, to notice a word everyone is wearing out
+OVERUSED_AT = 8          # a word heard this many times among the last 40 lines is tired
+COMMON = set("about after again against always around because before being between could every first great would there their "
+             "these those which while where should still other under until though through today tomorrow tonight really "
+             "something nothing anyone everyone someone little going being doing having maybe never already again "
+             "that with this have will they them your from what when then than were been also just only more much some "
+             "such very well like into over here said says come back each know make name need once take told want "
+             "yours mine does done gone left right still".split())
+
+def tired_words():
+    names = {x.lower() for x in list(CAST) + list(S.get("born", {}))} | {p.lower() for p in PLACES}
+    seen = {}
+    for line in RECENT_SAY:
+        for w in set(re.findall(r"[a-z']{4,}", line.lower())):
+            w = w.strip("'")
+            if w not in COMMON and w not in names and not w.endswith("'s"):
+                seen[w] = seen.get(w, 0) + 1
+    return [w for w, c in sorted(seen.items(), key=lambda x: -x[1]) if c >= OVERUSED_AT][:2]
+
+def loop_notes(n):
+    """Cheap nudges when a villager is stuck in a rut, repeating themselves, or the village is wearing out a word."""
+    a, out = S["agents"][n], []
+    trail = a.get("trail", [])
+    if len(trail) >= 6 and max(trail.count(x) for x in set(trail)) >= 4:
+        out.append("You have been doing much the same thing in the same place for a long while, and you are fed up with "
+                   "it. Do something different, or go somewhere else.")
+    lines = a.get("lines", [])
+    if len(lines) >= 2 and max(difflib.SequenceMatcher(None, x.lower(), y.lower()).ratio()
+                               for i, x in enumerate(lines[-4:]) for y in lines[-4:][i + 1:]) > 0.5:
+        out.append("You have been saying nearly the same thing over and over. Say something new, or keep quiet.")
+    tired = tired_words()
+    if tired:
+        out.append("Everyone in the village is sick of hearing the word " + " and the word ".join(f'"{w}"' for w in tired)
+                   + "; avoid it, and talk or think about almost anything else.")
+    return out
 
 def gist(text, words=6):
     """What a bystander retains of a line they overheard: the first few words, not the whole phrase."""
@@ -2538,6 +2575,7 @@ def agent_turn():
             if closed:
                 u.append("Work, building and contributing are closed for now; it is time to rest, eat and enjoy company. "
                          "Choose an action only if it is not work (trade, pray, mourn, treat, court and so on), or none.")
+        u += loop_notes(n)
         u.append("Decide what you do in the next few minutes. Answer in JSON: "
                  '"thought" = one private sentence; "say" = what you say out loud, often nothing or just a few words (at most about 40 words); use "" whenever you would rather not talk; '
                  f'"action" = one of: {", ".join(actions)}; '
@@ -2565,6 +2603,7 @@ def agent_turn():
         a["activity"] = clip(r.get("activity"), 70).rstrip(".") or "idling"
         if a["activity"][:1].isupper() and not a["activity"].startswith("I "):
             a["activity"] = a["activity"][0].lower() + a["activity"][1:]
+        a["trail"] = (a.get("trail", []) + [f"{old}|{' '.join(a['activity'].lower().split()[:2])}"])[-6:]
         to = ""
         if whisper and whisper.get("speak") and say:      # answering the listener's voice, not a neighbour
             to = "you"
@@ -2588,6 +2627,8 @@ def agent_turn():
         a["say"], a["say_to"], a["say_at"] = say, to, time.time() if say else a["say_at"]
         if say:
             a["lines"] = (a.get("lines", []) + [say])[-8:]
+            RECENT_SAY.append(say)
+            del RECENT_SAY[:-40]
 
         act, did, petition, prayer = str(r.get("action") or "none"), "", "", ""
         st_ = S.get("stranger") if lines_st else None
