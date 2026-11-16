@@ -1185,7 +1185,7 @@ def project_text():
     done = [PROJECTS[x]["name"] for x in PROJECTS if project_done(x)]
     out = []
     if done:
-        out.append("Finished by the whole village: " + "; ".join(f"{PROJECTS[x]['name']} ({PROJECTS[x]['perk']})" for x in PROJECTS if project_done(x)) + ".")
+        out.append("Finished by the whole village: " + "; ".join(PROJECTS[x]["name"] for x in PROJECTS if project_done(x)) + ".")
     if k:
         bp = PROJECTS[k]
         out.append(f"The whole village is building {bp['name']} at the {bp['site']}: when finished, {bp['perk']}. It still "
@@ -1377,13 +1377,13 @@ def stranger_text(n):
             f"for {len(S['agents'])} people. Weigh it both ways: what the village needs and can afford, and whether you, being who "
             "you are, like and trust this person and could live beside them. Talk it over with the others; tonight the village decides by majority.")
     out = [line]
-    talk = [t for t in st.get("talk", []) if t["who"] != n][-6:]
+    talk = [t for t in st.get("talk", []) if t["who"] != n][-3:]
     if talk:
         out.append(f"What the others have said about {st['name']}:\n" + "\n".join(f'- {t["who"]}: "{t["text"]}"' for t in talk)
                    + "\nRespond to them: agree, argue, or raise what they missed.")
     if st.get("qa"):
         out.append(f"What {st['name']} has answered when questioned:\n" + "\n".join(
-            f'- {q["who"]} asked "{q["q"]}"; {st["name"]} said "{q["a"]}"' for q in st["qa"][-4:]))
+            f'- {q["who"]} asked "{q["q"]}"; {st["name"]} said "{q["a"]}"' for q in st["qa"][-3:]))
     if S["agents"][n]["place"] == "Square":
         out.append(f'{st["name"]} is standing right here. You may question them yourself: put your question in "ask_stranger" '
                    '(or "" to say nothing to them), and they will answer you.')
@@ -2438,15 +2438,20 @@ def agent_turn():
             u.append("Being built or repaired: " + "; ".join(
                 f"{sname(s)} at the {s['site']} ({'damaged by the ' + s['repair'] + ', useless until repaired; ' if s.get('repair') else ''}"
                 f"still needs {needs_text(s)})" for s in open_) + ". Anyone can help.")
-        can = []
+        can, elsewhere = [], []
         for t, bp in BLUEPRINTS.items():
             if can_build(n, t):
-                cost = " + ".join(f"{c} {i}" for i, c in bp["cost"].items())
-                can.append(f"{t} at the {bp['site']} ({cost}; {bp['perk']})")
                 if bp["site"] == a["place"]:
+                    cost = " + ".join(f"{c} {i}" for i, c in bp["cost"].items())
+                    can.append(f"{t} ({cost}; {bp['perk']})")
                     actions.append("build_" + t)
-        u.append("Things that can be built: " + "; ".join(can) + ". To build, go to the site and use the build action "
-                 "there: it first delivers the materials you carry, then each use does one turn of work.")
+                else:
+                    elsewhere.append(f"{t} at the {bp['site']}")
+        if can:
+            u.append(f"You can build here at the {a['place']}: " + "; ".join(can) + ". Use the build action: it first "
+                     "delivers the materials you carry, then each use does one turn of work.")
+        if elsewhere:
+            u.append("Elsewhere you could build: " + ", ".join(elsewhere) + " (go to the site to see what it costs).")
         sold = a.get("sold_day") == S["day"]
         if a["place"] == "Square" and S.get("merchant", 0) > 0 and not sold:
             u.append("A travelling merchant at the Square buys goods for coins: 1 coin for every "
@@ -2546,10 +2551,11 @@ def agent_turn():
             extra = {**extra, "question": STR}
         if not any(p["who"] == n for p in S["prayers"]):
             at = a["place"] == "Shrine"
-            u.append(("You are at the Old Oak Shrine. " if at else "")
-                     + "Once a day anyone may pray at the Old Oak Shrine. At nightfall the heavens grant ONE wish to ONE "
-                       "villager only, and only if it is reasonable: something small and concrete, like a few goods, some "
-                       "coins, or the materials for a building already under way. To pray, use action \"pray\" and put "
+            u.append(("You are at the Old Oak Shrine. Once a day anyone may pray here. At nightfall the heavens grant ONE wish to "
+                      "ONE villager only, and only if it is reasonable: something small and concrete, like a few goods, some "
+                      "coins, or the materials for a building already under way. " if at else
+                      "You may pray once a day at the Old Oak Shrine for one small, reasonable wish. ")
+                     + "To pray, use action \"pray\" and put "
                        'your wish in "wish"' + ("." if at else "; you will be taken there."))
             actions.append("pray")
             extra = {**extra, "wish": STR}
