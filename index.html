@@ -1095,6 +1095,8 @@ function frame(t) {
     const z = cam.z, vx0 = cam.x - vw / 2 / z, vx1 = cam.x + vw / 2 / z, vy0 = cam.y - vh / 2 / z, vy1 = cam.y + vh / 2 / z, lakeVis = vy1 > 19.4 * T && vx1 > 4 * T && vx0 < 36 * T;   // what is on screen, in world px
     const vis = (x, y, mx, up, dn) => x > vx0 - mx && x < vx1 + mx && y > vy0 - dn && y < vy1 + up;   // is a thing with this margin (px) on screen?
     const w = st.weather, S = sky(st.minute, w), rain = /rain|storm/.test(w), wind = /windy|storm/.test(w);
+    const hrL = st.minute / 60, lampMist = /mist/.test(w) ? .6 : 1,                                         // lamps and windows come on by the clock, not only when the sky is dark
+      lamp = Math.max(S.light, hrL >= 17.75 && hrL < 22 ? clamp((hrL - 17.75) / 1.25, 0, 1) * .6 : 0, hrL >= 5 && hrL < 7.25 ? clamp((7.25 - hrL) / 1.5, 0, 1) * .6 : 0);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#16241a'; ctx.fillRect(0, 0, cv.width, cv.height);
     const [shx0, shy0] = shakeOffset(t);
@@ -1221,7 +1223,7 @@ function frame(t) {
       ctx.fillStyle = 'rgba(226,232,238,.06)'; ctx.fillRect(0, 0, cv.width, cv.height); const spr = mistSprite();
       for (let i = 0; i < 4; i++) {
         const bw = (1500 + i * 260) * z, bh = (320 + (i % 2) * 130) * z, wx = ((REDUCE ? i * 650 : t / (110 + i * 35) + i * 830) % (WW + 2 * M + 1600)) - M - 800, wy = [5, 11.5, 20.5, 23][i] * T;
-        ctx.globalAlpha = i > 1 ? .7 : .55; ctx.drawImage(spr, ((wx - cam.x) * z + vw / 2 - bw / 2) * dpr, ((wy - cam.y) * z + vh / 2 - bh / 2) * dpr, bw * dpr, bh * dpr);
+        ctx.globalAlpha = i > 1 ? .36 : .28; ctx.drawImage(spr, ((wx - cam.x) * z + vw / 2 - bw / 2) * dpr, ((wy - cam.y) * z + vh / 2 - bh / 2) * dpr, bw * dpr, bh * dpr);
       }
       ctx.globalAlpha = 1;
     }
@@ -1229,25 +1231,25 @@ function frame(t) {
     if (gk > 0.02 && !/storm|rain|steady|overcast/.test(w)) {                                               // sunrise from the east edge, sunset from the west
       const east = hr < 12, cx = east ? cv.width : 0, cy = cv.height * .38, R = Math.max(cv.width, cv.height) * .95, gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
       gr.addColorStop(0, `rgba(255,${east ? 196 : 130},${east ? 120 : 70},${.9 * gk})`); gr.addColorStop(.5, `rgba(255,${east ? 170 : 110},${east ? 100 : 80},${.4 * gk})`); gr.addColorStop(1, 'rgba(255,150,90,0)');
-      ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = gr; ctx.fillRect(0, 0, cv.width, cv.height); ctx.fillRect(0, 0, cv.width, cv.height);   // twice: soft-light is gentle
-      ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = .22; ctx.fillRect(0, 0, cv.width, cv.height); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+      ctx.globalCompositeOperation = 'soft-light'; ctx.fillStyle = gr; ctx.fillRect(0, 0, cv.width, cv.height);   // once: twice turned everyone orange-red
+      ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = .1; ctx.fillRect(0, 0, cv.width, cv.height); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     }
     if (/haze/.test(w)) { ctx.fillStyle = 'rgba(255,200,120,.1)'; ctx.fillRect(0, 0, cv.width, cv.height); }
     ctx.restore();
 
-    if (S.light > 0.05) {                                                                              // warm lights come on
+    if (lamp > 0.05) {                                                                                 // warm lights come on
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       const fk = i => REDUCE ? 1 : .92 + .08 * Math.sin(t / 170 + i * 1.7);                                // lamps and windows flicker a little
-      windows.concat(wins).forEach(([x, y, s = 1, col], i) => { if (vis(x, y, 60, 60, 60)) glow(x, y, 46 * s + 8, S.light * 0.55 * s * fk(i), col); });
-      for (const [x, y, s, col] of candles) if (vis(x, y, 40, 40, 40)) glow(x, y, 26, Math.max(.15, S.light) * s, col);
-      if (O.state === 'ready') glow(fx, fy - 10, 70, S.light * 0.5, '190,160,255');
+      windows.concat(wins).forEach(([x, y, s = 1, col], i) => { if (vis(x, y, 60, 60, 60)) glow(x, y, 46 * s + 8, lamp * 0.55 * s * fk(i) * lampMist, col); });
+      for (const [x, y, s, col] of candles) if (vis(x, y, 40, 40, 40)) glow(x, y, 26, Math.max(.15, lamp) * s * lampMist, col);
+      if (O.state === 'ready') glow(fx, fy - 10, 70, lamp * 0.5 * lampMist, '190,160,255');
       if (S.light > 0.55 && !rain) {                                                                   // fireflies
         const fl = S.light - 0.55;
         for (let i = 0; i < 22; i++) { const base = [st.places.Garden, st.places.Woods, st.places.Shrine][i % 3], x = (base[0] + Math.sin(t / 2100 + i * 1.7) * 2.6) * T, y = (base[1] + 0.6 + Math.cos(t / 1700 + i * 2.3) * 1.3) * T, a = fl * (0.6 + 0.4 * Math.sin(t / 260 + i * 5)); if (vis(x, y, 20, 20, 20)) glow(x, y, 9, a * 1.6, '220,255,140'); }
       }
       ctx.restore();
-      ctx.save(); ctx.globalAlpha = Math.min(1, S.light * 1.3);
-      windows.concat(wins).forEach(([x, y, s = 1, col], i) => { if (s >= 1 && vis(x, y, 20, 20, 20)) { ctx.globalAlpha = Math.min(1, S.light * 1.3) * fk(i); ctx.fillStyle = 'rgb(255,222,150)'; ctx.fillRect(x - 7, y - 6.5, 14, 13); } });
+      ctx.save(); ctx.globalAlpha = Math.min(1, lamp * 1.3);
+      windows.concat(wins).forEach(([x, y, s = 1, col], i) => { if (s >= 1 && vis(x, y, 20, 20, 20)) { ctx.globalAlpha = Math.min(1, lamp * 1.3) * fk(i); ctx.fillStyle = 'rgb(255,222,150)'; ctx.fillRect(x - 7, y - 6.5, 14, 13); } });
       ctx.restore();
       if (S.light > 0.6 && lakeVis) {                                                                             // the lake is the night sky: a moon streak and a few stars
         const m = clamp((S.light - 0.6) / 0.3, 0, 1); ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
