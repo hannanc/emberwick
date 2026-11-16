@@ -409,7 +409,7 @@ function house(g, x, y, w, h, wall, roof, o = {}) {
   g.fillStyle = 'rgba(0,0,0,.12)'; g.beginPath(); g.moveTo(X, Y - hh - pitch); g.lineTo(X + w2 + 8, Y - hh); g.lineTo(X, Y - hh); g.closePath(); g.fill();
   g.strokeStyle = 'rgba(0,0,0,.28)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(X - w2 - 8, Y - hh); g.lineTo(X, Y - hh - pitch); g.lineTo(X + w2 + 8, Y - hh); g.stroke();
   g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.roundRect(X - 9, Y - 25, 18, 25, [7, 7, 0, 0]); g.fill();
-  g.fillStyle = '#4a3222'; g.beginPath(); g.roundRect(X - 7, Y - 23, 14, 23, [6, 6, 0, 0]); g.fill();
+  g.fillStyle = o.door || '#4a3222'; g.beginPath(); g.roundRect(X - 7, Y - 23, 14, 23, [6, 6, 0, 0]); g.fill();
   g.fillStyle = '#d8b56a'; g.fillRect(X + 3, Y - 11, 2, 2);
   for (const wx of (o.win || [-0.55, 0.55])) {
     const a = X + wx * w2 - 7, b = Y - hh + 14;
@@ -417,6 +417,7 @@ function house(g, x, y, w, h, wall, roof, o = {}) {
     g.fillStyle = '#2e4357'; g.fillRect(a, b, 14, 13);
     g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(a, b, 6, 5);
     g.fillStyle = '#e9dfc8'; g.fillRect(a + 6, b, 2, 13); g.fillRect(a, b + 6, 14, 1.5);
+    if (o.shutters) { g.fillStyle = o.shutters; g.fillRect(a - 6, b - 2, 4, 17); g.fillRect(a + 16, b - 2, 4, 17); }
     (o.wins || windows).push([a + 7, b + 6.5]);
   }
   if (o.sign) { g.fillStyle = '#4a3222'; g.fillRect(X + w2 + 1, Y - hh + 6, 10, 2); g.fillStyle = o.sign; g.fillRect(X + w2 + 4, Y - hh + 9, 12, 12); }
@@ -861,7 +862,15 @@ function drawStruct(s, t, wins) {
     g.fillStyle = s.repair ? '#d9604a' : '#e8bd5f'; g.beginPath(); g.roundRect(X - 25, Y + 8, Math.max(4, 50 * s.progress), 7, 3.5); g.fill();
     return;
   }
-  if (s.type === 'house') house(g, s.x, s.y, 2.4, 1.3, '#e6d6b2', c, { win: [0.55], pitch: 0.95, wins, chimney: 1, chim: s.damaged ? [] : smokes });
+  if (s.type === 'house') {     // no two alike: size, walls, windows, door and shutters by who owns it, then a flower box, a fence or a woodpile
+    const hv = hash(s.owner + ':' + s.id), wdt = 2.2 + (hv % 5) * .13, hgt = 1.26 + ((hv >> 3) % 4) * .06, win = hv % 3 === 0 ? [-0.55, 0.55] : hv % 3 === 1 ? [0.55] : [-0.55];
+    house(g, s.x, s.y, wdt, hgt, ['#e6d6b2', '#eadcc4', '#dccfae', '#e3d9c8', '#d9c7a4'][hv % 5], c, { win, pitch: .88 + ((hv >> 5) % 5) * .05, wins, chimney: hv % 4 ? 1 : 0, chim: s.damaged ? [] : smokes,
+      door: ['#4a3222', '#5a3a2a', '#3b4a3a', '#6a3a2e'][(hv >> 7) % 4], shutters: hv % 2 ? ['#4f6f55', '#6a4a3a', '#3f5a7a'][(hv >> 9) % 3] : '' });
+    const w2 = wdt * T / 2, hh = hgt * T, owner = st.agents.find(q => q.name === s.owner);
+    if ((hv >> 11) % 3 === 0) { const fx = X + win[0] * w2 - 9, fy = Y - hh + 29; g.fillStyle = '#7a5a3a'; g.fillRect(fx, fy, 18, 4); ['#e98bb0', '#f4e36b', '#f6f2ea', '#c58cf0'].forEach((fc, i) => { g.fillStyle = fc; g.beginPath(); g.arc(fx + 3 + i * 4, fy - 1.5, 2, 0, 7); g.fill(); }); }          // a flower box under the window
+    if ((hv >> 13) % 2 === 0) { g.fillStyle = '#cdbf9b'; for (let i = 0; i < 5; i++) g.fillRect(X + w2 + 7 + i * 6, Y - 9, 2.6, 9); g.fillRect(X + w2 + 6, Y - 7, 28, 1.6); g.fillRect(X + w2 + 6, Y - 3.5, 28, 1.6); }                              // a little picket fence beside it
+    if (owner && owner.inv.wood >= 6 && (hv >> 15) % 2 === 0) { g.fillStyle = '#7a5532'; for (const [dx, dy] of [[0, 0], [8, 0], [16, 0], [4, -6], [12, -6]]) { g.beginPath(); g.arc(X - w2 - 24 + dx, Y - 4 + dy, 3.8, 0, 7); g.fill(); } g.fillStyle = '#c99a62'; for (const [dx, dy] of [[0, 0], [8, 0], [16, 0], [4, -6], [12, -6]]) { g.beginPath(); g.arc(X - w2 - 24 + dx, Y - 4 + dy, 1.6, 0, 7); g.fill(); } }   // a woodpile when they hold wood
+  }
   else if (s.type === 'shed') house(g, s.x, s.y, 2, 1, '#9c7648', '#5a4030', { win: [], pitch: 0.7, wins });
   else if (s.type === 'stall') {
     shadow(g, X, Y + 2, 30, 7);
