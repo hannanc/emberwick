@@ -287,7 +287,7 @@ def migrate():
         a.setdefault("plan_at", 0)
         a.setdefault("plan_work", 0)
         a.setdefault("self", "")
-        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("inner", ""), ("worn", ""), ("recall", []), ("habits", ""), ("grudges", []), ("wake", {})):
+        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("inner", ""), ("worn", ""), ("recall", []), ("habits", ""), ("grudges", []), ("wake", {}), ("heart_wish", "")):
             a.setdefault(k, v)
         for k, v in (("expecting", None), ("proposal", None), ("partner", None), ("hungry", 0), ("rest_until", 0),
                      ("sick", None), ("care_until", 0)):
@@ -491,6 +491,30 @@ def repeat_note(n):
     return []
 
 # ---------------------------------------------------------------- how the day starts, in the villager's own words
+def shrine_facts(n, at):
+    """What anyone standing in this village could know about the Old Oak Shrine today: plain facts, no orders."""
+    a = S["agents"][n]
+    prayed = [p["who"] for p in S["prayers"] if p["day"] == S["day"]]
+    evening = off_duty(S["minute"]) and S["minute"] >= 19 * 60
+    out = []
+    if prayed:
+        out.append(f"{', '.join(prayed)} prayed at the Old Oak Shrine today; "
+                   + ("the day's work is closed, and " if evening else "")
+                   + "the heavens will grant one wish tonight to a villager who has prayed.")
+    else:
+        out.append("Nobody has prayed at the Old Oak Shrine yet today, "
+                   + ("the day's work is closed, night is near, " if evening else "")
+                   + "and the heavens will grant one wish tonight to someone who does.")
+    if S.get("wishes"):
+        w = S["wishes"][-1]
+        out.append(f"The last wish the heavens granted was {w['who']}'s, on day {w['day']}: \"{clip(w['wish'], 100)}\".")
+    if not any("shrine-keeper" in who(o)["job"] for o in S["agents"]):
+        gone = next((d for d in reversed(S.get("dead", [])) if "shrine-keeper" in str(d.get("job", ""))), None)
+        out.append(f"The shrine has been kept by no one since {gone['name']} died." if gone else "The shrine has no keeper.")
+    if a.get("heart_wish"):
+        out.append(f"A wish you have been carrying: {a['heart_wish'].rstrip('.')}.")
+    return " ".join(out)
+
 def wake_text(n):
     """Last night the villager wrote how they would wake: mood, body, what is on their mind, who to dodge or seek."""
     a = S["agents"][n]
@@ -504,6 +528,8 @@ def wake_text(n):
         if w.get("seek"):
             bits.append(f"You want {w['seek']}.")
         out.append(" ".join(b for b in bits if b))
+    if a.get("heart_wish"):
+        out.append(f"On your mind too, a small wish: {a['heart_wish'].rstrip('.')}.")
     if a.get("worn"):
         out.append(f"Yesterday you noticed you kept falling back on {a['worn'].rstrip('.')}; you are tired of hearing yourself.")
     if a.get("inner"):
@@ -2598,12 +2624,10 @@ def agent_turn():
             extra = {**extra, "question": STR}
         if not any(p["who"] == n for p in S["prayers"]):
             at = a["place"] == "Shrine"
-            u.append(("You are at the Old Oak Shrine. Once a day anyone may pray here. At nightfall the heavens grant ONE wish to "
-                      "ONE villager only, and only if it is reasonable: something small and concrete, like a few goods, some "
-                      "coins, or the materials for a building already under way. " if at else
-                      "You may pray once a day at the Old Oak Shrine for one small, reasonable wish. ")
-                     + "To pray, use action \"pray\" and put "
-                       'your wish in "wish"' + ("." if at else "; you will be taken there."))
+            u.append(("You are at the Old Oak Shrine. " if at else "")
+                     + shrine_facts(n, at)
+                     + " Once a day you may pray here for one small, reasonable wish (a few goods, some coins, materials for a building under way). "
+                     + 'To pray, use action "pray" and put your wish in "wish"' + ("." if at else "; you will be taken there."))
             actions.append("pray")
             extra = {**extra, "wish": STR}
         if pending and pending["from"] in here:
@@ -3053,15 +3077,17 @@ def night():
                      'particular; not every day is meaningful, and you may simply be tired. "worn" = a phrase, topic or habit '
                      'you caught yourself falling back on today, or "". "remembered" = two or three things from today as '
                      'you will actually remember them next week: vivid, partial, coloured by how you felt; you may have a '
-                     'detail slightly wrong.',
+                     'detail slightly wrong. "heart_wish" = if you could ask the heavens for one small thing, in your own '
+                     'words, what would it be tonight (it may be about someone, something you lack, or a hope), or "" if '
+                     'you wish for nothing.',
                      obj({"reflection": STR, "growth": STR, "milestone": STR,
                           "grudges": {"type": "array", "items": obj({"who": {"type": "string", "enum": others or ["nobody"]}, "why": STR})},
                           "wake": obj({"mood": STR, "body": STR, "on_mind": STR, "avoid": STR, "seek": STR}), "worn": STR,
-                          "remembered": {"type": "array", "items": STR},
+                          "remembered": {"type": "array", "items": STR}, "heart_wish": STR,
                           "feelings": {"type": "array", "items": obj(
                          {"name": {"type": "string", "enum": others or ["nobody"]}, "feeling": STR,
                           "closeness": {"type": "string", "enum": list(CLOSE_LABELS)}, "between_us": STR})}}),
-                     num_predict=700, temperature=0.7)
+                     num_predict=780, temperature=0.7)
         except Exception:
             continue
         with lock:
@@ -3075,6 +3101,7 @@ def night():
                 a["grudges"] = [dict(who=g["who"], why=clip(g.get("why"), 160), day=day) for g in r["grudges"]
                                 if isinstance(g, dict) and g.get("who") in others and g.get("why")][:3]
             a["worn"] = clip(r.get("worn"), 120)
+            a["heart_wish"] = clip(r.get("heart_wish"), 140)
             mem = [f"Day {day}: {clip(x, 200)}" for x in (r.get("remembered") or []) if isinstance(x, str) and x.strip()][:3]
             if mem and not any(x.startswith(f"Day {day}:") for x in a.get("recall", [])):
                 a["recall"] = (a.get("recall", []) + mem)[-10:]
