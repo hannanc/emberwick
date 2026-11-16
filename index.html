@@ -662,7 +662,7 @@ const glow = (x, y, r, a, col = '255,200,110') => {
   let gr = glowGr[col]; if (!gr) { gr = glowGr[col] = ctx.createRadialGradient(0, 0, 0, 0, 0, 1); gr.addColorStop(0, `rgba(${col},1)`); gr.addColorStop(1, `rgba(${col},0)`); }
   ctx.save(); ctx.translate(x, y); ctx.scale(r, r); ctx.globalAlpha *= Math.min(1, a); ctx.fillStyle = gr; ctx.fillRect(-1, -1, 2, 2); ctx.restore();
 };
-let cloudGr = null, busy = true, lastDraw = -1e9; const frameMs = [];
+let cloudGr = null, busy = true, moving = true, lastDraw = -1e9; const frameMs = [];
 
 // ================================================================ dynamic world
 const LOOK = {   // hand-made founders; everyone else is derived from hash(name) in look()
@@ -1069,6 +1069,10 @@ function shakeOffset(t) { const f = fx.find(q => q.k === 'tremor'); if (!f) retu
 function smoke(x, y, t, seed, wind, k = 1) {   // a curl of chimney smoke: five puffs rising and fading
   for (let i = 0; i < 5; i++) { const q = ((REDUCE ? .4 : t / 2400) + i / 5 + seed * .37) % 1, drift = wind ? q * 40 : Math.sin(q * 5 + i + seed) * 6; ctx.fillStyle = `rgba(232,232,232,${.38 * k * (1 - q)})`; ctx.beginPath(); ctx.arc(x + drift, y - q * 46, 5 + q * 9, 0, 7); ctx.fill(); }
 }
+const WAVES = Array.from({ length: 30 }, (_, i) => {      // the lake's drifting wave arcs: their numbers never change, so they are worked out once
+  const r4 = rng(i * 53 + 11), p = REDUCE ? 0 : 9000 + r4() * 5000, o = REDUCE ? 0 : r4(), x0 = r4() * 30 * T, y = (19.7 + r4() * 5) * T, wd = 10 + r4() * 18, sp = .004 + r4() * .006;
+  return { p, o, x0, y, wd, sp };
+});
 let mistTex = null, vigKey = '', vigGr = null;
 function mistSprite() {   // one soft, wide, flat blob drawn once; the mist bands are scaled copies of it
   if (mistTex) return mistTex;
@@ -1078,7 +1082,7 @@ function mistSprite() {   // one soft, wide, flat blob drawn once; the mist band
 }
 let prev = performance.now();
 function frame(t) {
-  if (!busy && FROZEN == null && t - lastDraw < 100) { requestAnimationFrame(frame); return; }   // nothing moving: redraw at most every 100 ms
+  if (FROZEN == null && ((!busy && t - lastDraw < 100) || (!moving && t - lastDraw < 33))) { requestAnimationFrame(frame); return; }   // nothing moving: ambient animation at 30 fps (reduced motion: every 100 ms) instead of 60
   const t0 = DEBUG.fps ? performance.now() : 0; lastDraw = t;
   const dt = Math.min(0.1, (t - prev) / 1000); prev = t; if (FROZEN != null) t = FROZEN; lastT = t;
   if (st && scenery) {
@@ -1117,8 +1121,8 @@ function frame(t) {
     if (lakeVis) {
     ctx.save(); ctx.beginPath(); ctx.ellipse(20 * T, 25 * T, 15.4 * T, 5.3 * T, 0, 0, 7); ctx.clip();   // everything on the water stays inside the lake
     ctx.lineCap = 'round'; ctx.lineWidth = 1.8;                                                        // drifting wave arcs that fade in and out
-    for (let i = 0; i < 30; i++) {
-      const r4 = rng(i * 53 + 11), ph = REDUCE ? .5 : ((t / (9000 + r4() * 5000) + r4()) % 1), x0 = r4() * 30 * T, y = (19.7 + r4() * 5) * T, wd = 10 + r4() * 18, xx = 5 * T + (x0 + (REDUCE ? 0 : t * (.004 + r4() * .006))) % (30 * T); ctx.strokeStyle = `rgba(255,255,255,${.3 * Math.sin(ph * Math.PI)})`; ctx.beginPath(); ctx.moveTo(xx - wd, y); ctx.quadraticCurveTo(xx, y - 3.5, xx + wd, y); ctx.stroke();
+    for (const wv of WAVES) {
+      const ph = REDUCE ? .5 : (t / wv.p + wv.o) % 1, y = wv.y, wd = wv.wd, xx = 5 * T + (wv.x0 + (REDUCE ? 0 : t * wv.sp)) % (30 * T); ctx.strokeStyle = `rgba(255,255,255,${.3 * Math.sin(ph * Math.PI)})`; ctx.beginPath(); ctx.moveTo(xx - wd, y); ctx.quadraticCurveTo(xx, y - 3.5, xx + wd, y); ctx.stroke();
     }
     ctx.strokeStyle = `rgba(255,255,255,${wind ? .5 : .28})`; ctx.lineWidth = wind ? 2.4 : 1.6; ctx.setLineDash([9, 13]); ctx.lineDashOffset = REDUCE ? 0 : -t / 90;   // shore foam
     ctx.beginPath(); ctx.ellipse(20 * T, 25 * T, 15.1 * T, 5.03 * T, 0, Math.PI * 1.02, Math.PI * 1.98); ctx.stroke(); ctx.setLineDash([]);
@@ -1242,9 +1246,10 @@ function frame(t) {
     ctx.restore();
 
     if (lamp > 0.05) {                                                                                 // warm lights come on
+      const allWin = windows.concat(wins);
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       const fk = i => REDUCE ? 1 : .92 + .08 * Math.sin(t / 170 + i * 1.7);                                // lamps and windows flicker a little
-      windows.concat(wins).forEach(([x, y, s = 1, col], i) => { if (vis(x, y, 60, 60, 60)) glow(x, y, 46 * s + 8, lamp * 0.55 * s * fk(i) * lampMist, col); });
+      allWin.forEach(([x, y, s = 1, col], i) => { if (vis(x, y, 60, 60, 60)) glow(x, y, 46 * s + 8, lamp * 0.55 * s * fk(i) * lampMist, col); });
       for (const [x, y, s, col] of candles) if (vis(x, y, 40, 40, 40)) glow(x, y, 26, Math.max(.15, lamp) * s * lampMist, col);
       if (O.state === 'ready') glow(fx, fy - 10, 70, lamp * 0.5 * lampMist, '190,160,255');
       if (S.light > 0.55 && !rain) {                                                                   // fireflies
@@ -1253,7 +1258,7 @@ function frame(t) {
       }
       ctx.restore();
       ctx.save(); ctx.globalAlpha = Math.min(1, lamp * 1.3);
-      windows.concat(wins).forEach(([x, y, s = 1, col], i) => { if (s >= 1 && vis(x, y, 20, 20, 20)) { ctx.globalAlpha = Math.min(1, lamp * 1.3) * fk(i); ctx.fillStyle = 'rgb(255,222,150)'; ctx.fillRect(x - 7, y - 6.5, 14, 13); } });
+      allWin.forEach(([x, y, s = 1, col], i) => { if (s >= 1 && vis(x, y, 20, 20, 20)) { ctx.globalAlpha = Math.min(1, lamp * 1.3) * fk(i); ctx.fillStyle = 'rgb(255,222,150)'; ctx.fillRect(x - 7, y - 6.5, 14, 13); } });
       ctx.restore();
       if (S.light > 0.6 && lakeVis) {                                                                             // the lake is the night sky: a moon streak and a few stars
         const m = clamp((S.light - 0.6) / 0.3, 0, 1); ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
@@ -1286,7 +1291,8 @@ function frame(t) {
       if (best) { const [bx2, by2] = toScreen(best.x * T, best.y * T - 22); ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(bx2, by2, 70 * z + 20, .7 * (1 - ph), '200,215,255'); ctx.restore(); }
     }
     drawOverlay(t, asleep, order); drewFrame = vw > 1 && vh > 1;          // a frame drawn before the canvas had its size does not count
-    busy = !REDUCE || !!selected || hover != null || fx.length > 0 || !!hear.now || cam.follow || drag != null || ptrs.size > 0 || st.agents.some(a => pos[a.name].walking) || Math.abs(cam.x - cam.tx) > .3 || Math.abs(cam.y - cam.ty) > .3 || Math.abs(cam.z - cam.tz) > .002;
+    moving = !!selected || hover != null || fx.length > 0 || !!hear.now || cam.follow || drag != null || ptrs.size > 0 || st.agents.some(a => pos[a.name].walking) || Math.abs(cam.x - cam.tx) > .3 || Math.abs(cam.y - cam.ty) > .3 || Math.abs(cam.z - cam.tz) > .002;
+    busy = !REDUCE || moving;
     if (DEBUG.fps) {   // ?fps=1: average JS time per frame over the last 60 frames, top right
       frameMs.push(performance.now() - t0); if (frameMs.length > 60) frameMs.shift(); const avg = frameMs.reduce((a, b) => a + b, 0) / frameMs.length;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(vw - 148, 8, 140, 22); ctx.fillStyle = '#9f9'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; ctx.fillText(avg.toFixed(2) + ' ms / frame', vw - 140, 23);
