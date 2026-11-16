@@ -903,8 +903,7 @@ function label(text, sx, sy, o = {}) {
   const size = o.size || 12, font = `${o.weight || 600} ${size}px ${SANS}`;
   ctx.font = font; if ('letterSpacing' in ctx) ctx.letterSpacing = o.spacing || '0px';
   const w = ctx.measureText(text).width + 8, r = { x: sx - w / 2, y: sy - size, w, h: size + 5 };
-  if (r.x + r.w < 0 || r.x > vw || r.y > vh || r.y + r.h < 0) return false;
-  if (!o.force && hits(r)) return false;
+  if (r.x + r.w < 0 || r.x > vw || r.y > vh || r.y + r.h < 0 || (!o.force && hits(r))) { if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; return false; }   // never leave the spacing set on an early exit
   occ.push(r);
   ctx.globalAlpha = o.alpha ?? 1; ctx.textAlign = 'center'; ctx.lineJoin = 'round';
   ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(14,16,20,.82)'; ctx.strokeText(text, sx, sy);
@@ -918,6 +917,7 @@ function wrap(text, maxW) {
   if (cur) lines.push(cur); return lines;
 }
 function layoutBubble(text, name, color, ax, ay, alpha) {
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   const small = vw < 520, fs = small ? 13 : 14, lh = Math.round(fs * 1.36), maxW = small ? 170 : 240, maxL = small ? 3 : 4;
   ctx.font = `${fs}px ${SERIF}`; let lines = wrap(text, maxW);
   if (lines.length > maxL) { lines = lines.slice(0, maxL); lines[maxL - 1] = lines[maxL - 1].replace(/\s*\S*$/, '') + '…'; }
@@ -932,6 +932,7 @@ function layoutBubble(text, name, color, ax, ay, alpha) {
   occ.push(best); return Object.assign(best, { lines, fs, lh, name, color, ax, ay, alpha });
 }
 function drawBubble(b) {
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   ctx.globalAlpha = b.alpha; ctx.lineJoin = 'round';
   const bottom = b.y + b.h, tx = clamp(b.ax, b.x + 16, b.x + b.w - 16), gap = b.ay - bottom;
   if (gap > 20) { ctx.strokeStyle = b.color; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(tx, bottom + 6); ctx.lineTo(b.ax, b.ay - 4); ctx.stroke(); ctx.setLineDash([]); }
