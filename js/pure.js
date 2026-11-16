@@ -102,8 +102,8 @@ function figMetrics(a, fig) {   // the figure's size on the map in px: S (one un
   const st = stageOf(a.age), B = BODY[st], b = build(a), S = fig * B.size * b.hf;
   return { S, B, stage: st, hf: b.hf, wf: b.wf, headY: (B.chin + B.r) * S, top: (B.chin + 2 * B.r) * S };
 }
-const walkSpeed = a => 2 * (a.hungry >= 2 ? .75 : 1) * (a.sick ? .7 : 1) * (a.age >= 65 ? .85 : 1) * (a.age < 6 ? .8 : 1);   // tiles a second
-const strideLen = a => 1.25 * BODY[stageOf(a.age)].size * build(a).hf;   // tiles for one full step cycle (two steps): the feet follow the ground, not the clock
+const walkSpeed = a => 2.4 * (a.hungry >= 2 ? .75 : 1) * (a.sick ? .7 : 1) * (a.age >= 65 ? .85 : 1) * (a.age < 6 ? .8 : 1);   // tiles a second
+const strideLen = a => 1.5 * BODY[stageOf(a.age)].size * build(a).hf;   // tiles for one full step cycle (two steps): the feet follow the ground, not the clock
 // ---- where people stand: sitters take the benches, everyone else lines up at the place
 const SEATS = { Square: [[17.1, 13.21], [17.7, 13.21], [23.0, 13.21], [23.6, 13.21]] };   // the Square's two benches (drawn at 17.4 and 23.3, y 12.9), two seats each; y is where the feet reach the ground
 function placeLayout(here, xy, stand, seats, poseFn) {   // here: the agents at one place; returns name -> { x, y, seat } in tiles
