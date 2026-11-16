@@ -207,6 +207,29 @@
     .ctl button { width:34px; height:34px; }
     #banner { font-size:15px; padding:8px 14px; }
   }
+  #scene { position:absolute; left:12px; top:58px; width:340px; max-height:calc(100% - 130px); overflow:auto; border-radius:14px; padding:11px 13px 12px; font-size:13px; line-height:1.4; display:block; }
+  #scene[hidden] { display:none; }
+  #scene .sc-head { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+  #scene select { flex:1; min-width:0; background:rgba(255,255,255,.07); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:5px 8px; font:600 14px var(--serif, serif); }
+  #scene .sc-x { border:0; background:rgba(255,255,255,.08); color:var(--ink); border-radius:999px; width:26px; height:26px; cursor:pointer; }
+  #scene .sc-x:hover { background:rgba(255,255,255,.16); }
+  #scene .sc-desc { color:var(--dim); font-size:12.5px; margin:0 0 8px; }
+  #scene h4 { margin:10px 0 4px; font:700 10.5px var(--sans, sans-serif); letter-spacing:.09em; text-transform:uppercase; color:var(--gold); }
+  #scene .sc-row { padding:5px 0; border-top:1px solid rgba(255,255,255,.06); }
+  #scene .sc-row:first-of-type { border-top:0; }
+  #scene .sc-who { display:flex; align-items:baseline; gap:7px; }
+  #scene .sc-who i { width:9px; height:9px; border-radius:50%; flex:none; align-self:center; }
+  #scene .sc-who b { cursor:pointer; font-weight:650; }
+  #scene .sc-who b:hover { text-decoration:underline; }
+  #scene .sc-who span { color:var(--dim); font-size:12.5px; }
+  #scene .sc-mood { margin-left:auto; font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:999px; padding:0 7px; }
+  #scene .sc-say { margin:2px 0 0 16px; font-family:var(--serif, serif); font-size:13.5px; }
+  #scene .sc-think { margin:2px 0 0 16px; color:var(--dim); font-style:italic; font-size:12.5px; }
+  #scene .sc-line { padding:3px 0; font-size:12.5px; }
+  #scene .sc-line time { color:var(--dim); margin-right:5px; font-variant-numeric:tabular-nums; }
+  #scene .sc-line em { color:var(--dim); font-style:normal; }
+  #scene .sc-empty, #scene .sc-built { color:var(--dim); font-size:12.5px; }
+  @media (max-width:900px) { #scene { width:calc(100% - 24px); max-height:44%; top:54px; } }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
 </style>
 </head>
@@ -217,8 +240,10 @@
     <div id="loading">Waking the village…</div>
     <div id="banner" role="status"></div>
     <div id="focus" class="glass"><i></i><span></span><button id="follow" aria-pressed="false" title="Keep the map centred on this villager">Follow</button><button id="unsel" aria-label="Deselect">✕</button></div>
-    <div id="hint" class="glass">Drag to pan · scroll to zoom · click a villager</div>
+    <div id="scene" class="glass" hidden aria-live="polite"></div>
+    <div id="hint" class="glass">Drag to pan · scroll to zoom · click a villager or a place</div>
     <div class="ctl">
+      <button class="glass" id="zscene" title="Visit a place" aria-label="Visit a place"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 18s5.5-4.6 5.5-9A5.5 5.5 0 0 0 4.5 9c0 4.4 5.5 9 5.5 9z"/><circle cx="10" cy="9" r="2"/></svg></button>
       <button class="glass" id="zin" title="Zoom in (+)" aria-label="Zoom in">+</button>
       <button class="glass" id="zout" title="Zoom out (−)" aria-label="Zoom out">−</button>
       <button class="glass" id="zfit" title="Show the whole village (0)" aria-label="Show the whole village"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
@@ -379,6 +404,64 @@ function house(g, x, y, w, h, wall, roof, o = {}) {
   }
   if (o.sign) { g.fillStyle = '#4a3222'; g.fillRect(X + w2 + 1, Y - hh + 6, 10, 2); g.fillStyle = o.sign; g.fillRect(X + w2 + 4, Y - hh + 9, 12, 12); }
 }
+function bench(g, x, y) {
+  const X = x * T, Y = y * T; shadow(g, X, Y + 9, 22, 5);
+  g.fillStyle = '#4c3520'; g.fillRect(X - 17, Y + 3, 3, 7); g.fillRect(X + 14, Y + 3, 3, 7); g.fillRect(X - 18, Y - 9, 2, 10); g.fillRect(X + 16, Y - 9, 2, 10);
+  g.fillStyle = '#85603a'; g.fillRect(X - 20, Y - 9, 40, 4); g.fillStyle = '#6f4e2f'; g.fillRect(X - 20, Y - 2, 40, 5);
+  g.fillStyle = 'rgba(255,235,190,.18)'; g.fillRect(X - 20, Y - 9, 40, 1.2); g.fillRect(X - 20, Y - 2, 40, 1.2);
+}
+function noticeBoard(g, x, y) {
+  const X = x * T, Y = y * T; shadow(g, X, Y + 6, 20, 4);
+  g.fillStyle = '#5b4228'; g.fillRect(X - 16, Y - 26, 3, 32); g.fillRect(X + 13, Y - 26, 3, 32);
+  g.fillStyle = '#8a6a43'; g.fillRect(X - 18, Y - 30, 36, 22); g.fillStyle = '#a88458'; g.fillRect(X - 16, Y - 28, 32, 18);
+  for (const [c, dx, dy, w, h] of [['#f4efe0', -13, -26, 9, 7], ['#efe2b8', -1, -27, 8, 8], ['#e9d6c4', 8, -25, 7, 6], ['#dfe8d2', -12, -17, 7, 6]]) {
+    g.fillStyle = c; g.fillRect(X + dx, Y + dy, w, h); g.fillStyle = '#b24a3a'; g.fillRect(X + dx + w / 2 - 1, Y + dy, 2, 2);
+  }
+  g.fillStyle = '#4c3520'; g.beginPath(); g.moveTo(X - 21, Y - 30); g.lineTo(X, Y - 39); g.lineTo(X + 21, Y - 30); g.closePath(); g.fill();
+}
+function barrels(g, x, y) {
+  const X = x * T, Y = y * T; shadow(g, X, Y + 8, 26, 5);
+  for (const [dx, dy, k] of [[-10, 0, 1], [9, 1, .92], [0, -7, .85]]) {
+    const bx = X + dx, by = Y + dy; g.fillStyle = '#7a5532'; g.beginPath(); g.roundRect(bx - 8 * k, by - 14 * k, 16 * k, 20 * k, 5); g.fill();
+    g.fillStyle = '#4a3a2a'; g.fillRect(bx - 8 * k, by - 8 * k, 16 * k, 2); g.fillRect(bx - 8 * k, by, 16 * k, 2);
+    g.fillStyle = '#9a7248'; g.beginPath(); g.ellipse(bx, by - 14 * k, 8 * k, 3 * k, 0, 0, 7); g.fill();
+  }
+}
+const pigeons = [];
+function stepPigeons(dt, t) {
+  const sq = [20.4 * T, 13 * T];
+  if (!pigeons.length) { const r = rng(91); for (let i = 0; i < 6; i++) { const a = r() * 6.28, k = Math.sqrt(r()) * .8; pigeons.push({ x: sq[0] + Math.cos(a) * 5.2 * T * k, y: sq[1] + Math.sin(a) * 3 * T * k, face: r() < .5 ? -1 : 1, wait: r() * 2, ph: r() * 6, fly: 0, tx: 0, ty: 0, vx: 0, vy: 0 }); } }
+  for (const p of pigeons) {
+    let near = 1e9, nx = 0, ny = 0;
+    for (const a of st.agents) { const q = pos[a.name]; if (!q || a.place !== 'Square') continue; const d = Math.hypot(q.x * T - p.x, q.y * T - p.y); if (d < near) { near = d; nx = q.x * T; ny = q.y * T; } }
+    if (p.fly > 0) { p.fly -= dt; p.x += p.vx * dt; p.y += p.vy * dt; }
+    else if (near < 1.3 * T) { const an = Math.atan2(p.y - ny, p.x - nx) + (Math.random() - .5) * 1.4; p.fly = .55 + Math.random() * .4; p.vx = Math.cos(an) * 150; p.vy = Math.sin(an) * 80; p.face = p.vx < 0 ? -1 : 1; p.wait = 1 + Math.random() * 2; }
+    else if (p.wait > 0) p.wait -= dt;
+    else {
+      if (!p.tx) { p.tx = p.x + (Math.random() - .5) * 60; p.ty = p.y + (Math.random() - .5) * 30; }
+      const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
+      if (d < 3) { p.tx = 0; p.wait = .8 + Math.random() * 2.6; } else { p.x += dx / d * 24 * dt; p.y += dy / d * 24 * dt; p.face = dx < 0 ? -1 : 1; }
+    }
+    const ex = (p.x - sq[0]) / (5.3 * T), ey = (p.y - sq[1]) / (3.0 * T), e = ex * ex + ey * ey;   // stay on the cobbles
+    if (e > 1) { p.x = sq[0] + (p.x - sq[0]) / Math.sqrt(e); p.y = sq[1] + (p.y - sq[1]) / Math.sqrt(e); p.tx = 0; }
+  }
+}
+function drawPigeons(t) {
+  for (const p of [...pigeons].sort((a, b) => a.y - b.y)) {
+    const air = p.fly > 0, lift = air ? -9 - Math.sin(p.fly * 14) * 2 : 0, peck = !air && p.wait > 0 && Math.sin(t / 120 + p.ph) > .35;
+    ctx.save(); ctx.translate(p.x, p.y); ctx.scale(p.face, 1);
+    ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.beginPath(); ctx.ellipse(0, 3, 6, 2, 0, 0, 7); ctx.fill();
+    ctx.translate(0, lift);
+    ctx.fillStyle = '#9097a1'; ctx.beginPath(); ctx.ellipse(0, -4, 6.5, 4, -.12, 0, 7); ctx.fill();
+    ctx.fillStyle = '#6e7480'; ctx.beginPath(); ctx.ellipse(-1.5, -4, 4.2, 2.4, -.2, 0, 7); ctx.fill();
+    if (air) { const f = Math.sin(p.fly * 22) * 5; ctx.fillStyle = '#7c828c'; ctx.beginPath(); ctx.ellipse(-1, -6 - f, 7, 2.2, -.5 - f * .05, 0, 7); ctx.fill(); }
+    ctx.fillStyle = '#4f8a86'; ctx.beginPath(); ctx.ellipse(4, -6, 2.4, 2.2, 0, 0, 7); ctx.fill();
+    const hy = peck ? -1.5 : -8; ctx.fillStyle = '#8b929c'; ctx.beginPath(); ctx.arc(6.4, hy, 2.3, 0, 7); ctx.fill();
+    ctx.fillStyle = '#e8b04a'; ctx.beginPath(); ctx.moveTo(8.4, hy - .5); ctx.lineTo(10.6, hy + (peck ? 1 : .2)); ctx.lineTo(8.4, hy + .8); ctx.fill();
+    ctx.fillStyle = '#1b1b1b'; ctx.fillRect(6.9, hy - 1, 1, 1);
+    ctx.restore();
+  }
+}
 function tree(g, x, y, s, r) {
   const X = x * T, Y = y * T, hue = 118 + (r() - .5) * 26, l = 26 + r() * 8;
   shadow(g, X + 4 * s, Y, 15 * s, 5.5 * s, .26);
@@ -469,6 +552,9 @@ function buildScenery() {
     const out = x < 0.2 || x > W - 0.2 || y < 0.9 || y > H + 0.2; if (!out || inLake(x, y + 0.8)) continue;
     const k = 0.9 + r() * 0.6, pn = r() < .55; items.push([y, () => (pn ? pine : tree)(g, x, y, k, r)]);
   }
+  // the Square's furniture, seen close up: two benches, a notice board and some barrels
+  items.push([12.8, () => bench(g, 17.4, 12.9)]); items.push([12.9, () => bench(g, 23.3, 12.9)]);
+  items.push([9.7, () => noticeBoard(g, 20.4, 9.7)]); items.push([14.3, () => barrels(g, 15.3, 14.2)]);
   items.push([P.Bakery[1], () => house(g, P.Bakery[0], P.Bakery[1], 3.4, 1.7, '#ead9b4', '#b5432e', { chimney: 1, sign: '#e0a23a' })]);
   items.push([P.Tavern[1], () => house(g, P.Tavern[0], P.Tavern[1], 4.4, 1.9, '#8a6a4a', '#3f6b46', { win: [-0.7, -0.35, 0.35, 0.7], sign: '#d8b13c', chimney: 1 })]);
   items.push([P.Library[1], () => house(g, P.Library[0], P.Library[1], 3.2, 2.3, '#9aa3ad', '#4a5670', { pitch: 1.5 })]);
@@ -1006,6 +1092,7 @@ function frame(t) {
     ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (vw / 2 - cam.x * z + shx0), dpr * (vh / 2 - cam.y * z + shy0));
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(scenery, -M, -M, WW + 2 * M, WH + 2 * M);
+    if (z > 1 && st.phase !== 'night' && !/storm|rain/.test(st.weather) && vis(20.4 * T, 13 * T, 220, 120, 120)) { stepPigeons(dt, t); drawPigeons(t); }
 
     if (!REDUCE && S.light < .6 && !rain) for (let i = 0; i < 3; i++) {   // drifting cloud shadows
       const cx = ((t / (wind ? 30 : 70) + i * 700) % (WW + 2 * M + 1000)) - M - 500, cy = 120 + i * 260 + Math.sin(i * 3) * 80;
@@ -1225,7 +1312,10 @@ cv.addEventListener('pointermove', e => {
 });
 const endPtr = e => {
   ptrs.delete(e.pointerId);
-  if (drag && !drag.moved && e.type === 'pointerup') select(villagerAt(e.offsetX, e.offsetY), false);
+  if (drag && !drag.moved && e.type === 'pointerup') {
+    const v = villagerAt(e.offsetX, e.offsetY), pl = v ? null : placeAt(e.offsetX, e.offsetY);
+    if (pl) focusPlace(pl); else select(v, false);
+  }
   if (ptrs.size < 2) pinch = null; if (!ptrs.size) drag = null;
   cv.classList.remove('drag');
 };
@@ -1238,12 +1328,69 @@ cv.addEventListener('keydown', e => {
   if (e.key === '+' || e.key === '=') zoomAt(1.25);
   else if (e.key === '-' || e.key === '_') zoomAt(0.8);
   else if (e.key === '0') resetView();
-  else if (e.key === 'Escape') select(null);
+  else if (e.key === 'Escape') { if (sceneAt) closeScene(); else select(null); }
   else if (keys[e.key]) { cam.follow = false; syncFocus(); cam.tx += keys[e.key][0]; cam.ty += keys[e.key][1]; clampT(); userMoved = true; }
   else return;
   e.preventDefault();
 });
 $('zin').onclick = () => zoomAt(1.35); $('zout').onclick = () => zoomAt(1 / 1.35); $('zfit').onclick = () => resetView();
+
+// ================================================================ scenes: stand in a place
+const PLACE_DESC = {
+  Square: 'The village square: the old stone well, the stalls, the merchant, the bank steps and the benches.', Bakery: "Mira's bakery, warm and smelling of bread.",
+  Garden: 'The herb garden, with its beehives and the mill.', Tavern: 'The Gilded Newt: ale, stew and the village\u2019s gossip.', Shrine: 'The shrine under the Old Oak, where wishes are made.',
+  Library: 'The small stone library, shelves and ledgers.', Dock: 'The wooden dock on the lake, with the boats and watchtowers.', Workshop: "Tobias's carpentry workshop.",
+  Cottages: 'Cottage Row, where the village lives.', Woods: 'The Woods, where timber is cut.', Quarry: 'The stone Quarry.', Oracle: 'The ring of standing stones where the Oracle dwells.',
+  Meadow: 'The open Meadow, new ground for farms and homes.', Hospital: 'The little whitewashed Hospital, where the sick are treated with herbs.', Cemetery: 'The quiet Cemetery by the lake, where the village buries its dead.' };
+const SCENE_ZOOM = { Square: 15, Dock: 14, Cottages: 15, Meadow: 12, Garden: 11, Tavern: 10, Woods: 12, Quarry: 10, Shrine: 9, Cemetery: 9, Library: 8, Bakery: 8, Workshop: 8, Hospital: 8, Oracle: 8 };   // tiles of map across the screen
+const SCENE_R = { Square: 6.5, Cottages: 14, Dock: 9, Meadow: 7, Garden: 4.5, Woods: 8, Quarry: 6 };                                                                                  // how far round a place counts as "here"
+let sceneAt = null, sceneKey = '';
+function placeAt(sx, sy) {
+  if (!st) return null; const [wx, wy] = toWorld(sx, sy).map(v => v / T);
+  if (((wx - 20.4) / 5.8) ** 2 + ((wy - 13) / 3.4) ** 2 < 1) return 'Square';
+  let best = null, bd = 2.3;
+  for (const [n, [x, y]] of Object.entries(st.places)) { if (n === 'Square') continue; const d = Math.hypot(wx - x, wy - y - 0.5); if (d < bd) { bd = d; best = n; } }
+  return best;
+}
+function focusPlace(name, fly = true) {
+  if (!st || !st.places[name]) return;
+  if (selected) select(null);
+  sceneAt = name; sceneKey = '';
+  if (fly) { const [x, y] = st.places[name]; cam.follow = false; userMoved = true; cam.tx = x * T; cam.ty = (y + (name === 'Square' ? 1 : 0.4)) * T; cam.tz = clamp(vw / ((SCENE_ZOOM[name] || 10) * T), fitZ(), maxZ()); clampT(); syncFocus(); }
+  renderScene(true);
+}
+function closeScene() { sceneAt = null; $('scene').hidden = true; }
+function renderScene(force) {
+  const box = $('scene'); if (!sceneAt || !st || !st.places[sceneAt]) { box.hidden = true; return; }
+  const name = sceneAt, [px, py] = st.places[name], here = st.agents.filter(a => a.place === name), nowMin = st.day * 1440 + st.minute;
+  const talk = (st.events || []).filter(e => e.kind === 'turn' && e.place === name && e.say && nowMin - (e.day * 1440 + e.minute) <= 90).slice(-6);
+  const built = (st.structures || []).filter(s => s.done && Math.hypot(s.x - px, s.y - py) <= (SCENE_R[name] || 5));
+  const key = [name, st.day, st.minute, st.phase, here.map(a => a.name + a.activity + a.say + a.mood + a.thought).join('|'), talk.length && talk[talk.length - 1].id, built.length].join('~');
+  if (!force && key === sceneKey) return; sceneKey = key; box.hidden = false;
+  const head = el('div', 'sc-head'), sel = el('select'); sel.setAttribute('aria-label', 'Visit a place');
+  for (const n of Object.keys(st.places)) { const o = new Option(PLACE_NAME[n] || n, n); o.selected = n === name; sel.append(o); }
+  sel.onchange = () => focusPlace(sel.value);
+  const x = el('button', 'sc-x', '✕'); x.setAttribute('aria-label', 'Close'); x.onclick = closeScene; head.append(sel, x);
+  const parts = [head, el('p', 'sc-desc', PLACE_DESC[name] || '')];
+  parts.push(el('h4', null, here.length ? `Here now · ${here.length}` : 'Here now'));
+  if (!here.length) parts.push(el('div', 'sc-empty', st.phase === 'night' ? 'Dark and quiet.' : 'Nobody is here.'));
+  for (const a of here) {
+    const row = el('div', 'sc-row'), who = el('div', 'sc-who'), dot = el('i'), nm = el('b', null, a.name);
+    dot.style.background = a.color; nm.onclick = () => select(a.name, true); who.append(dot, nm, el('span', null, a.activity || ''));
+    if (a.mood) who.append(el('span', 'sc-mood', a.mood));
+    row.append(who);
+    if (a.say && (st.now || 0) - a.say_at < 300) row.append(el('div', 'sc-say', `\u201c${a.say}\u201d`));
+    if (a.thought && st.phase !== 'night') row.append(el('div', 'sc-think', a.thought));
+    parts.push(row);
+  }
+  if (talk.length) {
+    parts.push(el('h4', null, 'The talk here'));
+    for (const e of talk) { const l = el('div', 'sc-line'); l.append(el('time', null, hhmm(e.minute)), el('b', null, e.who), el('em', null, e.to ? ` \u2192 ${e.to}: ` : ': '), document.createTextNode(`\u201c${e.say}\u201d`)); parts.push(l); }
+  }
+  if (built.length) { parts.push(el('h4', null, 'Built nearby')); parts.push(el('div', 'sc-built', [...new Set(built.map(projName))].join(' \u00b7 '))); }
+  box.replaceChildren(...parts);
+}
+$('zscene').onclick = () => { if (sceneAt) closeScene(); else focusPlace('Square'); };
 
 function select(name, focus) {
   selected = name || null; $('to').value = selected || '';
@@ -1713,6 +1860,7 @@ function debugOnce() {       // camera, selection and tab, once after the first 
   if (debugDone) return; debugDone = true;
   if (FROZEN != null) $('hint').style.display = 'none';   // its fade-out is timed, which would make shots differ
   debugCam();
+  if (DEBUG.scene && st.places[DEBUG.scene]) { focusPlace(DEBUG.scene); cam.x = cam.tx; cam.y = cam.ty; cam.z = cam.tz; }
   if (DEBUG.sel && st.agents.some(a => a.name === DEBUG.sel)) { selected = DEBUG.sel; $('to').value = selected; syncFocus(); renderPeople(true); renderFeed(true); }
   if (DEBUG.tab) { const b = document.querySelector(`nav button[data-tab="${DEBUG.tab}"]`); if (b) b.click(); }
 }
@@ -1741,7 +1889,7 @@ async function poll() {
       sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
       msgHint();
     }
-    renderHeader(); renderFeed(); renderPeople(); renderPop(); renderBuilt(); hearEvents(); renderGoals(); renderOracle(); renderPrayers(); renderChron(); syncFocus();
+    renderHeader(); renderFeed(); renderPeople(); renderPop(); renderBuilt(); hearEvents(); renderGoals(); renderOracle(); renderPrayers(); renderChron(); syncFocus(); renderScene();
     debugOnce();
   } catch (e) { const s = $('status'); s.className = 'off'; s.lastChild.textContent = 'Connection lost'; }
   setTimeout(poll, 2500);
