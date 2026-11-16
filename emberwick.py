@@ -282,7 +282,7 @@ def migrate():
         a.setdefault("plan_at", 0)
         a.setdefault("plan_work", 0)
         a.setdefault("self", "")
-        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("moods", []), ("trail", []), ("grudges", []), ("wake", {})):
+        for k, v in (("legacy", []), ("story", ""), ("story_day", 0), ("inner", ""), ("trail", []), ("grudges", []), ("wake", {})):
             a.setdefault(k, v)
         for k, v in (("expecting", None), ("proposal", None), ("partner", None), ("hungry", 0), ("rest_until", 0),
                      ("sick", None), ("care_until", 0)):
@@ -514,14 +514,14 @@ def wake_text(n):
     if w.get("mood") or w.get("body"):
         bits = [f"This morning you woke {w['mood']}." if w.get("mood") else "", w.get("body", "")]
         if w.get("on_mind"):
-            bits.append(f"On your mind: {w['on_mind']}")
+            bits.append(f"On your mind: {w['on_mind'].rstrip('.')}.")
         if w.get("avoid"):
             bits.append(f"You mean to avoid {w['avoid']}.")
         if w.get("seek"):
             bits.append(f"You want {w['seek']}.")
         out.append(" ".join(b for b in bits if b))
-    if a.get("moods"):
-        out.append("Your mood in recent turns: " + ", ".join(a["moods"]) + " (moods linger; they do not swing without a reason).")
+    if a.get("inner"):
+        out.append(f"A moment ago you felt: {a['inner']}")
     return out
 
 def gist(text, words=6):
@@ -2614,17 +2614,19 @@ def agent_turn():
                  f'"action" = one of: {", ".join(actions)}; '
                  '"give", "give_qty", "want", "want_qty" = only for action "offer" (give and give_qty also for "sell"), otherwise "nothing" and 0; '
                  '"go_to" = a place to walk to afterwards, or "stay"; '
-                 '"activity" = 3 to 8 words for what you are doing, like "kneading rye dough"; "mood" = one word.')
+                 '"activity" = 3 to 8 words for what you are doing, like "kneading rye dough"; "mood" = one word; '
+                 '"inner" = one short private line on how you feel in body and heart right now (tired, hungry, sulking, '
+                 'restless, glad); it is shown back to you next turn, so change it only when something changes it.')
         thing = {"type": "string", "enum": ["nothing"] + ITEMS}
         schema = obj({"thought": STR, "say": STR, "action": {"type": "string", "enum": actions}, **extra,
                       "give": thing, "give_qty": {"type": "integer"}, "want": thing, "want_qty": {"type": "integer"},
-                      "go_to": {"type": "string", "enum": ["stay"] + list(PLACES)}, "activity": STR, "mood": STR})
+                      "go_to": {"type": "string", "enum": ["stay"] + list(PLACES)}, "activity": STR, "mood": STR, "inner": STR})
         system, user = persona(n), "\n".join(u)
 
     if deep:
-        r, deep = chat_deep(system, user, schema, num_predict=220, temperature=temper(n))
+        r, deep = chat_deep(system, user, schema, num_predict=280, temperature=temper(n))
     else:
-        r = chat(ACTOR, system, user, schema, keep_alive=-1, num_predict=220, temperature=temper(n))
+        r = chat(ACTOR, system, user, schema, keep_alive=-1, num_predict=280, temperature=temper(n))
 
     with lock:
         a = S["agents"][n]
@@ -2633,7 +2635,7 @@ def agent_turn():
         here = [o for o in S["agents"] if o != n and S["agents"][o]["place"] == old]
         say = trim(r.get("say"), 420)
         a["thought"], a["mood"] = trim(r.get("thought"), 300), clip(r.get("mood"), 20).lower()
-        a["moods"] = ([x for x in a.get("moods", []) if x != a["mood"]][-2:] + [a["mood"]]) if a["mood"] else a.get("moods", [])
+        a["inner"] = clip(r.get("inner"), 120) or a.get("inner", "")
         a["activity"] = clip(r.get("activity"), 70).rstrip(".") or "idling"
         if a["activity"][:1].isupper() and not a["activity"].startswith("I "):
             a["activity"] = a["activity"][0].lower() + a["activity"][1:]
@@ -3218,7 +3220,7 @@ def night():
             if s_["done"] and s_["type"] == "farm":
                 S["agents"][s_["owner"]]["inv"]["bread"] += 2
         for n, a in S["agents"].items():
-            a.update(today=[], pending=None, offer=None, activity="waking up")
+            a.update(today=[], pending=None, offer=None, activity="waking up", inner="")
             remember(n, f"News this morning (day {S['day']}): {omen}")
         save()
 
