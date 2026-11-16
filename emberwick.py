@@ -605,8 +605,12 @@ def grave_text(n):
                        "If you want to see them, bring them comfort, or say something before it is too late, go to the Cottages now.")
     for d in S.get("dead", []):
         if d["day"] in (S["day"], S["day"] - 1) and d["name"] != n:
-            out.append(f"{d['name']} died last night. Today the village lays {d['name']} to rest in the Cemetery: go there, "
-                       f'mourn at the grave (action "mourn"), and say a few words about who {d["name"]} was to you.')
+            if n in d.get("mourners", []):
+                out.append(f"{d['name']} died last night and was laid to rest today. You have already mourned at the grave and "
+                           f"said your goodbye; there is no need to go back. Carry on with your day, as {d['name']} would want.")
+            else:
+                out.append(f"{d['name']} died last night. Today the village lays {d['name']} to rest in the Cemetery: go there, "
+                           f'mourn at the grave (action "mourn"), and say a few words about who {d["name"]} was to you.')
     return out
 
 def nearest_heirs(n):
@@ -692,6 +696,8 @@ def do_mourn(n, grave):
     if not d:
         return ""
     close = d["name"] in parents(n) or n in d.get("parents", []) or S["agents"][n].get("partner") == d["name"]
+    if n not in d.setdefault("mourners", []):
+        d["mourners"].append(n)
     remember(n, f"I stood at {d['name']}'s grave in the Cemetery and remembered them"
                 + (", and my grief for them is deep." if close else "."))
     return f"laid wildflowers on {d['name']}'s grave"
