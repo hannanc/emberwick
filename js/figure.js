@@ -44,6 +44,17 @@ function drawFace(g, o) {   // small dark eyes with a highlight (whites only for
   }
 }
 
+function drawBraid(c, hx, hy, r, u) {   // a plait that tapers from the nape to a thin tail, with diagonal crossings and a tie
+  const { g, hairC, dark, z } = c, n = z >= 1 ? 12 : 4, at = k => { const t = k / n; return [hx - r - .2 * u - .9 * u * t + .8 * u * Math.sin(t * 5.4) * (.4 + t * .6), hy + r * .25 + t * 15.5 * u, (1.5 - 1.05 * t) * u]; };
+  g.fillStyle = hairC; g.strokeStyle = dark; g.lineWidth = 1; g.beginPath();
+  for (let k = 0; k <= n; k++) { const [x0, y0, w0] = at(k); k ? g.lineTo(x0 - w0, y0) : g.moveTo(x0 - w0, y0); }
+  for (let k = n; k >= 0; k--) { const [x0, y0, w0] = at(k); g.lineTo(x0 + w0, y0); }
+  g.closePath(); g.fill(); g.stroke();
+  if (z >= 1) { g.strokeStyle = shade(hairC, .55); g.lineWidth = .8; g.beginPath(); for (let k = 1; k < n; k++) { const [x0, y0, w0] = at(k); g.moveTo(x0 - w0, y0 - .5 * u); g.lineTo(x0 + w0, y0 + .9 * u); } g.stroke(); }
+  const [ex, ey, ew] = at(n); g.fillStyle = '#e0a23a'; g.beginPath(); g.ellipse(ex, ey + .3 * u, ew + .5 * u, .8 * u, 0, 0, 7); g.fill();   // the tie
+  g.fillStyle = hairC; g.beginPath(); g.moveTo(ex - ew, ey + .8 * u); g.lineTo(ex, ey + 3.2 * u); g.lineTo(ex + ew, ey + .8 * u); g.closePath(); g.fill();   // the loose tail
+}
+
 function hairCap(c, hx, hy, r, u) {   // the hair in front: a cap on the top of the head with a hairline that leaves the forehead bare, shaped per style
   const { g, L, a, h, f, dark: line } = c, ps = L.hair === 'neat' ? 1 : h & 1 ? 1 : -1, R = r + .4 * u, long = L.hair === 'long' || L.hair === 'braid', bun = L.hair === 'bun';
   const tl = long ? .1 : -.12, tx = long ? .96 : .93;   // long hair comes lower at the temples, over the ears
@@ -237,7 +248,7 @@ function person(a, p, t, g = ctx) {
   if (L.accent === 'scarf') { const Y = c.Y; g.fillStyle = L.scarf; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.roundRect(x - 5.8 * S, Y(B.sh + 1.6), 11.6 * S, 3.4 * S, 1.7 * S); g.fill(); g.stroke(); g.beginPath(); g.roundRect(x + 1.8 * S, Y(B.sh - .4), 3 * S, 6.4 * S, 1.2 * S); g.fill(); g.stroke(); }   // scarf with a hanging tail
   if (rainy && a.age >= 3) { g.fillStyle = hoodC; g.strokeStyle = line; g.lineWidth = 1.1; g.beginPath(); g.ellipse(x + lean * .5, c.Y(B.sh + .6), (B.shW + 1.8) * S, 2.6 * S, 0, 0, 7); g.fill(); g.stroke(); }   // a hood's collar draped on the shoulders
   // head: back of the braid / bun first, then face, then hair in front
-  if (L.hair === 'braid') { g.fillStyle = hairC; g.strokeStyle = dark; g.lineWidth = 1; for (let i = 0; i < 4; i++) { g.beginPath(); g.ellipse(hx - r - .9 * u - i * .15 * u, hy + (5 + i * 3.2) * u, 2.3 * u, 2.1 * u, 0, 0, 7); g.fill(); g.stroke(); } g.fillStyle = '#e0a23a'; g.beginPath(); g.arc(hx - r - 1.4 * u, hy + 17.6 * u, 1.3 * u, 0, 7); g.fill(); }
+  if (L.hair === 'braid') drawBraid(c, hx, hy, r, u);
   if (close) { g.fillStyle = 'rgba(50,25,15,.2)'; g.beginPath(); g.ellipse(hx - f * .6 * u, hy + r * .92, r * .72, r * .3, 0, 0, 7); g.fill(); }   // the shadow of the chin on the neck and collar
   g.strokeStyle = dark; g.lineWidth = 1.3; g.fillStyle = skin; g.beginPath(); if (a.age < 18) g.ellipse(hx, hy, r * 1.05, r, 0, 0, 7); else g.arc(hx, hy, r, 0, 7); g.fill(); g.stroke();   // children's faces are rounder
   if (rim) { g.strokeStyle = 'rgba(255,196,120,.6)'; g.lineWidth = 1.5; g.beginPath(); g.arc(hx, hy, r, rs < 0 ? Math.PI * .62 : -Math.PI * .38, rs < 0 ? Math.PI * 1.38 : Math.PI * .38); g.stroke(); }
