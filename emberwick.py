@@ -507,6 +507,10 @@ def wake_text(n):
         out.append(f"A moment ago you felt: {a['inner']}")
     return out
 
+def facts(o):
+    """Plain facts about a villager that nobody should have to guess: age, whether a man or a woman, and trade."""
+    return f"{o} ({age(o)}, {word(o)}, {who(o)['job']})"
+
 def gist(text, words=6):
     """What a bystander retains of a line they overheard: the first few words, not the whole phrase."""
     w = text.split()
@@ -2385,9 +2389,10 @@ def agent_turn():
         mine = [s["type"] for s in S["structures"] if s["done"] and s["owner"] == n]
         u = [f"It is day {S['day']}, {hhmm(S['minute'])}. Weather: {S['weather']}. {time_hint(S['minute'])}",
              f"You are at the {a['place']} ({PLACES[a['place']][2]}), and were just {a['activity']}.",
-             ("Here with you: " + "; ".join(f"{o} ({S['agents'][o]['activity']})" for o in here) + ".") if here
-             else "Nobody else is here.",
+             ("Here with you: " + "; ".join(f"{o} ({age(o)}, {word(o)}; {S['agents'][o]['activity']})" for o in here) + ".") if here
+             else "Nobody else is here, so nobody will hear you. What do you do when no one is watching?",
              "Where the others are: " + "; ".join(f"{p}: {', '.join(v)}" for p, v in where.items()) + ".",
+             "Who is who: " + "; ".join(facts(o) for o in S["agents"] if o != n) + ".",
              f"Village news today: {S['news']}",
              "Your recent memories:\n" + "\n".join("- " + m for m in a["memories"][-6:])]
         if a.get("lines"):
@@ -2606,7 +2611,11 @@ def agent_turn():
                  '"inner" = one short private line on how you feel in body and heart right now (tired, hungry, sulking, '
                  'restless, glad); it is shown back to you next turn, so change it only when something changes it.')
         thing = {"type": "string", "enum": ["nothing"] + ITEMS}
+        if here:
+            u.append('Alongside "say", put in "to" who you are speaking to: one person here, "everyone" in the room, or '
+                     '"nobody" if you are only muttering to yourself.')
         schema = obj({"thought": STR, "say": STR, "action": {"type": "string", "enum": actions}, **extra,
+                      **({"to": {"type": "string", "enum": here + ["everyone", "nobody"]}} if here else {}),
                       "give": thing, "give_qty": {"type": "integer"}, "want": thing, "want_qty": {"type": "integer"},
                       "go_to": {"type": "string", "enum": ["stay"] + list(PLACES)}, "activity": STR, "mood": STR, "inner": STR})
         system, user = persona(n), "\n".join(u)
@@ -2634,9 +2643,21 @@ def agent_turn():
             for o in here:
                 remember(o, f'At the {old}, {n} spoke to someone none of us could see: "{gist(say)}"')
         elif here:
-            to = pending["from"] if pending and pending["from"] in here else random.choice(here)
+            chosen = r.get("to")
+            to = chosen if chosen in here or chosen in ("everyone", "nobody") else \
+                (pending["from"] if pending and pending["from"] in here else random.choice(here))
         if to == "you":
             pass
+        elif say and to == "everyone":
+            remember(n, f'At the {old} I said to everyone: "{say}"')
+            for o in here:
+                remember(o, f'At the {old}, {n} said to all of us: "{say}"')
+            to = ""
+        elif say and to == "nobody":
+            remember(n, f'At the {old} I muttered to myself: "{say}"')
+            for o in here:
+                remember(o, f'At the {old}, {n} muttered something like: "{gist(say)}"')
+            to = ""
         elif say and to:
             remember(n, f'At the {old} I said to {to}: "{say}"')
             for o in here:
@@ -2646,6 +2667,8 @@ def agent_turn():
                 S["agents"][to]["pending"] = {"from": n, "text": say}
         elif say:
             remember(n, f'Alone at the {old} I said aloud: "{say}"')
+        if to in ("everyone", "nobody"):
+            to = ""
         a["say"], a["say_to"], a["say_at"] = say, to, time.time() if say else a["say_at"]
         if say:
             a["lines"] = (a.get("lines", []) + [say])[-8:]
